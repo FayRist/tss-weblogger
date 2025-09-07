@@ -1,1 +1,0 @@
-import{Ab as t,Bb as n,Tb as s,gb as o}from"./chunk-AZSS4EXS.js";var p=class a{static \u0275fac=function(e){return new(e||a)};static \u0275cmp=o({type:a,selectors:[["app-dashboard"]],decls:2,vars:0,template:function(e,i){e&1&&(t(0,"p"),s(1,"dashboard works!"),n())},encapsulation:2})};export{p as DashboardComponent};
