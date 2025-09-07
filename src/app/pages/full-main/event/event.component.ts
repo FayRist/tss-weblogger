@@ -13,6 +13,16 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { ActivatedRoute, Router } from '@angular/router';
 import { eventModel } from '../../../model/season-model';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
+
+type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
+
+interface SessionRow {
+  key: SessionKey;
+  label: string;
+  start: Date | null; // 'YYYY-MM-DDTHH:mm'
+  end: Date | null;   // 'YYYY-MM-DDTHH:mm'
+}
+
 @Component({
   selector: 'app-event',
   imports: [DateRangePipe],
@@ -130,6 +140,20 @@ export class DialogAnimationsModalEdit implements OnInit {
     },
   ];
   // mapsList: string[] = ['Extra cheese', 'Mushroom', 'Onion', 'Pepperoni', 'Sausage', 'Tomato'];
+
+  private order: SessionKey[] = [
+    'freePractice', 'qualifying', 'race1', 'race2', 'race3', 'race4', 'race5'
+  ];
+
+  private labelMap: Record<SessionKey, string> = {
+    freePractice: 'Free Practice',
+    qualifying: 'Qualifying',
+    race1: 'Race 1',
+    race2: 'Race 2',
+    race3: 'Race 3',
+    race4: 'Race 4',
+    race5: 'Race 5',
+  };
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalEdit>);
   readonly data:any = inject<eventModel>(MAT_DIALOG_DATA);

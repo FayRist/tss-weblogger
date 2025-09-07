@@ -2,3 +2,52 @@
     background: #212529;
     color: #FFFFFF;
 }
+
+/* ซ่อนคลื่น overlay เมื่อปิด select (ตามที่โค้ดจัดการ class) */
+.hidden-overlay { display: none !important; }
+
+/* ปรับระยะ/ไอคอนตามชอบ */
+button[mat-raised-button] {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  text-transform: none;
+}
+
+/* 1) ซ่อน trigger + ลูกศร ของ mat-select ที่วางอยู่ในปุ่ม */
+.chart-filter-btn .mat-mdc-select-trigger,
+.chart-filter-btn .mat-mdc-select-arrow {
+  display: none !important;
+}
+
+/* 2) ทำให้ mat-select ไม่กินพื้นที่ในปุ่ม (ยังเรียก open() ได้ตามปกติ) */
+.chart-filter-btn .mat-mdc-select {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+}
+
+/* (จากก่อนหน้า) คุมความกว้างแผงเป็น 180px */
+.chart-filter-overlay-180 {
+  width: 180px !important;
+  min-width: 180px !important;
+}
+.chart-filter-panel {
+  min-width: 180px !important;
+}
+
+/* ป้ายบนปุ่มให้ย่อ ... เมื่อยาว */
+.chart-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  text-transform: none;
+}
+.chart-filter-btn .btn-label {
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

@@ -39,9 +39,9 @@
                   <mat-form-field class="w-100">
                     <mat-label>เลือก รายการ</mat-label>
                     <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
-                      <mat-select [formControl]="toppings">
-                        @for (topping of toppingList; track topping) {
-                          <mat-option [value]="topping">{{topping}}</mat-option>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
+                        @for (season of seasonList; track season) {
+                          <mat-option [value]="season.value">{{season.name}}</mat-option>
                         }
                       </mat-select>
                   </mat-form-field>
@@ -56,7 +56,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ Event</mat-label>
-                    <input matInput class="text-center" value="TSS Bangsaen Grand Prix 2025">
+                    <input matInput class="text-center" [value]="eventName">
                   </mat-form-field>
                 </form>
               </div>
@@ -65,9 +65,9 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>เลือก สนาม</mat-label>
-                      <mat-select [formControl]="toppings">
-                        @for (topping of toppingList; track topping) {
-                          <mat-option [value]="topping">{{topping}}</mat-option>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="circuitName">
+                        @for (maps of mapsList; track maps) {
+                          <mat-option [value]="maps.value">{{maps.name}}</mat-option>
                         }
                       </mat-select>
                   </mat-form-field>
@@ -121,9 +121,9 @@
                   <mat-form-field class="w-100">
                     <mat-label>เลือก รายการ</mat-label>
                     <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
-                      <mat-select [formControl]="toppings">
-                        @for (topping of toppingList; track topping) {
-                          <mat-option [value]="topping">{{topping}}</mat-option>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
+                        @for (season of seasonList; track season) {
+                          <mat-option [value]="season.value">{{season.name}}</mat-option>
                         }
                       </mat-select>
                   </mat-form-field>
@@ -134,9 +134,9 @@
                   <mat-form-field class="w-100">
                     <mat-label>เลือก Event</mat-label>
                     <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
-                      <mat-select [formControl]="toppings">
-                        @for (topping of toppingList; track topping) {
-                          <mat-option [value]="topping">{{topping}}</mat-option>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="eventId">
+                        @for (events of eventList; track events) {
+                          <mat-option [value]="events.value">{{events.name}}</mat-option>
                         }
                       </mat-select>
                   </mat-form-field>
@@ -151,7 +151,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ Race</mat-label>
-                    <input matInput class="text-center" value="Thailand Super Pickup D2">
+                    <input matInput class="text-center" [value]="raceName">
                   </mat-form-field>
                 </form>
               </div>
@@ -160,9 +160,9 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>รุ่น</mat-label>
-                      <mat-select [formControl]="toppings">
-                        @for (topping of toppingList; track topping) {
-                          <mat-option [value]="topping">{{topping}}</mat-option>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="segmentValue">
+                        @for (segment of raceSegment; track segment) {
+                          <mat-option [value]="segment.value">{{segment.name}}</mat-option>
                         }
                       </mat-select>
                   </mat-form-field>
@@ -172,9 +172,9 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Class</mat-label>
-                      <mat-select [formControl]="toppings">
-                        @for (topping of toppingList; track topping) {
-                          <mat-option [value]="topping">{{topping}}</mat-option>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="classValue">
+                        @for (classS of classList; track classS) {
+                          <mat-option [value]="classS.value">{{classS.name}}</mat-option>
                         }
                       </mat-select>
                   </mat-form-field>
@@ -312,7 +312,7 @@
               </div>
             </div>
           </div>
-          <div class="card-footer">
+          <div class="card-footer mt-3">
             <div class="row">
               <div class="col-12 d-flex justify-content-end mt-2">
                   <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>

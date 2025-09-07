@@ -1,9 +1,9 @@
-import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {MatInputModule} from '@angular/material/input';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { MatSelectModule } from '@angular/material/select';
+import { MAT_SELECT_CONFIG, MatSelect, MatSelectChange, MatSelectModule } from '@angular/material/select';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
@@ -11,18 +11,32 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
 import { Subscription } from 'rxjs';
 import { ApexOptions, ChartComponent, NgxApexchartsModule } from 'ngx-apexcharts';
-import { MatChipsModule } from '@angular/material/chips';
+
+type ChartFilter = 'all' | 'warningAfr' | 'avgAfr';
+interface Opt { value: ChartFilter; label: string; }
 @Component({
   selector: 'app-logger',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
     , ReactiveFormsModule, MatButtonModule, MatDividerModule, MatIconModule
     , MatToolbarModule, NgxApexchartsModule],
   templateUrl: './logger.component.html',
-  styleUrl: './logger.component.scss'
+  styleUrl: './logger.component.scss',
+  providers: [
+    { provide: MAT_SELECT_CONFIG, useValue: { overlayPanelClass: 'chart-filter-overlay-180' } }
+  ]
 })
-export class LoggerComponent implements OnInit , OnDestroy {
-
+export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
+  @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
+  @ViewChild('select') select!: MatSelect;
   @ViewChild('chart') chart!: ChartComponent;
+
+
+  options: Opt[] = [
+    { value: 'all',        label: 'ทั้งหมด' },
+    { value: 'warningAfr', label: 'warning AFR' },
+    { value: 'avgAfr',     label: 'Average AFR' },
+  ];
+  chartFilter = new FormControl<ChartFilter[]>(['all'], { nonNullable: true });
 
   showRoutePath: boolean = true;
   toppingList: string[] = ['Extra cheese', 'Mushroom', 'Onion', 'Pepperoni', 'Sausage', 'Tomato'];
@@ -103,6 +117,19 @@ export class LoggerComponent implements OnInit , OnDestroy {
 
   ngOnInit() {
     // this.loadEvent();
+  }
+
+  showWarningAfr = true;
+  showAverageAfr = true;
+
+  private overlayEl?: HTMLElement;
+
+  ngAfterViewInit(): void {
+    // รองรับทั้งคลาสเก่า/ใหม่ของ Angular Material (MDC)
+    const el = this.selectButtonEl.nativeElement.querySelector(
+      '.mat-button-focus-overlay, .mat-mdc-button-ripple, .mdc-button__ripple'
+    ) as HTMLElement | null;
+    this.overlayEl = el || undefined;
   }
 
   ngOnDestroy(): void {
@@ -338,4 +365,39 @@ export class LoggerComponent implements OnInit , OnDestroy {
   }
 
 
+  get triggerText(): string {
+    const v = this.chartFilter.value;
+    if (!v || v.length === 0 || v.includes('all')) return 'ทั้งหมด';
+    if (v.length === 1) return this.options.find(o => o.value === v[0])?.label ?? 'เลือกตัวกรอง';
+    return `เลือกแล้ว ${v.length}`;
+  }
+
+  onMultiSelectChange(ev: MatSelectChange) {
+  const values = (ev.value as ChartFilter[]) ?? [];
+  const hadAll   = this.chartFilter.value.includes('all');
+  const hasAllNow = values.includes('all');
+
+  // ไม่ให้ 'ทั้งหมด' อยู่ร่วมกับตัวเลือกอื่น
+  if (hasAllNow && values.length > 1) {
+    if (hadAll) {
+      this.chartFilter.setValue(values.filter(v => v !== 'all'), { emitEvent: false });
+    } else {
+      this.chartFilter.setValue(['all'], { emitEvent: false });
+    }
+  }
+
+  // คำนวณ flag เพื่อใช้กับกราฟ
+  const sel = this.chartFilter.value;
+  this.showWarningAfr = sel.includes('all') || sel.includes('warningAfr');
+  this.showAverageAfr = sel.includes('all') || sel.includes('avgAfr');
+
+  this.updateChartVisibility();
+}
+
+// ใช้ flag ที่คำนวณไว้กับกราฟของคุณ
+private updateChartVisibility() {
+  // ตัวอย่าง (คอมเมนต์ไว้ตามไลบรารีที่คุณใช้)
+  // this.chart?.toggleSeries('Warning AFR', this.showWarningAfr);
+  // this.chart?.toggleSeries('Average AFR', this.showAverageAfr);
+}
 }

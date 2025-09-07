@@ -42,11 +42,100 @@ interface SessionRow {
 export class AddEventComponent implements OnInit {
   NameTab: string = "เพิ่ม รายการแข่ง";
 
-  seasonname = new FormControl('');
+  eventName: string = '';
+  raceName: string = '';
+  eventId: number = 0;
+  circuitName: string = '';
+  seasonId: number = 0;
+
   toppings = new FormControl('');
   dateSessionStart = new FormControl(new Date());
   dateSessionEnd = new FormControl(new Date());
-  toppingList: string[] = ['Extra cheese', 'Mushroom', 'Onion', 'Pepperoni', 'Sausage', 'Tomato'];
+  classValue = new FormControl(null);
+  sessionValue = new FormControl(null);
+  segmentValue = new FormControl(null);
+
+
+  eventList: any[] = [
+    {
+      value: 1,
+      name:'TSS Bangsaen Grand Prix 2025'
+    },
+  ];
+
+  seasonList: any[] = [
+    {
+      value: 1,
+      name:'TSS The Super Series by B-Quik 2025'
+    },
+  ];
+
+  sessionList: any[] = [
+    {
+      value:'Free Practice',
+      name:'freepractice'
+    },{
+      value:'qualify',
+      name:'Qualifying'
+    },{
+      value:'race1',
+      name:'Race 1'
+    },{
+      value:'race2',
+      name:'Race 2'
+    },{
+      value:'race3',
+      name:'Race 3'
+    },{
+      value:'race4',
+      name:'Race 4'
+    },{
+      value:'race5',
+      name:'Race 5'
+    }
+  ];
+
+  raceSegment: any[] = [
+    {
+      value: 'pickup',
+      name:'Pickup'
+    },{
+      value: 'touring',
+      name:'Touring'
+    }
+  ];
+
+  classList: any[] = [
+    {
+      value: 'a',
+      name:'Class A'
+    },{
+      value: 'b',
+      name:'Class B'
+    },{
+      value: 'c',
+      name:'Class C'
+    },{
+      value: 'ab',
+      name:'Class A-B'
+    },{
+      value: 'overall',
+      name:'Over All'
+    },
+  ];
+
+  mapsList: any[] = [
+    {
+      value:'bsc',
+      name:'Bangsaen Street Circuit, Thailand'
+    },{
+      value:'sic',
+      name:'Petronas Sepang International Circuit, Malaysia'
+    },{
+      value:'bric',
+      name:'Buriram International Circuit, Thailand'
+    },
+  ];
 
   readonly dialogRef = inject(MatDialogRef<AddEventComponent>);
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);

@@ -87,6 +87,16 @@ body {
 }
 
 
+.chart-filter-overlay-180 {
+  width: 180px !important;
+  min-width: 180px !important;
+}
+
+/* เผื่อไว้ ถ้าต้องการกำหนดความกว้างของตัว panel เองด้วย */
+.chart-filter-panel {
+  min-width: 180px !important;
+}
+
 :root {
     @include mat.toolbar-overrides((container-background-color:var(--mat-sys-primary-container),
             container-text-color: rgb(255, 255, 255),
