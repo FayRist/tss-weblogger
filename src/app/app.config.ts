@@ -32,10 +32,10 @@ export const APP_CONFIG = {
       END_MATCH: '/matches/endMatch',
 
       // Loggers/Racers
-      GET_LOGGERS: '/loggers/getLoger',
-      ADD_LOGGER: '/loggers/addLoger',
-      UPDATE_LOGGER: '/loggers/updateLoger',
-      DELETE_LOGGER: '/loggers/deleteLoger',
+      GET_LOGGERS: '/logger/get-logger',
+      ADD_LOGGER: '/logger/add-allnew-logger',
+      UPDATE_LOGGER: '/logger/updateLoger',
+      DELETE_LOGGER: '/logger/deleteLoger',
 
       // Users (สำหรับอนาคต)
       GET_USERS: '/users/getUsers',

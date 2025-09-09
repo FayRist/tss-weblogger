@@ -22,12 +22,12 @@ export interface eventModel {
 
 export interface LoggerModel {
   id: number;
-  matchId: number;
-  driverName: string;
-  carNumber: string;
-  carType: string;
   loggerId: string;
+  carNumber: string;
+  firstName: string;
+  lastName: string;
+  createdDate: Date;
   numberWarning: number;
   warningDetector: boolean;
-  // online_status: string;
 }
+

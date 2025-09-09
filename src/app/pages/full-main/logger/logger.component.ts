@@ -39,7 +39,6 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   chartFilter = new FormControl<ChartFilter[]>(['all'], { nonNullable: true });
 
   showRoutePath: boolean = true;
-  toppingList: string[] = ['Extra cheese', 'Mushroom', 'Onion', 'Pepperoni', 'Sausage', 'Tomato'];
 
   svgPoints = '';
   startPoint = { x: 0, y: 0, lat: 0, long: 0 };
@@ -56,12 +55,7 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   allLogger: CarLogger[] = [];
 
   constructor(private router: Router, private route: ActivatedRoute,
-    // private dataProcessingService: DataProcessingService,
-    // private webSocketService: WebSocketService
   ) {
-    // const perms = this.authService.getPermissions();
-    // this.canEditMatch = perms.canEditMatch;
-    // this.canAddRacer = perms.canAddRacer;
     this.areaSmoothChart = {
       series: [
         {

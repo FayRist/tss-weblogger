@@ -33,121 +33,39 @@ export class DashboardComponent implements OnInit {
   allLoggers: LoggerModel[] = [
     {
       id: 1,
-      matchId: 1,
-      driverName: "ทดสอบ Test01",
-      carNumber: "3",
-      carType: "Pickup",
-      loggerId: "Client123",
-      numberWarning: 0,
-      warningDetector: false,
-    },
-    {
-      id: 2,
-      matchId: 1,
-      driverName: "สมชาย Speed",
-      carNumber: "12",
-      carType: "Sedan",
-      loggerId: "Client124",
+      firstName: "ทดสอบ1",
+      lastName: "Test01",
+      carNumber: "1",
+      loggerId: "Client121",
+      createdDate: new Date(10/9/2025),
       numberWarning: 2,
       warningDetector: false,
-    },
-    {
-      id: 3,
-      matchId: 1,
-      driverName: "Arisa Turbo",
-      carNumber: "27",
-      carType: "Hatchback",
-      loggerId: "Client125",
-      numberWarning: 1,
-      warningDetector: false,
-    },
-    {
-      id: 4,
-      matchId: 2,
-      driverName: "วิทวัส Drift",
-      carNumber: "88",
-      carType: "SUV",
-      loggerId: "Client126",
-      numberWarning: 4,
-      warningDetector: true,
-    },
-    {
-      id: 5,
-      matchId: 2,
-      driverName: "Napat Racer",
-      carNumber: "19",
-      carType: "Coupe",
-      loggerId: "Client127",
-      numberWarning: 0,
-      warningDetector: false,
-    },
-    {
-      id: 6,
-      matchId: 1,
-      driverName: "Ploy Fast",
-      carNumber: "05",
-      carType: "Pickup",
-      loggerId: "Client128",
+
+    },{
+      id: 2,
+      firstName: "ทดสอบ2",
+      lastName: "Test02",
+      carNumber: "2",
+      loggerId: "Client122",
+      createdDate: new Date(10/9/2025),
       numberWarning: 3,
       warningDetector: false,
-    },
-    {
-      id: 7,
-      matchId: 3,
-      driverName: "ธนา Power",
-      carNumber: "63",
-      carType: "Sedan",
-      loggerId: "Client129",
-      numberWarning: 0,
+    },{
+      id: 3,
+      firstName: "ทดสอบ3",
+      lastName: "Test03",
+      carNumber: "3",
+      loggerId: "Client123",
+      createdDate: new Date(10/9/2025),
+      numberWarning: 3,
       warningDetector: false,
-    },
-    {
-      id: 8,
-      matchId: 3,
-      driverName: "Chanin Boost",
-      carNumber: "42",
-      carType: "Hatchback",
-      loggerId: "Client130",
-      numberWarning: 1,
-      warningDetector: false,
-    },
-    {
-      id: 9,
-      matchId: 2,
-      driverName: "มุกดา Grip",
-      carNumber: "71",
-      carType: "SUV",
-      loggerId: "Client131",
-      numberWarning: 0,
-      warningDetector: false,
-    },
-    {
-      id: 10,
-      matchId: 1,
-      driverName: "Krit Aero",
-      carNumber: "09",
-      carType: "Coupe",
-      loggerId: "Client132",
-      numberWarning: 5,
-      warningDetector: true,
-    },
-    {
-      id: 11,
-      matchId: 2,
-      driverName: "ศศิ Nitro",
-      carNumber: "33",
-      carType: "Pickup",
-      loggerId: "Client133",
-      numberWarning: 2,
-      warningDetector: false,
-    },
-    {
-      id: 12,
-      matchId: 3,
-      driverName: "Bosco Line",
-      carNumber: "7",
-      carType: "Sedan",
-      loggerId: "Client134",
+    },{
+      id: 4,
+      firstName: "ทดสอบ4",
+      lastName: "Test04",
+      carNumber: "4",
+      loggerId: "Client124",
+      createdDate: new Date(10/9/2025),
       numberWarning: 0,
       warningDetector: false,
     },
@@ -181,7 +99,7 @@ export class DashboardComponent implements OnInit {
   });
 
   constructor(private router: Router, private route: ActivatedRoute) {
-    this.allLoggers = this.allLoggers.filter(x => x.matchId == 1);
+    // this.allLoggers = this.allLoggers.filter(x => x.matchId == 1);
   }
   ngOnInit() {
     // this.loadEvent();
@@ -227,7 +145,7 @@ export class DashboardComponent implements OnInit {
       if (byDetector !== 0) return byDetector;
 
       // 3) tie-breaker สุดท้าย: ชื่อคนขับ (โลแคลไทย)
-      return a.driverName.localeCompare(b.driverName, 'th');
+      return a.firstName.localeCompare(b.firstName, 'th');
     });
 
     this.onShowAllLoggers = filtered;
@@ -271,7 +189,7 @@ export class DashboardComponent implements OnInit {
   }
 
   navigateToResetLogger(enterAnimationDuration: string, exitAnimationDuration: string): void {
-       const dialogRef = this.dialog.open(ResetWarningLoggerComponent, {
+      const dialogRef = this.dialog.open(ResetWarningLoggerComponent, {
       enterAnimationDuration, exitAnimationDuration,
     });
   }

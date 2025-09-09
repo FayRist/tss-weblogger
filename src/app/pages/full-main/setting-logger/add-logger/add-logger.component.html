@@ -7,17 +7,27 @@
               <div class="col-12">
                 <form class="mat-input-form text-light">
                     <label for="formFile" class="form-label">สามารถ import ไฟล์ .xlsx .doc</label>
-                    <input class="form-control" type="file" id="formFile">
+                    <input
+                      class="form-control"
+                      type="file"
+                      id="formFile"
+                      (change)="onFileSelected($event)"
+                      [accept]="acceptTypes"
+                    />
                 </form>
+
+                @if (error) {
+                  <p class="text-red-600 text-sm">{{ error }}</p>
+                }
+
               </div>
 
             </div>
           </div>
+          <div class="card-footer">
+            <button type="button" class="btn btn-danger" matButton mat-dialog-close>close</button>
+            <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial (click)="submitAllLoggers()">submit</button>
+          </div>
         </div>
 </mat-dialog-content>
-
-<mat-dialog-actions>
-  <button type="button" class="btn btn-danger" matButton mat-dialog-close>close</button>
-  <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial>submit</button>
-</mat-dialog-actions>
 
