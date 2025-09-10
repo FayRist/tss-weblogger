@@ -12,11 +12,14 @@ import { DeleteLoggerComponent } from './delete-logger/delete-logger.component';
 import { LoggerModel } from '../../../model/season-model';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
+import { ToastrService } from 'ngx-toastr';
 
 export interface DialogLoggerData {
+  id: number;
   loggerId: string;
   carNumber: string;
-  name: string;
+  firstName: string;
+  lastName: string;
 }
 
 @Component({
@@ -72,7 +75,9 @@ export class SettingLoggerComponent implements OnInit {
     // },
   ];
 
-  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService) {
+  constructor(
+    // private router: Router, private route: ActivatedRoute,
+    private eventService: EventService, private toastr: ToastrService) {
 
   }
   ngOnInit() {
@@ -84,27 +89,50 @@ export class SettingLoggerComponent implements OnInit {
       width: '100vw', maxWidth: '750px',
       enterAnimationDuration, exitAnimationDuration,
     });
+
+    dialogRef.afterClosed().subscribe(result => {
+      console.log('The dialog was closed');
+      if(result == 'success'){
+        this.loadLogger();
+      }
+    });
   }
 
   settingLogger(enterAnimationDuration: string, exitAnimationDuration: string, loggerId:any): void {
     let arrayData = this.allLoggers.filter(x => x.loggerId == loggerId);
-       const dialogRef = this.dialog.open(EditLoggerComponent, {
+    const dialogRef = this.dialog.open(EditLoggerComponent, {
       width: '100vw', maxWidth: '350px',
       enterAnimationDuration, exitAnimationDuration,
-        data: {name: arrayData[0].firstName, carNumber: arrayData[0].carNumber, loggerId: arrayData[0].loggerId},
+        data: {id:arrayData[0].id ,firstName: arrayData[0].firstName, lastName: arrayData[0].lastName, carNumber: arrayData[0].carNumber, loggerId: arrayData[0].loggerId},
       });
+
+    dialogRef.afterClosed().subscribe(result => {
+      // console.log('The dialog was closed');
+      if(result == 'success'){
+        this.toastr.success(`แก้ไขข้ออมูล ${arrayData[0].loggerId} สำเร็จ`);
+        this.loadLogger();
+      }
+    });
   }
 
   deleteLogger(enterAnimationDuration: string, exitAnimationDuration: string, loggerId:any): void {
     let arrayData = this.allLoggers.filter(x => x.loggerId == loggerId);
-       const dialogRef = this.dialog.open(DeleteLoggerComponent, {
+      const dialogRef = this.dialog.open(DeleteLoggerComponent, {
       width: '100vw', maxWidth: '150px',
       enterAnimationDuration, exitAnimationDuration,
         data: {loggerId: arrayData[0].loggerId},
     });
+
+    dialogRef.afterClosed().subscribe(result => {
+      // console.log('The dialog was closed');
+      if(result == 'success'){
+        this.loadLogger();
+      }
+    });
   }
 
   loadLogger(){
+    this.allLoggers = []
     const loggerData = this.eventService.getLogger().subscribe(
       loggerRes => {
         this.allLoggers = loggerRes;

@@ -14,6 +14,9 @@ import {
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { DialogLoggerData } from '../setting-logger.component';
+import { ToastrService } from 'ngx-toastr';
+import { EventService } from '../../../../service/event.service';
+import { ExcelRowPayLoad } from '../add-logger/add-logger.component';
 
 @Component({
   selector: 'app-edit-logger',
@@ -27,15 +30,37 @@ import { DialogLoggerData } from '../setting-logger.component';
 export class EditLoggerComponent implements OnInit {
   readonly dialogRef = inject(MatDialogRef<EditLoggerComponent>);
   readonly data = inject<DialogLoggerData>(MAT_DIALOG_DATA);
+  id = this.data.id;
   car_number = this.data.carNumber;
   logger_id = this.data.loggerId;
-  name = this.data.name;
+  firstName = this.data.firstName;
+  lastName = this.data.lastName;
+
+  constructor(private eventService: EventService, private toastr: ToastrService) {}
 
   ngOnInit() {
 
   }
 
   onNoClick(): void {
-    this.dialogRef.close();
+    const payload = {
+      id: this.id,   // <- map ชื่อคีย์
+      logger_id: this.logger_id,   // <- map ชื่อคีย์
+      car_number: this.car_number,
+      first_name: this.firstName,
+      last_name: this.lastName,
+      creat_date: new Date()
+    }
+
+    this.eventService.updateEditLogger(payload).subscribe(
+        response => {
+          console.log('Match added/updated successfully:', response);
+          this.dialogRef.close('success');
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+           this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข match');
+        }
+    );
   }
 }

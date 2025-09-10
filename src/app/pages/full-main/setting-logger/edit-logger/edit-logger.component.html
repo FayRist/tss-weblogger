@@ -22,15 +22,22 @@
                 </form>
               </div>
 
-              <div class="col-12">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
-                  <mat-label>ชื่อนักแข่ง</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="name">
+                  <mat-label>ชื่อ</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="firstName">
                   </mat-form-field>
                 </form>
               </div>
-
+              <div class="col-6">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>นามสกุล</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="lastName">
+                  </mat-form-field>
+                </form>
+              </div>
             </div>
           </div>
         </div>
@@ -38,6 +45,6 @@
 
 <mat-dialog-actions>
   <button type="button" class="btn btn-danger" matButton mat-dialog-close>close</button>
-  <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial>submit</button>
+  <button type="button" class="btn btn-success"   matButton cdkFocusInitial (click)="onNoClick()">submit</button>
 </mat-dialog-actions>
 

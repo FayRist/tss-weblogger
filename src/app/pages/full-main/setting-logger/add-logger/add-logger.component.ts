@@ -5,12 +5,14 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 import {
   MatDialogClose,
   MatDialogContent,
+  MatDialogRef,
   MatDialogTitle,
 } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import * as XLSX from 'xlsx';
 import { EventService } from '../../../../service/event.service';
+import { ToastrService } from 'ngx-toastr';
 
 interface ExcelRow {
   logger: string;      // <- จากไฟล์
@@ -43,8 +45,9 @@ export class AddLoggerComponent implements OnInit {
   rowsExcel: ExcelRow[] = [];
   error = '';
   isSubmitting = false;
+  readonly dialogRef = inject(MatDialogRef<AddLoggerComponent>);
 
-  constructor(private eventService: EventService) {}
+  constructor(private eventService: EventService, private toastr: ToastrService) {}
   ngOnInit() {
 
   }
@@ -171,14 +174,17 @@ export class AddLoggerComponent implements OnInit {
 
     this.eventService.addAllNewLogger(payload).subscribe(
         response => {
-          console.log('Match added/updated successfully:', response);
+          console.log('added Logger successfully:', response);
           // this.rows = {};
           // this.loadMatch();
           // this.modalService.dismissAll();
+          this.toastr.success(`เพิ่ม Logger จำนวน ${this.rowsExcel.length}`);
+          this.dialogRef.close('success');
+
         },
         error => {
           console.error('Error adding/updating match:', error);
-          alert('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข match');
+           this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข match');
         }
       );
   }

@@ -81,7 +81,7 @@ export class RaceComponent implements OnInit {
     });
 
     dialogRef.afterClosed().subscribe(result => {
-      console.log('The dialog was closed');
+      // console.log('The dialog was closed');
       this.allRace = this.allRace.filter(e => e.raceMatchId !== result);
     });
   }

@@ -9,9 +9,18 @@ import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/ad
 // API Response interface for loggers
 export interface ApiLoggerResponse {
   count: number;
-  data: LoggerModel[];
+  data: ApiLoggerData[];
   success: boolean;
 }
+
+export interface ApiLoggerData {
+  id: number;
+  logger_id: string;
+  car_number: string;
+  first_name: string;
+  last_name: string;
+}
+
 
 export interface Match {
   id: number;
@@ -79,11 +88,11 @@ export class EventService {
           // Map API data to Match interface
           this.loggerList = response.data.map((apiData) => ({
             id: apiData.id,
-            loggerId: apiData.loggerId,
-            carNumber: apiData.carNumber,
-            firstName: apiData.firstName,
-            lastName: apiData.lastName,
-            createdDate: new Date(apiData.createdDate),
+            loggerId: apiData.logger_id,
+            carNumber: apiData.car_number,
+            firstName: apiData.first_name,
+            lastName: apiData.last_name,
+            createdDate: new Date(),
             numberWarning: 0,
             warningDetector: false,
 
@@ -102,6 +111,34 @@ export class EventService {
         }),
         catchError(error => {
           console.error('Error adding/updating loggers:', error);
+          throw error;
+        })
+      );
+    }
+
+    updateEditLogger(editLogger: any): Observable<unknown> {
+      const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_LOGGER);
+      return this.http.post(loggersUrl, editLogger).pipe(
+        map(response => {
+          console.log('Loggers added/updated successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error adding/updating loggers:', error);
+          throw error;
+        })
+      );
+    }
+
+    deleteLogger(loggerID: any): Observable<unknown> {
+      const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_LOGGER);
+      return this.http.post(loggersUrl, loggerID).pipe(
+        map(response => {
+          console.log('Loggers Delete successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error Delete loggers:', error);
           throw error;
         })
       );
