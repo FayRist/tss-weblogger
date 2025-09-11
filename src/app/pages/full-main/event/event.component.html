@@ -14,19 +14,19 @@
         <tbody>
           @for (eventList of allEvent; track eventList) {
             <tr>
-              <td class="text-center" (click)="navigateToRace()">{{ eventList.eventName }}</td>
+              <td class="text-center" (click)="navigateToRace()">{{ eventList.event_name }}</td>
               <td class="text-center">
-                {{ eventList.eventStart| dateRange:eventList.eventEnd :'en-GB' }}
+                {{ eventList.event_start| dateRange:eventList.event_end :'en-GB' }}
               </td>
               <!-- <td class="text-center" >2 - 6 Jun 2025</td> -->
-              <td class="text-center" >{{ eventList.circuitName }}</td>
+              <td class="text-center" >{{ eventList.circuit_name }}</td>
               <td class="text-center">
                 <div class="row d-flex justify-content-center">
                   <div class="col-2">
-                    <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.eventId)">
+                    <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
                   </div>
                   <div class="col-2">
-                    <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.eventId)">
+                    <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.event_id)">
                   </div>
                 </div>
               </td>

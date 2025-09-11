@@ -1,6 +1,6 @@
-<h2 mat-dialog-title>{{ NameTab }}</h2>
+<h2 mat-dialog-title>เพิ่ม {{ NameTab }}</h2>
 <mat-dialog-content>
-    <mat-tab-group animationDuration="0ms">
+    <mat-tab-group animationDuration="0ms" (selectedTabChange)="changeName($event)">
       <mat-tab label="เพิ่ม รายการ">
         <div class="card card-bg-transparen">
           <div class="card-body bg-transparen">
@@ -10,7 +10,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ รายการ</mat-label>
-                    <input matInput class="text-center" value="">
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonName">
                   </mat-form-field>
                 </form>
               </div>
@@ -21,7 +21,7 @@
             <div class="row">
               <div class="col-12 d-flex justify-content-end mt-2">
                   <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
-                  <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial>ยืนยัน</button>
+                  <button type="button" class="btn btn-success"   matButton cdkFocusInitial (click)="submitSeason()">ยืนยัน</button>
               </div>
             </div>
           </div>
@@ -56,7 +56,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ Event</mat-label>
-                    <input matInput class="text-center" [value]="eventName">
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="eventName">
                   </mat-form-field>
                 </form>
               </div>
@@ -103,7 +103,7 @@
             <div class="row">
               <div class="col-12 d-flex justify-content-end mt-2">
                   <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
-                  <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial>ยืนยัน</button>
+                  <button type="button" class="btn btn-success"   matButton cdkFocusInitial (click)="submitEvent()">ยืนยัน</button>
               </div>
             </div>
           </div>
@@ -151,7 +151,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ Race</mat-label>
-                    <input matInput class="text-center" [value]="raceName">
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="raceName">
                   </mat-form-field>
                 </form>
               </div>
@@ -268,44 +268,6 @@
                             </tr>
                           }
                         </tbody>
-                      <!-- <tbody>
-                        <tr>
-                          <td class="text-center" >
-                            Free Practice
-                          </td>
-                          <td class="text-center"  >
-                            <input type="datetime-local"
-                            id="meeting-time"
-                            name="meeting-time"
-                            [value]="dateSessionStart" />
-                          </td>
-                          <td class="text-center" >
-                            <input type="datetime-local"
-                            id="meeting-time"
-                            name="meeting-time"
-                            [value]="dateSessionEnd"
-                            [min]="dateSessionStart" />
-                          </td>
-                        </tr>
-                        <tr>
-                          <td class="text-center" >
-                            Free Practice
-                          </td>
-                          <td class="text-center"  >
-                            <input type="datetime-local"
-                            id="meeting-time"
-                            name="meeting-time"
-                            [value]="dateSessionStart" />
-                          </td>
-                          <td class="text-center" >
-                            <input type="datetime-local"
-                            id="meeting-time"
-                            name="meeting-time"
-                            [value]="dateSessionEnd"
-                            [min]="dateSessionStart" />
-                          </td>
-                        </tr>
-                      </tbody> -->
                     </table>
                   </div>
                 </div>
@@ -316,7 +278,7 @@
             <div class="row">
               <div class="col-12 d-flex justify-content-end mt-2">
                   <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
-                  <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial>ยืนยัน</button>
+                  <button type="button" class="btn btn-success"   matButton cdkFocusInitial (click)="submitRace()">ยืนยัน</button>
               </div>
             </div>
           </div>

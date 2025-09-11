@@ -18,6 +18,8 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { DateAdapter, MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
+import { ToastrService } from 'ngx-toastr';
+import { EventService } from '../../../service/event.service';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -27,6 +29,22 @@ interface SessionRow {
   start: Date | null; // 'YYYY-MM-DDTHH:mm'
   end: Date | null;   // 'YYYY-MM-DDTHH:mm'
 }
+
+export interface seasonalPayLoad {
+  id: number | null;
+  season_name: string;
+}
+
+export interface eventPayLoad {
+  eventId: number | null;
+  seasonId: number;
+  eventName: string;
+  circuitName: string;
+  eventStart: Date | null;
+  eventEnd: Date | null;
+}
+
+
 
 @Component({
   selector: 'app-add-event',
@@ -42,13 +60,13 @@ interface SessionRow {
 export class AddEventComponent implements OnInit {
   NameTab: string = "เพิ่ม รายการแข่ง";
 
+  seasonName: string = '';
   eventName: string = '';
   raceName: string = '';
   eventId: number = 0;
-  circuitName: string = '';
   seasonId: number = 0;
+  circuitName: string = '';
 
-  toppings = new FormControl('');
   dateSessionStart = new FormControl(new Date());
   dateSessionEnd = new FormControl(new Date());
   classValue = new FormControl(null);
@@ -165,9 +183,10 @@ export class AddEventComponent implements OnInit {
 
    // แถวที่ใช้แสดงใน <tbody>
   selectedSessions: SessionRow[] = [];
+  constructor(private eventService: EventService, private toastr: ToastrService) {}
 
   ngOnInit() {
-    this.NameTab = "เพิ่ม รายการแข่ง";
+    this.NameTab = "รายการแข่ง";
 
     this.selectedSessions = this.order.map(key => ({
       key,
@@ -178,6 +197,11 @@ export class AddEventComponent implements OnInit {
     this._locale.set('fr');
     this._adapter.setLocale(this._locale());
     // this.updateCloseButtonLabel('Fermer le calendrier');
+  }
+
+  changeName(event: any) {
+    const labels = ['รายการแข่ง', 'Event', 'Race'];
+    this.NameTab = labels[event.index];
   }
 
   readonly range = new FormGroup({
@@ -243,11 +267,104 @@ export class AddEventComponent implements OnInit {
     const value = (ev.target as HTMLInputElement | null)?.value ?? '';
     const dt = this.fromInput(value);
     if (!dt) return;
-    // ไม่ให้ end < start
     row.end = (row.start && dt < row.start) ? new Date(row.start) : dt;
   }
   submitSeason(){
+    const payload = {
+      id: null,
+      season_name: this.seasonName,
+    }
 
+    this.eventService.addNewSeason(payload).subscribe(
+        response => {
+          console.log('added Logger successfully:', response);
+          this.toastr.success(`เพิ่ม รายการแข่ง ${this.seasonName} เรียบร้อยแล้ว`);
+          this.dialogRef.close('success');
+
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+            this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม รายการแข่งขัน');
+        }
+      );
+  }
+
+  //   seasonName: string = '';
+  // eventName: string = '';
+  // raceName: string = '';
+  // eventId: number = 0;
+  // circuitName: string = '';
+  // seasonId: number = 0;
+  submitEvent(){
+
+    const payload = {
+      eventId: null,
+      seasonId: this.seasonId,
+      eventName: this.eventName,
+      circuitName: this.circuitName,
+      eventStart: this.range.controls.start.value,
+      eventEnd: this.range.controls.end.value,
+    }
+
+    this.eventService.addNewEvent(payload).subscribe(
+        response => {
+          console.log('added Event successfully:', response);
+          // this.rows = {};
+          // this.loadMatch();
+          // this.modalService.dismissAll();
+          this.toastr.success(`เพิ่ม Event ${this.seasonName} เรียบร้อยแล้ว`);
+          this.dialogRef.close('success');
+
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+            this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม รายการแข่งขัน');
+        }
+      );
+  }
+
+  submitRace(){
+    const payload: any[] =[]
+    for (let index = 0; index < this.selectedSessions.length; index++) {
+      const element = this.selectedSessions[index];
+      let prePayload = {
+        id_list: null,
+        season_id: this.seasonId,
+        event_id: this.eventId,
+        category_name: this.raceName,
+        class_value: this.classValue,
+        segment_value: this.segmentValue,
+        session_value: element.key,
+        session_start: element.start,
+        session_end: element.end,
+      }
+
+      payload.push(prePayload);
+    }
+
+
+    this.eventService.addNewRace(payload).subscribe(
+        response => {
+          console.log('added Event successfully:', response);
+          // this.rows = {};
+          // this.loadMatch();
+          // this.modalService.dismissAll();
+          this.toastr.success(`เพิ่ม Event ${this.seasonName} เรียบร้อยแล้ว`);
+          this.dialogRef.close('success');
+
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+            this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม รายการแข่งขัน');
+        }
+      );
+    // const payload = {
+    //   eventId: this.eventId,
+    //   seasonId: this.seasonId,
+    //   classValue: this.classValue,
+    //   sessionValue: this.classValue,
+    //   segmentValue: this.segmentValue
+    // }
   }
 
 

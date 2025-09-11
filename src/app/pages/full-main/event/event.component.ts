@@ -13,6 +13,9 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { ActivatedRoute, Router } from '@angular/router';
 import { eventModel } from '../../../model/season-model';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
+import { EventService } from '../../../service/event.service';
+import { ToastrService } from 'ngx-toastr';
+import { Subscription } from 'rxjs';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -32,29 +35,44 @@ interface SessionRow {
 export class EventComponent implements OnInit {
   readonly dialog = inject(MatDialog);
   allEvent: eventModel[] = [];
+  private subscriptions: Subscription[] = [];
 
-  constructor(private router: Router, private route: ActivatedRoute) {
-
+  constructor(private router: Router, private route: ActivatedRoute,
+      private eventService: EventService, private toastr: ToastrService) {
   }
   ngOnInit() {
-    // this.loadEvent();
-    this.allEvent = [
-      {
-        eventId: 1,
-        seasonId: 1,
-        eventName: 'TSS Bangsaen Grand Prix 2025',
-        circuitName: 'bsc',
-        eventStart: new Date('6/9/2024 15:10:00'),
-        eventEnd: new Date('6/10/2024 15:30:00'),
+    // this.allEvent = [
+    //   {
+    //     eventId: 1,
+    //     seasonId: 1,
+    //     eventName: 'TSS Bangsaen Grand Prix 2025',
+    //     circuitName: 'bsc',
+    //     eventStart: new Date('6/9/2024 15:10:00'),
+    //     eventEnd: new Date('6/10/2024 15:30:00'),
+    //   }
+    // ];
+    this.loadEvent();
+
+  }
+
+  loadEvent(){
+    this.allEvent = []
+    const eventData = this.eventService.getEvent().subscribe(
+      eventRes => {
+        this.allEvent = eventRes;
+      },
+      error => {
+        console.error('Error loading matchList:', error);
       }
-    ];
+    );
+    this.subscriptions.push(eventData);
   }
 
   navigateToRace(){
     this.router.navigate(['/pages', 'race']);
   }
   openEdit(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any): void {
-    let arrayData = this.allEvent.filter(x => x.eventId == eventId);
+    let arrayData = this.allEvent.filter(x => x.event_id == eventId);
 
     const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
       width: "100vw",
@@ -67,7 +85,7 @@ export class EventComponent implements OnInit {
     dialogRef.afterClosed().subscribe((updated: eventModel | undefined) => {
       if (!updated) return; // กดยกเลิก
       // อัปเดต allEvent แบบ immutable (เหมาะกับ OnPush)
-      const idx = this.allEvent.findIndex(e => e.eventId === updated.eventId);
+      const idx = this.allEvent.findIndex(e => e.event_id === updated.event_id);
       if (idx > -1) {
         this.allEvent = [
           ...this.allEvent.slice(0, idx),
@@ -89,7 +107,7 @@ export class EventComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(result => {
       console.log('The dialog was closed');
-      this.allEvent = this.allEvent.filter(e => e.eventId !== result);
+      this.allEvent = this.allEvent.filter(e => e.event_id !== result);
     });
   }
 }

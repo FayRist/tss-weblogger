@@ -54,7 +54,7 @@ export class RaceComponent implements OnInit {
   }
 
   openEdit(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number): void {
-    let arrayData = this.allRace.filter(x => x.IDList == raceId);
+    let arrayData = this.allRace.filter(x => x.id_list == raceId);
 
     const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
       width: "100vw",
@@ -66,7 +66,7 @@ export class RaceComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe((updated: RaceModel | undefined) => {
       if (!updated) return; // กดยกเลิก
-      const idx = this.allRace.findIndex(e => e.IDList === updated.IDList);
+      const idx = this.allRace.findIndex(e => e.id_list === updated.id_list);
       if (idx > -1) {
         this.allRace = [
           ...this.allRace.slice(0, idx),
@@ -88,7 +88,7 @@ export class RaceComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(result => {
       // console.log('The dialog was closed');
-      this.allRace = this.allRace.filter(e => e.IDList !== result);
+      this.allRace = this.allRace.filter(e => e.id_list !== result);
     });
   }
 }

@@ -15,12 +15,12 @@ export const appConfig: ApplicationConfig = {
 export const APP_CONFIG = {
   // API Configuration
   API: {
-    HOST: 'http://localhost:7001',
-    BASE_URL: 'http://localhost:7001/api',
-    HOST_SERVER: 'http://localhost:7001',
+    HOST: 'http://localhost:7005',
+    BASE_URL: 'http://localhost:7005/api',
+    HOST_SERVER: 'http://localhost:7005',
     BASE_URL_SERVER: 'http://43.228.85.167:7001/api',
 
-    URL_SOCKET_LOCAL: 'ws://localhost:7001/ws',
+    URL_SOCKET_LOCAL: 'ws://localhost:7005/ws',
     URL_SOCKET_SERVER: 'ws://43.228.85.167:7001',
 
     ENDPOINTS: {
@@ -32,16 +32,16 @@ export const APP_CONFIG = {
       END_EVENT: '/event/endEvent',
 
       // Season
-      GET_SEASON: '/event/getSeason',
-      ADD_SEASON: '/event/addSeason',
-      UPDATE_SEASON: '/event/updateSeason',
-      DELETE_SEASON: '/event/deleteSeason',
+      GET_SEASON: '/seasonal/getSeason',
+      ADD_SEASON: '/seasonal/addSeason',
+      UPDATE_SEASON: '/seasonal/updateSeason',
+      DELETE_SEASON: '/seasonal/deleteSeason',
 
       // Race
-      GET_RACE: '/event/getRace',
-      ADD_RACE: '/event/addRace',
-      UPDATE_RACE: '/event/updateRace',
-      DELETE_RACE: '/event/deleteRace',
+      GET_RACE: '/race/getRace',
+      ADD_RACE: '/race/addRace',
+      UPDATE_RACE: '/race/updateRace',
+      DELETE_RACE: '/racerace/deleteRace',
 
       // Loggers/Racers
       GET_LOGGERS: '/logger/get-logger',
