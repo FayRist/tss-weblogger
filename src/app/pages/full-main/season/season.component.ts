@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EventService, Match } from '../../../service/event.service';
+import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -11,7 +11,6 @@ import { Subscription } from 'rxjs';
 })
 export class SeasonComponent implements OnInit {
   allSeason: any[] = [];
-  matchList: Match[] = [];
   private subscriptions: Subscription[] = [];
 
   constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService) {
@@ -24,7 +23,7 @@ export class SeasonComponent implements OnInit {
         seasonName: 'TSS The Super Series by B-Quik 2025',
       }
     ]
-    // this.loadMatch();
+    this.loadSeason();
   }
 
   navigateToEvent(){
@@ -32,10 +31,10 @@ export class SeasonComponent implements OnInit {
   }
 
 
-  private loadMatch(): void {
-    const MatchSub = this.eventService.getMatch().subscribe(
-      matchList => {
-        this.matchList = matchList;
+  private loadSeason(): void {
+    const MatchSub = this.eventService.getSeason().subscribe(
+      season => {
+        this.allSeason = season;
       },
       error => {
         console.error('Error loading matchList:', error);

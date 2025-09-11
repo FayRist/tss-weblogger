@@ -1,15 +1,18 @@
-export interface Race {
-  raceMatchId: number;
-  eventId: number;
-  seasonId: number;
-  raceName: string;
-  raceSegment: string;  // เช่น 'Pickup'
-  raceSession: string;  // เช่น 'Race 5'
-  raceClass: string;    // เช่น 'Class C'
-  raceStart: Date;
-  raceEnd: Date;
+export interface SeasonalModel {
+  id: number;
+  seasonName: string;
+  creatDate: Date;
 }
 
+export interface RaceModel {
+  IDList: number;
+  EventID: number;
+  CategoryName: string;
+  ClassName: string;
+  SessionName: string;
+  StartDate: Date;
+  EndDate: Date;
+}
 export interface eventModel {
   eventId: number;
   seasonId: number;

@@ -24,12 +24,24 @@ export const APP_CONFIG = {
     URL_SOCKET_SERVER: 'ws://43.228.85.167:7001',
 
     ENDPOINTS: {
-      // Matches
-      GET_MATCHES: '/matches/getMatch',
-      ADD_MATCH: '/matches/addMatch',
-      UPDATE_MATCH: '/matches/updateMatch',
-      DELETE_MATCH: '/matches/deleteMatch',
-      END_MATCH: '/matches/endMatch',
+      // Event
+      GET_EVENT: '/event/getEvent',
+      ADD_EVENT: '/event/addEvent',
+      UPDATE_EVENT: '/event/updateEvent',
+      DELETE_EVENT: '/event/deleteEvent',
+      END_EVENT: '/event/endEvent',
+
+      // Season
+      GET_SEASON: '/event/getSeason',
+      ADD_SEASON: '/event/addSeason',
+      UPDATE_SEASON: '/event/updateSeason',
+      DELETE_SEASON: '/event/deleteSeason',
+
+      // Race
+      GET_RACE: '/event/getRace',
+      ADD_RACE: '/event/addRace',
+      UPDATE_RACE: '/event/updateRace',
+      DELETE_RACE: '/event/deleteRace',
 
       // Loggers/Racers
       GET_LOGGERS: '/logger/get-logger',

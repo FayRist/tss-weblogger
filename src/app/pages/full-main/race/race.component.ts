@@ -13,7 +13,9 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MaterialModule } from '../../../material.module';
-import { Race } from '../../../model/season-model';
+import { EventService } from '../../../service/event.service';
+import { Subscription } from 'rxjs';
+import { RaceModel } from '../../../model/season-model';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule, DatePipe],
@@ -22,25 +24,29 @@ import { Race } from '../../../model/season-model';
 })
 export class RaceComponent implements OnInit {
   readonly dialog = inject(MatDialog);
-  allRace: Race[] = [];
-  constructor(private router: Router, private route: ActivatedRoute) {
+  allRace: RaceModel[] = [];
+  private subscriptions: Subscription[] = [];
+
+  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService) {
 
   }
   ngOnInit() {
-    this.allRace = [
-      {
-        raceMatchId: 1,
-        eventId: 1,
-        seasonId: 1,
-        raceName: 'Thailand Super Pickup D2',
-        raceSegment: 'pickup',
-        raceSession: 'race5',
-        raceClass: 'c',
-        raceStart: new Date('6/9/2024 15:10:00'),
-        raceEnd: new Date('6/9/2024 15:30:00'),
+    this.allRace = [ ];
+    this.loadRace();
+  }
+
+  private loadRace(): void {
+    const RaceSub = this.eventService.getRace().subscribe(
+      race => {
+        this.allRace = race;
+      },
+      error => {
+        console.error('Error loading matchList:', error);
+        // Fallback to mock data if API fails
+        // this.matchList = this.eventService.getMatchSync();
       }
-    ];
-    // this.loadEvent();
+    );
+    this.subscriptions.push(RaceSub);
   }
 
   navigateToDashboard(raceId:number){
@@ -48,7 +54,7 @@ export class RaceComponent implements OnInit {
   }
 
   openEdit(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number): void {
-    let arrayData = this.allRace.filter(x => x.raceMatchId == raceId);
+    let arrayData = this.allRace.filter(x => x.IDList == raceId);
 
     const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
       width: "100vw",
@@ -58,9 +64,9 @@ export class RaceComponent implements OnInit {
       data: {race_data: arrayData}
     });
 
-    dialogRef.afterClosed().subscribe((updated: Race | undefined) => {
+    dialogRef.afterClosed().subscribe((updated: RaceModel | undefined) => {
       if (!updated) return; // กดยกเลิก
-      const idx = this.allRace.findIndex(e => e.raceMatchId === updated.raceMatchId);
+      const idx = this.allRace.findIndex(e => e.IDList === updated.IDList);
       if (idx > -1) {
         this.allRace = [
           ...this.allRace.slice(0, idx),
@@ -82,7 +88,7 @@ export class RaceComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(result => {
       // console.log('The dialog was closed');
-      this.allRace = this.allRace.filter(e => e.raceMatchId !== result);
+      this.allRace = this.allRace.filter(e => e.IDList !== result);
     });
   }
 }
@@ -179,7 +185,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalEdit>);
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
-  readonly data:any = inject<Race>(MAT_DIALOG_DATA);
+  readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
 
   readonly range = new FormGroup({
       start: new FormControl<Date>(this.data.race_data[0].raceStart),
@@ -243,7 +249,7 @@ export class DialogAnimationsRaceModalDelete {
   raceMatchId: number = 0;
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsRaceModalDelete>);
-    readonly data:any = inject<Race>(MAT_DIALOG_DATA);
+    readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
   ngOnInit() {
     console.log(this.data.race_id);
     this.raceMatchId = this.data.race_id;

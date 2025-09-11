@@ -23,18 +23,19 @@
         <tbody>
         @for (raceData of allRace; track raceData) {
           <tr>
-            <td class="text-center" (click)="navigateToDashboard(raceData.raceMatchId)">{{raceData.raceName}}</td>
-            <td class="text-center" >{{ raceData.raceSegment }}</td>
-            <td class="text-center" >{{ raceData.raceClass }}</td>
-            <td class="text-center" >{{ raceData.raceSession }}</td>
-            <td class="text-center">{{ raceData.raceStart | date:'dd/MM/yyyy HH:mm' }}
+            <td class="text-center" (click)="navigateToDashboard(raceData.IDList)">{{raceData.CategoryName}}</td>
+            <td class="text-center" >-</td>
+            <!-- <td class="text-center" >{{ raceData.raceSegment }}</td> -->
+            <td class="text-center" >{{ raceData.ClassName }}</td>
+            <td class="text-center" >{{ raceData.SessionName }}</td>
+            <td class="text-center">{{ raceData.StartDate | date:'dd/MM/yyyy HH:mm' }}
             <td class="text-center">
               <div class="row d-flex justify-content-center">
                 <div class="col-2">
-                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.raceMatchId)">
+                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.IDList)">
                 </div>
                 <div class="col-2">
-                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms', raceData.raceMatchId)">
+                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms', raceData.IDList)">
                 </div>
               </div>
             </td>

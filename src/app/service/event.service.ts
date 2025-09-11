@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, map, Observable } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
-import { LoggerModel } from '../model/season-model';
+import { LoggerModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 
 
@@ -22,65 +22,78 @@ export interface ApiLoggerData {
 }
 
 
-export interface Match {
-  id: number;
-  name: string;
-  tier: string;
-  raceCount: string;
-  event: string;
-  statusName: string;
-  startDate: Date;
-  endDate: Date;
-  trackImage?: string; // รูปภาพ track (optional)
-}
-
-export interface ApiMatchResponse {
+export interface ApiSeasonResponse {
   count: number;
-  data: ApiMatchData[];
+  data: ApiSeasonData[];
   success: boolean;
 }
 
-export interface ApiMatchData {
-  id: number;
-  name: string;
-  tier: string;
-  event: string;
-  race_count: number;
-  start_date: string;
-  end_date: string;
-  created_by: number;
+export interface ApiSeasonData {
+  season_id: number;
+  season_name: string;
+  created_at: Date;
 }
 
+export interface ApiRaceResponse {
+  count: number;
+  data: ApiRaceData[];
+  success: boolean;
+}
+
+export interface ApiRaceData {
+  id_list: number;
+  event_id: number;
+  category_name: string;
+  class_name: string;
+  session_name: string;
+  start_date: Date;
+  end_date: Date;
+}
 
 @Injectable({
   providedIn: 'root'
 })
 export class EventService {
-  private matchList: Match[] = [];
   private loggerList: LoggerModel[] = [];
+  private eventList: SeasonalModel[] = [];
+  private raceList: RaceModel[] = [];
   constructor(private http: HttpClient) {  }
 
-    getMatch(): Observable<Match[]> {
-      const matchesUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_MATCHES);
-      return this.http.get<ApiMatchResponse>(matchesUrl).pipe(
+
+    getRace(): Observable<RaceModel[]> {
+    const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_RACE);
+      return this.http.get<ApiRaceResponse>(seasonURL).pipe(
         map(response => {
           // Map API data to Match interface
-          this.matchList = response.data.map((apiData) => ({
-            id: apiData.id,
-            name: apiData.name,
-            statusName: "",
-            tier: apiData.tier,
-            raceCount: apiData.race_count.toString(),
-            event: apiData.event,
-            startDate: new Date(apiData.start_date),
-            endDate: new Date(apiData.end_date),
-            trackImage: "assets/map-race/map-pangsan.png"
+          this.raceList = response.data.map((apiData) => ({
+              IDList: apiData.id_list,
+              EventID: apiData.event_id,
+              CategoryName: apiData.category_name,
+              ClassName: apiData.class_name,
+              SessionName: apiData.session_name,
+              StartDate: apiData.start_date,
+              EndDate: apiData.end_date,
           }));
-          return this.matchList;
+          return this.raceList;
         })
       );
-    }
-
+  }
+// --------- Season -------------------------------
+  getSeason(): Observable<SeasonalModel[]> {
+    const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_SEASON);
+      return this.http.get<ApiSeasonResponse>(seasonURL).pipe(
+        map(response => {
+          // Map API data to Match interface
+          this.eventList = response.data.map((apiData) => ({
+            id: apiData.season_id,
+            seasonName: apiData.season_name,
+            creatDate: new Date(),
+          }));
+          return this.eventList;
+        })
+      );
+  }
+// --------- Logger -------------------------------
     getLogger(): Observable<LoggerModel[]> {
       const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS);
       return this.http.get<ApiLoggerResponse>(loggersUrl).pipe(
