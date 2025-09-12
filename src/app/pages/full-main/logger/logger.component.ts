@@ -16,6 +16,7 @@ import {
   NgxApexchartsModule,
   ChartComponent
 } from 'ngx-apexcharts';
+import * as L from 'leaflet';
 
 type ChartKey   = 'avgAfr' | 'realtimeAfr' | 'warningAfr' | 'speed'; // ใช้กับกราฟจริง
 type SelectKey  = ChartKey | 'all';
@@ -47,6 +48,39 @@ const SERIES_COLORS: Record<ChartKey, string> = {
 };
 //-----Chart--------------###############################################
 
+
+//-----MapRace--------------###############################################
+
+type RawRow = {
+  gps_time: string;  // ISO
+  lat: number;       // latitude in degrees
+  long: number;      // longitude in degrees
+  velocity?: number;
+  heading?: number;
+  // เพิ่มฟิลด์ได้ตามจริง เช่น afr: number
+};
+
+type MapPoint = {
+  ts: number;
+  lat: number;
+  lon: number;
+  afr?: number;
+  warning?: boolean; // ถ้าคำนวณไว้แล้วก็ใส่มาได้
+};
+
+const AFR_LIMIT = 13.5; // เกณฑ์เตือนตัวอย่าง (ปรับได้)
+const COLORS = {
+  track: '#22D3EE',      // เส้นทางปกติ (เขียวฟ้า)
+  warn:  '#F59E0B',      // จุดเตือน (เหลือง)
+  live:  '#00FFA3'       // ตำแหน่งล่าสุด
+};
+
+//-----MapRace--------------###############################################
+
+
+
+
+
 @Component({
   selector: 'app-logger',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
@@ -59,6 +93,7 @@ const SERIES_COLORS: Record<ChartKey, string> = {
   ]
 })
 export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
+  //--- Chart ------
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
   @ViewChild('select') select!: MatSelect;
   @ViewChild('chart') chart!: ChartComponent;
@@ -76,20 +111,11 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
 
   currentPageData: any[] = [];
   chartFilter = new FormControl<SelectKey[]>(['avgAfr', 'realtimeAfr'], { nonNullable: true });
-// 3) type guard ช่วยกรอง 'all'
-private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
+  private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
   showRoutePath: boolean = true;
-
-
-  svgPoints = '';
-  startPoint = { x: 0, y: 0, lat: 0, long: 0 };
-  // endPoint = { x: 0, y: 0, lat: 0, long: 0 };
-  hasRouteData = false;
-  trackImage: string | null = null;
-  pageSize = 10; // จำนวนแถวต่อหน้า
-  currentPage = 1; // หน้าปัจจุบัน
-  showPageDataOnly = true; // แสดงเฉพาะข้อมูลของหน้าที่เลือก
   private subscriptions: Subscription[] = [];
+
+
   allLogger: CarLogger[] = [];
 
   private fieldMap: Record<ChartKey, keyof LoggerPoint> = {
@@ -98,11 +124,21 @@ private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
     warningAfr: 'warningAfr',
     speed: 'speed'
   };
+  //--- Chart ------
 
 
+  //--- Race ------
+  @ViewChild('raceMap') raceMapRef!: ElementRef<HTMLDivElement>;
+
+  private map!: L.Map;
+  private baseLayers!: Record<string, L.TileLayer>;
+  private trackLine?: L.Polyline;
+  private warnLayer = L.layerGroup();
+  private liveMarker?: L.Marker;
+  //--- Race ------
 
   // ////////////////////////
-// ===== กราฟหลัก (Detail) =====
+  // ===== กราฟหลัก (Detail) =====
   detailOpts: {
     series: ApexAxisChartSeries;
     chart:  ApexChart;
@@ -297,18 +333,163 @@ private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
     return out;
   }
 
+  private ro?: ResizeObserver;
   ngAfterViewInit(): void {
+    this.initMap();
 
+    // 2.1 ถ้า parent เปลี่ยนขนาด ให้ redraw อัตโนมัติ
+    this.ro = new ResizeObserver(() => this.map?.invalidateSize());
+    this.ro.observe(this.raceMapRef.nativeElement);
+
+    // 2.2 กันเคส init ตอน layout ยังจัดไม่เสร็จ
+    setTimeout(() => this.map?.invalidateSize(true), 0);
+    // DEMO: แปลงข้อมูลตัวอย่าง → วางลงแผนที่
+    // TODO: เปลี่ยนเป็นข้อมูลจริงจาก service
+    const sample: RawRow[] = []; // ใส่ข้อมูลจริงของคุณที่มี lat/long ปกติ
+    const points = this.transformRows(sample);
+    this.setMapPoints(points);
   }
 
   ngOnDestroy(): void {
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
     // this.wsSubscriptions.forEach(sub => sub.unsubscribe());
-
+    this.ro?.disconnect();
+    this.map?.remove();
     // // ปิด WebSocket connection
     // this.webSocketService.disconnect();
   }
+
+  //////////// RACE /////////////////////////////////
+  initMap(): void {
+    // พื้นภาพดาวเทียม (MapTiler Satellite) – ใส่คีย์ของคุณเอง
+    const MAPTILER_KEY = 'YOUR_MAPTILER_KEY';
+    const satellite = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 20,
+      attribution: '© CARTO © OpenStreetMap'
+    })
+
+    // แผนที่โทนมืด (สำรอง)
+    const dark = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      { maxZoom: 20, attribution: '© CARTO © OpenStreetMap' }
+    );
+
+    this.baseLayers = { Satellite: satellite, Dark: dark };
+
+    this.map = L.map(this.raceMapRef.nativeElement, {
+      center: [14.96, 103.09], // ตำแหน่งเริ่มต้น (สุ่มแถวบุรีรัมย์)
+      zoom: 15,
+      layers: [satellite],
+      zoomControl: true
+    });
+
+    L.control.layers(this.baseLayers, { Warnings: this.warnLayer }).addTo(this.map);
+    this.warnLayer.addTo(this.map);
+
+    // ปรับไอคอน marker default (Leaflet 1.x ไม่รู้ path ถ้าใช้ bundler)
+    const iconRetinaUrl = 'assets/leaflet/marker-icon-2x.png';
+    const iconUrl = 'assets/leaflet/marker-icon.png';
+    const shadowUrl = 'assets/leaflet/marker-shadow.png';
+    (L.Marker.prototype as any).options.icon = L.icon({
+      iconRetinaUrl, iconUrl, shadowUrl,
+      iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], tooltipAnchor: [16, -28], shadowSize: [41, 41]
+    });
+  }
+
+  transformRows(rows: RawRow[]): MapPoint[] {
+    const pts: MapPoint[] = [];
+    for (const r of rows) {
+      const lat = Number(r.lat);
+      const lon = Number(r.long);
+      // ข้ามค่าที่นอกช่วงพิกัดปกติ
+      if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
+
+      const ts = Date.parse(r.gps_time);
+      // สมมติว่ามี r['afr'] หรือเอามาจากที่อื่น
+      const afr = (r as any).afr as number | undefined;
+      const warning = typeof afr === 'number' ? afr > AFR_LIMIT : false;
+
+      pts.push({ ts, lat, lon, afr, warning });
+    }
+    return pts.sort((a, b) => a.ts - b.ts);
+  }
+
+  setMapPoints(points: MapPoint[]): void {
+    if (!points.length) return;
+
+    // 3.1 เส้นทาง (polyline)
+    const latlngs = points.map(p => L.latLng(p.lat, p.lon));
+
+    if (!this.trackLine) {
+      this.trackLine = L.polyline(latlngs, {
+        color: COLORS.track,
+        weight: 3,
+        opacity: 0.9
+      }).addTo(this.map);
+    } else {
+      this.trackLine.setLatLngs(latlngs);
+    }
+
+    // 3.2 จุดเตือน (วงกลมสีเหลือง)
+    this.warnLayer.clearLayers();
+    points.forEach(p => {
+      if (p.warning) {
+        L.circleMarker([p.lat, p.lon], {
+          radius: 5,
+          color: COLORS.warn,
+          weight: 2,
+          fillColor: COLORS.warn,
+          fillOpacity: 0.9
+        })
+          .bindPopup(this.popupHtml(p))
+          .addTo(this.warnLayer);
+      }
+    });
+
+    // 3.3 จุดตำแหน่งล่าสุด (ไอคอนพัลส์)
+    const last = points[points.length - 1];
+    const liveIcon = L.divIcon({
+      className: 'live-pin',
+      html: `<span class="dot"></span>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
+    });
+
+    if (!this.liveMarker) {
+      this.liveMarker = L.marker([last.lat, last.lon], { icon: liveIcon })
+        .bindTooltip('Current', { permanent: false })
+        .addTo(this.map);
+    } else {
+      this.liveMarker.setLatLng([last.lat, last.lon]);
+    }
+
+    // ปรับมุมมองให้พอดี
+    const bounds = L.latLngBounds(latlngs);
+    this.map.fitBounds(bounds.pad(0.15));
+  }
+
+  addLivePoint(p: MapPoint): void {
+    if (!this.trackLine) return this.setMapPoints([p]); // เผื่อยังไม่ init
+    this.trackLine.addLatLng([p.lat, p.lon]);
+    this.liveMarker?.setLatLng([p.lat, p.lon]);
+    if (p.warning) {
+      L.circleMarker([p.lat, p.lon], {
+        radius: 5, color: COLORS.warn, weight: 2, fillColor: COLORS.warn, fillOpacity: 0.9
+      }).addTo(this.warnLayer);
+    }
+  }
+
+  private popupHtml(p: MapPoint): string {
+    const t = new Date(p.ts).toLocaleString();
+    const afr = p.afr != null ? p.afr.toFixed(2) : '—';
+    return `<div>
+      <div><b>Time:</b> ${t}</div>
+      <div><b>Lat/Lon:</b> ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</div>
+      <div><b>AFR:</b> ${afr}</div>
+    </div>`;
+  }
+  //////////// RACE /////////////////////////////////
 
   navigateToDashboard(){
     this.router.navigate(['/pages', 'dashboard']);

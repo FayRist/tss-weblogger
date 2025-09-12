@@ -81,3 +81,42 @@ button[mat-raised-button] {
 
 /* ป้าย/ข้อความย่อย */
 .text-muted { color: #B8C0C9 !important; }
+
+
+// ----------------------------------
+.map-card {
+  background: #101414;
+  border: 1px solid #2B3035;
+  border-radius: 12px;
+  overflow: hidden;
+  color: #fff;
+}
+.map-header {
+  background: #212529;
+  color: #fff;
+  padding: 12px 16px;
+  font-weight: 700;
+}
+.race-map {
+  height: 520px;         /* ปรับสูง-ต่ำได้ */
+  width: 100%;
+  background: #0e1113;   /* เผื่อโหลด tile ช้า */
+}
+
+/* ให้ control ของ Leaflet กลืนธีม */
+:host ::ng-deep .leaflet-control-layers,
+:host ::ng-deep .leaflet-bar {
+  background: #212529 !important;
+  color: #fff;
+  border: 1px solid #2B3035 !important;
+  box-shadow: none !important;
+}
+:host ::ng-deep .leaflet-control-layers-expanded {
+  color: #fff;
+}
+:host ::ng-deep .leaflet-popup-content-wrapper,
+:host ::ng-deep .leaflet-popup-tip {
+  background: #212529;
+  color: #fff;
+  border: 1px solid #2B3035;
+}

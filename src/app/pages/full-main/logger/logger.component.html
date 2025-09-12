@@ -94,50 +94,7 @@
               <input class="form-check-input" type="checkbox" id="toggleRoutePath" [(ngModel)]="showRoutePath">
               <label class="form-check-label" for="toggleRoutePath">แสดงเส้นทางการวิ่ง</label>
             </div>
-            <div class="track-image-container text-center">
-              <svg style="max-width: 800px; max-height: 600px;" viewBox="0 0 800 600">
-                <!-- BG Image -->
-
-                  <!-- <image href="images/map-race/outline-map-baangsan.png" style="max-width: 800px; max-height: 600px;"/> -->
-                @if (this.trackImage) {
-                  <image href="images/map-race/outline-map-baangsan.png" style="max-width: 800px; max-height: 600px;"/>
-                }
-                @else if (!this.trackImage) {
-                  <rect style="max-width: 800px; max-height: 600px;" fill="#ffffff" />
-                }
-                <!-- Route Path -->
-                @if (this.showRoutePath) {
-                  <polyline
-                    [attr.points]="svgPoints"
-                    fill="none"
-                    stroke="#007bff"
-                    stroke-width="2"
-                    opacity="0.9"
-                  />
-                }
-                <!-- Start Point -->
-                @if(this.hasRouteData){
-                  <circle [attr.cx]="startPoint.x" [attr.cy]="startPoint.y" r="10" fill="#28a745" stroke="#fff" stroke-width="3" />
-                  <text [attr.x]="startPoint.x + 15" [attr.y]="startPoint.y" font-size="20" fill="#28a745" font-weight="bold">Start</text>
-                }<!-- End Point -->
-                <!-- <circle *ngIf="hasRouteData" [attr.cx]="endPoint.x" [attr.cy]="endPoint.y" r="10" fill="#dc3545" stroke="#fff" stroke-width="3" />
-                <text *ngIf="hasRouteData" [attr.x]="endPoint.x + 15" [attr.y]="endPoint.y" font-size="20" fill="#dc3545" font-weight="bold">End</text> -->
-              </svg>
-            </div>
-            <div class="mt-3 d-flex align-items-center gap-4 flex-wrap">
-              <!-- <div class="d-flex align-items-center gap-2">
-                <span style="display:inline-block;width:24px;height:8px;background:#007bff;border-radius:4px;"></span>
-                <span>เส้นทางการวิ่ง</span>
-              </div>
-              <div class="d-flex align-items-center gap-2">
-                <span style="display:inline-block;width:18px;height:18px;background:#28a745;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #28a745;"></span>
-                <span>จุดเริ่มต้น (Start)</span>
-              </div>
-              <div class="d-flex align-items-center gap-2">
-                <span style="display:inline-block;width:18px;height:18px;background:#dc3545;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #dc3545;"></span>
-                <span>จุดสิ้นสุด (End)</span>
-              </div> -->
-            </div>
+            <div #raceMap id="raceMap" class="race-map" aria-label="race map"></div>
           </div>
         </div>
       </div>
