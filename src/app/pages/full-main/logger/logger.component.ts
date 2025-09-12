@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {MatInputModule} from '@angular/material/input';
 import {MatFormFieldModule} from '@angular/material/form-field';
@@ -9,11 +9,35 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
-import { Subscription } from 'rxjs';
-import { ApexOptions, ChartComponent, NgxApexchartsModule } from 'ngx-apexcharts';
+import { delay, of, startWith, Subscription } from 'rxjs';
+import {
+  ApexAxisChartSeries, ApexChart, ApexXAxis, ApexStroke,
+  ApexTooltip, ApexDataLabels, ChartComponent,
+  NgxApexchartsModule,
+  ApexOptions
+} from 'ngx-apexcharts'; // (ถ้าใช้แพ็กเกจ ng-apexcharts ให้เปลี่ยนเป็น 'ng-apexcharts')
 
-type ChartFilter = 'all' | 'warningAfr' | 'avgAfr';
-interface Opt { value: ChartFilter; label: string; }
+type AreaSmoothConfig = {
+  series: ApexAxisChartSeries;
+  chart: ApexChart;
+  xaxis: ApexXAxis;
+  stroke: ApexStroke;
+  tooltip: ApexTooltip;
+  dataLabels: ApexDataLabels;
+};
+
+interface LoggerPoint {
+  time: string;        // ใช้เป็นแกน X (แสดง HH:mm:ss)
+  lap: number;         // ถ้าจะใช้ lap เป็น X ก็ทำได้
+  avgAfr: number;
+  realtimeAfr: number;
+  warningAfr: number;  // เช่นค่าขีดเตือน (อาจอยู่ช่วง 12.5-13.5)
+  speed: number;       // km/h
+}
+
+type ChartKey = 'avgAfr' | 'realtimeAfr' | 'warningAfr' | 'speed' | 'all';
+interface Opt { value: ChartKey; label: string; }
+
 @Component({
   selector: 'app-logger',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
@@ -30,15 +54,44 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   @ViewChild('select') select!: MatSelect;
   @ViewChild('chart') chart!: ChartComponent;
 
-
   options: Opt[] = [
-    { value: 'all',        label: 'ทั้งหมด' },
-    { value: 'warningAfr', label: 'warning AFR' },
-    { value: 'avgAfr',     label: 'Average AFR' },
+    { value: 'avgAfr',      label: 'Average AFR' },
+    { value: 'realtimeAfr', label: 'Realtime AFR' },
+    { value: 'warningAfr',  label: 'Warning AFR' },
+    { value: 'speed',       label: 'Speed' },
   ];
-  chartFilter = new FormControl<ChartFilter[]>(['all'], { nonNullable: true });
 
+  selectedKeys: ChartKey[] = ['all', 'avgAfr', 'realtimeAfr'];
+  currentPageData: any[] = [];
+
+  areaSmoothChart: {
+    series: ApexAxisChartSeries;
+    chart: ApexChart;
+    xaxis: ApexXAxis;
+    stroke: ApexStroke;
+    tooltip: ApexTooltip;
+    dataLabels: ApexDataLabels;
+  } = {
+    series: [],
+    chart:   { type: 'line', height: 300, animations: { enabled: true } },
+    xaxis:   { categories: [] },
+    stroke:  { curve: 'smooth', width: 2 },
+    tooltip: { enabled: true },
+    dataLabels: { enabled: false }
+  };
+
+  chartFilter = new FormControl<ChartKey[]>(['avgAfr','realtimeAfr'], { nonNullable: true });
+
+  // chartFilter = new FormControl<ChartFilter[]>(['all'], { nonNullable: true });
   showRoutePath: boolean = true;
+ // แผนที่ field ใน data -> ชื่อ key ของเรา
+  private fieldMap: Record<Exclude<ChartKey, 'all'>, string> = {
+    avgAfr: 'avgAfr',            // ถ้าของจริงเป็นชื่ออื่น เช่น 'AverageAFR' แก้ตรงนี้พอ
+    realtimeAfr: 'realtimeAfr',  // เช่น 'RealtimeAFR'
+    warningAfr: 'warningAfr',    // เช่น 'WarningAFR'
+    speed: 'speed',              // เช่น 'Speed'
+  };
+
 
   svgPoints = '';
   startPoint = { x: 0, y: 0, lat: 0, long: 0 };
@@ -46,16 +99,13 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   hasRouteData = false;
   trackImage: string | null = null;
   pageSize = 10; // จำนวนแถวต่อหน้า
-  currentPageData: CarLogger[] = []; // ข้อมูลของหน้าที่กำลังดู
   currentPage = 1; // หน้าปัจจุบัน
   showPageDataOnly = true; // แสดงเฉพาะข้อมูลของหน้าที่เลือก
   private subscriptions: Subscription[] = [];
-  areaSmoothChart: Partial<ApexOptions>;
   areaSmoothChartMaps: Partial<ApexOptions>;
   allLogger: CarLogger[] = [];
 
-  constructor(private router: Router, private route: ActivatedRoute,
-  ) {
+  constructor(private router: Router, private route: ActivatedRoute, private cdr: ChangeDetectorRef ) {
     this.areaSmoothChart = {
       series: [
         {
@@ -107,11 +157,51 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
         width: 3
       }
     };
+
+    this.loadMockData();
+  }
+
+  loadMockData(): void {
+    of(this.buildMockPoints()).pipe(delay(300)).subscribe(data => {
+      this.setCurrentPageData(data);
+    });
+  }
+
+  setSeries(data: number[]) {
+    this.areaSmoothChart.series = [{ name: 'AFR', data }];
   }
 
   ngOnInit() {
-    // this.loadEvent();
+    this.chartFilter.valueChanges.pipe(startWith(this.chartFilter.value))
+      .subscribe(values => {
+        let v = (values ?? []) as ChartKey[];
+        if (v.includes('all')) {
+          v = this.options.map(o => o.value) as ChartKey[];
+          v = v.filter(k => k !== 'all');
+          this.chartFilter.setValue(v, { emitEvent: false }); // sync ค่าใน dropdown
+        }
+        this.selectedKeys = v;
+        this.applySeries();
+      });
+
+    // โหลด/อัปเดตข้อมูลครั้งแรก
+    this.applySeries();
   }
+
+  setCurrentPageData(data: any[]): void {
+    this.currentPageData = Array.isArray(data) ? data : [];
+    // สร้างแกน X (เลือกอย่างใดอย่างหนึ่งที่มี เช่น time, lap, index)
+    const cats = this.currentPageData.map((d, i) =>
+      d?.time ?? d?.lap ?? `${i + 1}`
+    );
+    this.areaSmoothChart = {
+      ...this.areaSmoothChart,
+      xaxis: { ...this.areaSmoothChart.xaxis, categories: cats }
+    };
+    this.applySeries();
+  }
+
+
 
   showWarningAfr = true;
   showAverageAfr = true;
@@ -366,32 +456,75 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
     return `เลือกแล้ว ${v.length}`;
   }
 
-  onMultiSelectChange(ev: MatSelectChange) {
-  const values = (ev.value as ChartFilter[]) ?? [];
-  const hadAll   = this.chartFilter.value.includes('all');
-  const hasAllNow = values.includes('all');
-
-  // ไม่ให้ 'ทั้งหมด' อยู่ร่วมกับตัวเลือกอื่น
-  if (hasAllNow && values.length > 1) {
-    if (hadAll) {
-      this.chartFilter.setValue(values.filter(v => v !== 'all'), { emitEvent: false });
+  onMultiSelectChange(e: MatSelectChange): void {
+    const values = (e.value ?? []) as ChartKey[];
+    // กันกรณีมี 'all' ปนกับค่าอื่น -> ถ้าเลือก all ให้เป็นทุกเส้น, ถ้า unselect all ให้คงของเดิม
+    if (values.includes('all')) {
+      const allKeys = this.options.map(o => o.value);
+      this.selectedKeys = allKeys as ChartKey[];
+      // ลบ 'all' ออกถ้าไม่อยากให้ถือเป็น series
+      this.selectedKeys = this.selectedKeys.filter(k => k !== 'all');
     } else {
-      this.chartFilter.setValue(['all'], { emitEvent: false });
+      this.selectedKeys = values;
     }
+    this.applySeries();
   }
 
-  // คำนวณ flag เพื่อใช้กับกราฟ
-  const sel = this.chartFilter.value;
-  this.showWarningAfr = sel.includes('all') || sel.includes('warningAfr');
-  this.showAverageAfr = sel.includes('all') || sel.includes('avgAfr');
+  applySeries(): void {
+    // ให้ผลลัพธ์เป็น ApexAxisChartSeries (array ของ series objects)
+    const series: ApexAxisChartSeries = this.selectedKeys.map((k) => {
+      const label = this.options.find(o => o.value === k)?.label ?? k;
+      const field = this.fieldMap[k as Exclude<ChartKey, 'all'>];
 
-  this.updateChartVisibility();
-}
+      const data = this.currentPageData.map(d => {
+        const v = Number(d?.[field]);
+        // ApexCharts รองรับ null เพื่อทำช่องว่างในกราฟได้
+        return Number.isFinite(v) ? v : null;
+      });
 
-// ใช้ flag ที่คำนวณไว้กับกราฟของคุณ
-private updateChartVisibility() {
-  // ตัวอย่าง (คอมเมนต์ไว้ตามไลบรารีที่คุณใช้)
-  // this.chart?.toggleSeries('Warning AFR', this.showWarningAfr);
-  // this.chart?.toggleSeries('Average AFR', this.showAverageAfr);
-}
+      // ชนิดของ element ใน ApexAxisChartSeries ต้องมีอย่างน้อย name/data
+      return { name: label, data };
+    }) as ApexAxisChartSeries;
+
+    // อัปเดตแบบ immutable เพื่อกระตุ้นการเรนเดอร์ (รองรับ OnPush)
+    this.areaSmoothChart = {
+      ...this.areaSmoothChart,
+      series
+    };
+    this.cdr.markForCheck();
+  }
+
+
+  // ใช้ flag ที่คำนวณไว้กับกราฟของคุณ
+  updateChartVisibility() {
+    // ตัวอย่าง (คอมเมนต์ไว้ตามไลบรารีที่คุณใช้)
+    // this.chart?.toggleSeries('Warning AFR', this.showWarningAfr);
+    // this.chart?.toggleSeries('Average AFR', this.showAverageAfr);
+  }
+
+  buildMockPoints(): LoggerPoint[] {
+    const out: LoggerPoint[] = [];
+    let afr = 13.2;         // ค่ากลาง AFR
+    let rt = 13.2;          // realtime AFR เริ่มต้น
+    let speed = 80;         // km/h เริ่ม
+    const start = new Date('2025-06-15T10:00:00');
+
+    for (let i = 0; i < 30; i++) {
+      const t = new Date(start.getTime() + i * 1000); // ทุก 1 วินาที
+      // จำลองการแกว่ง
+      afr += (Math.random() - 0.5) * 0.05;
+      rt += (Math.random() - 0.5) * 0.15;
+      speed += (Math.random() - 0.5) * 2;
+
+      out.push({
+        time: t.toTimeString().slice(0, 8),
+        lap: 1 + Math.floor(i / 5),      // ทุก 5 วิ = 1 lap (ตัวอย่าง)
+        avgAfr: Number(afr.toFixed(2)),
+        realtimeAfr: Number(rt.toFixed(2)),
+        warningAfr: 13.0,                // เส้นเตือนคงที่ (จะเห็นเป็นเส้นตรง)
+        speed: Math.max(0, Number(speed.toFixed(0))),
+      });
+    }
+    return out;
+  }
 }

@@ -151,11 +151,11 @@
                   <div class="card-header d-flex justify-content-between align-items-center">
                     <h5>
                       Graph Realtime Average AFR
-                      @if(currentPageData.length > 0){
+                      <!-- @if(currentPageData.length > 0){
                         <span class="badge bg-primary ms-2">
                           Page {{ currentPage }} ({{ currentPageData.length }} records)
                         </span>
-                      }
+                      } -->
                     </h5>
 
                     <div class="d-flex align-items-center gap-2">
@@ -177,9 +177,13 @@
                           <mat-select
                             #select
                             multiple
+                            [value]="selectedKeys"
                             (selectionChange)="onMultiSelectChange($event)"
                             panelClass="chart-filter-panel"
                           >
+                            <!-- (ทางเลือก) ปุ่ม All -->
+                            <mat-option [value]="'all'">ทั้งหมด</mat-option>
+
                             @for (o of options; track o) {
                               <mat-option [value]="o.value">{{ o.label }}</mat-option>
                             }
@@ -189,7 +193,14 @@
                     </div>
                   </div>
                   <div class="card-body">
-
+                    <apx-chart
+                      [series]="areaSmoothChart.series"
+                      [chart]="areaSmoothChart.chart"
+                      [xaxis]="areaSmoothChart.xaxis"
+                      [stroke]="areaSmoothChart.stroke"
+                      [tooltip]="areaSmoothChart.tooltip"
+                      [dataLabels]="areaSmoothChart.dataLabels"
+                    ></apx-chart>
 
                   </div>
               </div>
