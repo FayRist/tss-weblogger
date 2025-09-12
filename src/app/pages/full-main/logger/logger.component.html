@@ -98,7 +98,7 @@
               <svg style="max-width: 800px; max-height: 600px;" viewBox="0 0 800 600">
                 <!-- BG Image -->
 
-                  <image href="images/map-race/outline-map-baangsan.png" style="max-width: 800px; max-height: 600px;"/>
+                  <!-- <image href="images/map-race/outline-map-baangsan.png" style="max-width: 800px; max-height: 600px;"/> -->
                 @if (this.trackImage) {
                   <image href="images/map-race/outline-map-baangsan.png" style="max-width: 800px; max-height: 600px;"/>
                 }
@@ -178,7 +178,8 @@
                             #select
                             multiple
                             [value]="selectedKeys"
-                            (selectionChange)="onMultiSelectChange($event)"
+                            (selectionChange)="onMultiSelectChange($event.value)"
+
                             panelClass="chart-filter-panel"
                           >
                             <!-- (ทางเลือก) ปุ่ม All -->
@@ -193,14 +194,39 @@
                     </div>
                   </div>
                   <div class="card-body">
-                    <apx-chart
-                      [series]="areaSmoothChart.series"
-                      [chart]="areaSmoothChart.chart"
-                      [xaxis]="areaSmoothChart.xaxis"
-                      [stroke]="areaSmoothChart.stroke"
-                      [tooltip]="areaSmoothChart.tooltip"
-                      [dataLabels]="areaSmoothChart.dataLabels"
-                    ></apx-chart>
+                    <div class="chart-wrapper">
+                      <div id="chart-detail">
+                        <apx-chart
+                          [series]="detailOpts.series"
+                          [chart]="detailOpts.chart"
+                          [xaxis]="detailOpts.xaxis"
+                          [yaxis]="detailOpts.yaxis"
+                          [stroke]="detailOpts.stroke"
+                          [dataLabels]="detailOpts.dataLabels"
+                          [markers]="detailOpts.markers"
+                          [colors]="detailOpts.colors"
+                          [fill]="detailOpts.fill"
+                          [tooltip]="detailOpts.tooltip"
+                          [legend]="detailOpts.legend"
+                          [theme]="detailOpts.theme"
+                        ></apx-chart>
+                      </div>
+
+                      <div id="chart-brush">
+                        <apx-chart
+                          [series]="brushOpts.series"
+                          [chart]="brushOpts.chart"
+                          [xaxis]="brushOpts.xaxis"
+                          [yaxis]="brushOpts.yaxis"
+                          [colors]="brushOpts.colors"
+                          [fill]="brushOpts.fill"
+                          [grid]="brushOpts.grid"
+                          [dataLabels]="brushOpts.dataLabels"
+                          [stroke]="brushOpts.stroke"
+                          [theme]="brushOpts.theme"
+                        ></apx-chart>
+                      </div>
+                    </div>
 
                   </div>
               </div>
