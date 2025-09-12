@@ -34,31 +34,30 @@ interface SessionRow {
 })
 export class EventComponent implements OnInit {
   readonly dialog = inject(MatDialog);
-  allEvent: eventModel[] = [];
+  allEvent: eventModel[] = [{
+        event_id: 1,
+        season_id: 1,
+        event_name: 'TSS Bangsaen Grand Prix 2025',
+        circuit_name: 'bsc',
+        event_start: new Date('6/9/2024 15:10:00'),
+        event_end: new Date('6/10/2024 15:30:00'),
+      }];
   private subscriptions: Subscription[] = [];
 
   constructor(private router: Router, private route: ActivatedRoute,
       private eventService: EventService, private toastr: ToastrService) {
   }
+
+
   ngOnInit() {
-    // this.allEvent = [
-    //   {
-    //     eventId: 1,
-    //     seasonId: 1,
-    //     eventName: 'TSS Bangsaen Grand Prix 2025',
-    //     circuitName: 'bsc',
-    //     eventStart: new Date('6/9/2024 15:10:00'),
-    //     eventEnd: new Date('6/10/2024 15:30:00'),
-    //   }
-    // ];
     this.loadEvent();
 
   }
 
   loadEvent(){
-    this.allEvent = []
     const eventData = this.eventService.getEvent().subscribe(
       eventRes => {
+        this.allEvent = []
         this.allEvent = eventRes;
       },
       error => {

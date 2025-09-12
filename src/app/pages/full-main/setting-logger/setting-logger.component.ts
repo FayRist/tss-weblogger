@@ -35,44 +35,26 @@ export class SettingLoggerComponent implements OnInit {
   loggerData: LoggerModel[] = [];
 
   allLoggers: LoggerModel[] = [
-    // {
-    //   id: 1,
-    //   firstName: "ทดสอบ1",
-    //   lastName: "Test01",
-    //   carNumber: "1",
-    //   loggerId: "Client121",
-    //   createdDate: new Date(10/9/2025),
-    //   numberWarning: 2,
-    //   warningDetector: false,
+    {
+      id: 1,
+      firstName: "ทดสอบ1",
+      lastName: "Test01",
+      carNumber: "1",
+      loggerId: "Client121",
+      createdDate: new Date(10/9/2025),
+      numberWarning: 2,
+      warningDetector: false,
 
-    // },{
-    //   id: 2,
-    //   firstName: "ทดสอบ2",
-    //   lastName: "Test02",
-    //   carNumber: "2",
-    //   loggerId: "Client122",
-    //   createdDate: new Date(10/9/2025),
-    //   numberWarning: 3,
-    //   warningDetector: false,
-    // },{
-    //   id: 3,
-    //   firstName: "ทดสอบ3",
-    //   lastName: "Test03",
-    //   carNumber: "3",
-    //   loggerId: "Client123",
-    //   createdDate: new Date(10/9/2025),
-    //   numberWarning: 3,
-    //   warningDetector: false,
-    // },{
-    //   id: 4,
-    //   firstName: "ทดสอบ4",
-    //   lastName: "Test04",
-    //   carNumber: "4",
-    //   loggerId: "Client124",
-    //   createdDate: new Date(10/9/2025),
-    //   numberWarning: 0,
-    //   warningDetector: false,
-    // },
+    },{
+      id: 4,
+      firstName: "ทดสอบ4",
+      lastName: "Test04",
+      carNumber: "4",
+      loggerId: "Client124",
+      createdDate: new Date(10/9/2025),
+      numberWarning: 0,
+      warningDetector: false,
+    },
   ];
 
   constructor(

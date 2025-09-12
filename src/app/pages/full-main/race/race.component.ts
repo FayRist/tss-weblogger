@@ -31,7 +31,19 @@ export class RaceComponent implements OnInit {
 
   }
   ngOnInit() {
-    this.allRace = [ ];
+    this.allRace = [
+      {
+        id_list: 1,
+        event_id: 1,
+        season_id: 1,
+        category_name: 'Thailand Super Pickup D2',
+        segment_value: 'pickup',
+        session_value: 'race5',
+        class_value: 'c',
+        session_start: new Date('6/9/2024 15:10:00'),
+        session_end: new Date('6/9/2024 15:30:00'),
+      }
+    ];
     this.loadRace();
   }
 

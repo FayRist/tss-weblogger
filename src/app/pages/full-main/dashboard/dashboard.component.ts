@@ -34,8 +34,28 @@ type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect';
 export class DashboardComponent implements OnInit {
   private subscriptions: Subscription[] = [];
 
-  allLoggers: LoggerModel[] = [ ];
+  allLoggers: LoggerModel[] = [
+    {
+      id: 1,
+      firstName: "ทดสอบ1",
+      lastName: "Test01",
+      carNumber: "1",
+      loggerId: "Client121",
+      createdDate: new Date(10/9/2025),
+      numberWarning: 2,
+      warningDetector: false,
 
+    },{
+      id: 4,
+      firstName: "ทดสอบ4",
+      lastName: "Test04",
+      carNumber: "4",
+      loggerId: "Client124",
+      createdDate: new Date(10/9/2025),
+      numberWarning: 0,
+      warningDetector: false,
+    },
+  ];
   readonly dialog = inject(MatDialog);
   onShowAllLoggers: LoggerModel[] = []
 
