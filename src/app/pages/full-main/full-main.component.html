@@ -1,10 +1,9 @@
-<mat-toolbar style="    background-color: #212529;">
+<mat-toolbar style="background-color:#212529;">
   <ng-container>
     <button (click)="drawer.toggle()" mat-icon-button class="example-icon" aria-label="menu">
       <mat-icon>menu</mat-icon>
     </button>
-
-    <!-- ถ้าเป็น /pages/dashboard ให้โชว์ฟอร์ม; ถ้าไม่ใช่ ให้โชว์ข้อความ Data Logger -->
+<!-- ถ้าเป็น /pages/dashboard ให้โชว์ฟอร์ม; ถ้าไม่ใช่ ให้โชว์ข้อความ Data Logger -->
     @if (isDashboard$ | async) {
       <span>Data Logger</span>
 
@@ -23,42 +22,64 @@
     } @else {
       <span>Data Logger</span>
     }
-
     <span class="example-spacer"></span>
 
-    <button mat-icon-button class="example-icon" aria-label="profile">
+    <button mat-icon-button class="example-icon" aria-label="profile" [matMenuTriggerFor]="profileMenu">
       <mat-icon>person</mat-icon>
     </button>
+    <mat-menu #profileMenu="matMenu">
+      <button mat-menu-item disabled>
+        Logged in as: {{ (userName$ | async) || '-' }}
+      </button>
+      <button mat-menu-item (click)="logout()">Logout</button>
+    </mat-menu>
   </ng-container>
 </mat-toolbar>
 
-<mat-drawer-container autosize style="position: absolute; right:0; left:0; bottom:0; top:60px;">
-  <mat-drawer #drawer mode="over" class="toolbar" style="width: 250px;">
+<mat-drawer-container autosize style="position:absolute; right:0; left:0; bottom:0; top:60px;">
+  <mat-drawer #drawer mode="over" class="toolbar" style="width:250px;">
     <mat-action-list class="side-content">
+
+      @if ((role$ | async) === 'admin' || (role$ | async) === 'scruitineer') {
+      <!-- เห็นได้ทั้ง admin + scruitineer -->
       <button (click)="drawer.toggle(); navigateToDashboard()" mat-list-item>
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/logger.png"></div>
           <div class="col-10 pt-1">Dashboard</div>
         </div>
       </button>
-      <button (click)="drawer.toggle(); navigateToListAllSeason()" mat-list-item>
+      }
+
+      @if ((role$ | async) === 'admin') {
+      <!-- เฉพาะ admin เท่านั้น -->
+      <button (click)="drawer.toggle(); navigateToListAllSeason()" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/race.png"></div>
           <div class="col-10 pt-1">รายการแข่ง ทั้งหมด</div>
         </div>
       </button>
-      <button (click)="drawer.toggle(); navigateToAddSeason('0ms','0ms')" mat-list-item>
+
+      <button (click)="drawer.toggle(); navigateToAddSeason('0ms','0ms')" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/dashboard.png"></div>
           <div class="col-10 pt-1">เพิ่มรายการ</div>
         </div>
       </button>
-      <button (click)="drawer.toggle(); navigateToListSettingLogger()" mat-list-item>
+
+      <button (click)="drawer.toggle(); navigateToListSettingLogger()" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/setting-logger.png"></div>
           <div class="col-10 pt-1">ตั้งค่า Logger</div>
         </div>
       </button>
+      }
+      <button (click)="drawer.toggle(); navigateToLogout()" mat-list-item >
+        <div class="row">
+          <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/exit-icon.png"></div>
+          <div class="col-10 pt-1">Logout</div>
+        </div>
+      </button>
+
     </mat-action-list>
   </mat-drawer>
 

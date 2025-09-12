@@ -1,20 +1,24 @@
 <div class="d-flex justify-content-center align-items-center vh-100">
-    <mat-card appearance="outlined" style="width: 450px;">
-        <mat-card-header class="justify-content-center mb-3">
-            <mat-card-title>Login</mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-            <mat-form-field class="w-100" appearance="outline">
-                <mat-label>Username</mat-label>
-                <input matInput type="text" />
-            </mat-form-field>
+  <mat-card appearance="outlined" style="width: 450px;">
+    <mat-card-header class="justify-content-center mb-3">
+      <mat-card-title>Login</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <mat-form-field class="w-100" appearance="outline">
+        <mat-label>Username</mat-label>
+        <input matInput type="text" [(ngModel)]="username" />
+      </mat-form-field>
 
-            <mat-form-field class="w-100" appearance="outline">
-                <mat-label>Password</mat-label>
-                <input matInput type="password" />
-            </mat-form-field>
+      <mat-form-field class="w-100" appearance="outline">
+        <mat-label>Password</mat-label>
+        <input matInput type="password" [(ngModel)]="password" (keyup.enter)="navigateToMainPage()" />
+      </mat-form-field>
 
-            <button mat-raised-button color="primary" class="w-100 mt-2" (click)="navigateToMainPage()">Login</button>
-        </mat-card-content>
-    </mat-card>
+      <button mat-raised-button color="primary" class="w-100 mt-2" (click)="navigateToMainPage()" [disabled]="isLoading">
+        {{ isLoading ? 'Loading…' : 'Login' }}
+      </button>
+
+      <div *ngIf="errorMsg" class="mt-2 text-danger">{{ errorMsg }}</div>
+    </mat-card-content>
+  </mat-card>
 </div>

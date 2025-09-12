@@ -19,6 +19,7 @@ interface ExcelRow {
   nbr: string | number;
   firstname: string;
   lastname: string;
+  class: string;
 }
 export interface ExcelRowPayLoad {
   logger: string;      // <- จากไฟล์
@@ -97,7 +98,7 @@ export class AddLoggerComponent implements OnInit {
         }
 
         // ตรวจว่ามีคอลัมน์ที่ต้องการครบหรือไม่ (ไม่สนตัวพิมพ์เล็กใหญ่/ช่องว่าง)
-        const required = ['logger', 'nbr', 'firstname', 'lastname'];
+        const required = ['logger', 'nbr', 'firstname', 'lastname', 'class'];
         const normalize = (s: string) => s?.toString().trim().toLowerCase();
 
         // แผนที่ชื่อ header เดิม -> ชื่อมาตรฐาน
@@ -134,6 +135,7 @@ export class AddLoggerComponent implements OnInit {
               nbr: get('nbr') ?? '',
               firstname: (get('firstname') ?? '').toString().trim(),
               lastname: (get('lastname') ?? '').toString().trim(),
+              class: (get('class') ?? '').toString().trim(),
             };
 
 
@@ -169,6 +171,7 @@ export class AddLoggerComponent implements OnInit {
       first_name: String(r.firstname ?? '').trim(),
       last_name: String(r.lastname ?? '').trim(),
       creat_date: String(r.lastname ?? '').trim(),
+      class_type: String(r.class ?? '').trim(),
     }));
 
 

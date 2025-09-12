@@ -21,7 +21,7 @@ import { MatRadioModule } from '@angular/material/radio';
 import { ToastrService } from 'ngx-toastr';
 import { EventService } from '../../../service/event.service';
 
-type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
+type SessionKey = 'practice' | 'testsession' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
 interface SessionRow {
   key: SessionKey;
@@ -36,12 +36,12 @@ export interface seasonalPayLoad {
 }
 
 export interface eventPayLoad {
-  eventId: number | null;
-  seasonId: number;
-  eventName: string;
-  circuitName: string;
-  eventStart: Date | null;
-  eventEnd: Date | null;
+  event_id: number | null;
+  season_id: number;
+  event_name: string;
+  circuit_name: string;
+  event_start: Date | null;
+  event_end: Date | null;
 }
 
 
@@ -76,22 +76,25 @@ export class AddEventComponent implements OnInit {
 
   eventList: any[] = [
     {
-      value: 1,
-      name:'TSS Bangsaen Grand Prix 2025'
+      value: 6,
+      name:'BANGSAEN'
     },
   ];
 
   seasonList: any[] = [
     {
-      value: 1,
-      name:'TSS The Super Series by B-Quik 2025'
+      value: 2,
+      name:'ทดสอบรายการแข่ง BANGSAEN'
     },
   ];
 
   sessionList: any[] = [
     {
-      value:'Free Practice',
-      name:'freepractice'
+      value:'testsession',
+      name:'Test Session'
+    },{
+      value:'ractice',
+      name:'Practice'
     },{
       value:'qualify',
       name:'Qualifying'
@@ -159,7 +162,8 @@ export class AddEventComponent implements OnInit {
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
 
-  freePractice = true;
+  practice = true;
+  testsession = true;
   qualifying = true;
   race1 = true;
   race2 = true;
@@ -168,11 +172,12 @@ export class AddEventComponent implements OnInit {
   race5 = true;
 
   private order: SessionKey[] = [
-    'freePractice', 'qualifying', 'race1', 'race2', 'race3', 'race4', 'race5'
+    'practice', 'testsession', 'qualifying', 'race1', 'race2', 'race3', 'race4', 'race5'
   ];
 
   private labelMap: Record<SessionKey, string> = {
-    freePractice: 'Free Practice',
+    practice: 'Practice',
+    testsession: 'Test Session',
     qualifying: 'Qualifying',
     race1: 'Race 1',
     race2: 'Race 2',
@@ -298,12 +303,12 @@ export class AddEventComponent implements OnInit {
   submitEvent(){
 
     const payload = {
-      eventId: null,
-      seasonId: this.seasonId,
-      eventName: this.eventName,
-      circuitName: this.circuitName,
-      eventStart: this.range.controls.start.value,
-      eventEnd: this.range.controls.end.value,
+      event_id: null,
+      season_id: this.seasonId,
+      event_name: this.eventName,
+      circuit_name: this.circuitName,
+      event_start: this.range.controls.start.value,
+      event_end: this.range.controls.end.value,
     }
 
     this.eventService.addNewEvent(payload).subscribe(
