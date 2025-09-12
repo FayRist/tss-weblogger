@@ -29,12 +29,12 @@ export interface ApiEventResponse {
 }
 
 export interface ApiEventData {
-  eventId: number;
-  seasonId: number;
-  eventName: string;
-  circuitName: string;
-  eventStart: Date;
-  eventEnd: Date;
+  event_id: number;
+  season_id: number;
+  event_name: string;
+  circuit_name: string;
+  event_start: Date;
+  event_end: Date;
 }
 
 
@@ -85,12 +85,12 @@ export class EventService {
         map(response => {
           // Map API data to Match interface
           this.eventList = response.data.map((apiData) => ({
-              event_id: apiData.eventId,
-              season_id: apiData.seasonId,
-              event_name: apiData.eventName,
-              circuit_name: apiData.circuitName,
-              event_start: new Date(apiData.eventStart),
-              event_end: new Date(apiData.eventEnd),
+              event_id: apiData.event_id,
+              season_id: apiData.season_id,
+              event_name: apiData.event_name,
+              circuit_name: apiData.circuit_name,
+              event_start: new Date(apiData.event_start),
+              event_end: new Date(apiData.event_end),
           }));
           return this.eventList;
         })

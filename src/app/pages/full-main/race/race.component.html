@@ -24,10 +24,9 @@
         @for (raceData of allRace; track raceData) {
           <tr>
             <td class="text-center" (click)="navigateToDashboard(raceData.id_list)">{{raceData.category_name}}</td>
-            <td class="text-center" >-</td>
-            <!-- <td class="text-center" >{{ raceData.raceSegment }}</td> -->
+            <td class="text-center" >{{ raceData.segment_value }}</td>
+            <td class="text-center" >{{ raceData.session_value }}</td>
             <td class="text-center" >{{ raceData.class_value }}</td>
-            <td class="text-center" >{{ raceData.season_id }}</td>
             <td class="text-center">{{ raceData.session_start| date:'dd/MM/yyyy HH:mm' }}
             <td class="text-center">
               <div class="row d-flex justify-content-center">

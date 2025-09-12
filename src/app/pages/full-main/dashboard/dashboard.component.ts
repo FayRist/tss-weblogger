@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import {MatProgressBarModule} from '@angular/material/progress-bar';
 import {MatCardModule} from '@angular/material/card';
 import {MatChipsModule} from '@angular/material/chips';
@@ -16,6 +16,9 @@ import { MatMenuModule } from '@angular/material/menu';
 import { LoggerModel } from '../../../model/season-model';
 import { ResetWarningLoggerComponent } from './reset-warning-logger/reset-warning-logger.component';
 import { MatDialog } from '@angular/material/dialog';
+import { EventService } from '../../../service/event.service';
+import { ToastrService } from 'ngx-toastr';
+import { merge, startWith, Subscription, take } from 'rxjs';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect';
 @Component({
@@ -29,47 +32,9 @@ type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardComponent implements OnInit {
+  private subscriptions: Subscription[] = [];
 
-  allLoggers: LoggerModel[] = [
-    {
-      id: 1,
-      firstName: "ทดสอบ1",
-      lastName: "Test01",
-      carNumber: "1",
-      loggerId: "Client121",
-      createdDate: new Date(10/9/2025),
-      numberWarning: 2,
-      warningDetector: false,
-
-    },{
-      id: 2,
-      firstName: "ทดสอบ2",
-      lastName: "Test02",
-      carNumber: "2",
-      loggerId: "Client122",
-      createdDate: new Date(10/9/2025),
-      numberWarning: 3,
-      warningDetector: false,
-    },{
-      id: 3,
-      firstName: "ทดสอบ3",
-      lastName: "Test03",
-      carNumber: "3",
-      loggerId: "Client123",
-      createdDate: new Date(10/9/2025),
-      numberWarning: 3,
-      warningDetector: false,
-    },{
-      id: 4,
-      firstName: "ทดสอบ4",
-      lastName: "Test04",
-      carNumber: "4",
-      loggerId: "Client124",
-      createdDate: new Date(10/9/2025),
-      numberWarning: 0,
-      warningDetector: false,
-    },
-  ];
+  allLoggers: LoggerModel[] = [ ];
 
   readonly dialog = inject(MatDialog);
   onShowAllLoggers: LoggerModel[] = []
@@ -98,16 +63,38 @@ export class DashboardComponent implements OnInit {
     sortType: [true, Validators.requiredTrue],
   });
 
-  constructor(private router: Router, private route: ActivatedRoute) {
-    // this.allLoggers = this.allLoggers.filter(x => x.matchId == 1);
-  }
-  ngOnInit() {
-    // this.loadEvent();
+  constructor(
+    private router: Router,
+    private route: ActivatedRoute,
+    private eventService: EventService,
+    private toastr: ToastrService,
+    private fb: FormBuilder,
+    private cdr: ChangeDetectorRef
+  ) {}
 
-    this.sortStatus = (this.formGroup.value.sortType)? 'มาก - น้อย':'น้อย - มาก';
-    this.updateView();
-    // ถ้าอยากอัปเดตอัตโนมัติเมื่อฟอร์มเปลี่ยนค่า:
-    this.filterLogger.valueChanges.subscribe(() => this.updateView());
+  ngOnInit() {
+    const dataSub = this.eventService.getLogger()
+      .pipe(take(1))
+      .subscribe({
+        next: (loggerRes) => {
+          this.allLoggers = loggerRes ?? [];
+          this.updateView(this.allLoggers);
+          this.cdr.markForCheck();
+        },
+        error: (err) => console.error('Error loading matchList:', err)
+      });
+    this.subscriptions.push(dataSub);
+
+    const reactSub = merge(
+      this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
+      this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
+    ).subscribe(() => {
+      this.updateView(this.allLoggers);
+      this.cdr.markForCheck();
+    });
+    this.subscriptions.push(reactSub);
+
+    this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
   }
 
   isAllSelected(): boolean {
@@ -124,31 +111,29 @@ export class DashboardComponent implements OnInit {
     return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
   }
 
-  private updateView(): void {
+  updateView(allLoggers: LoggerModel[] = []): void {
     const filters = this.filterLogger.value ?? ['all'];
 
-    // 1) FILTER
-    let filtered = this.allLoggers.filter(x => this.matchesFilters(x, filters));
+    // FILTER
+    let filtered = allLoggers.filter(x => this.matchesFilters(x, filters));
 
+    // SORT
+    const desc = !!this.formGroup.value.sortType; // true = มาก→น้อย
     filtered.sort((a, b) => {
-      // ทิศทางเรียงจากฟอร์ม: true = มาก→น้อย, false = น้อย→มาก
-      const desc = !!this.formGroup.value.sortType;
-
-      // 1) เรียงตามจำนวน warning ก่อน (เป็นคีย์หลัก)
-      const byWarning = desc
-        ? b.numberWarning - a.numberWarning   // มาก→น้อย
-        : a.numberWarning - b.numberWarning;  // น้อย→มาก
+      const byWarning = desc ? b.numberWarning - a.numberWarning : a.numberWarning - b.numberWarning;
       if (byWarning !== 0) return byWarning;
-
-      // 2) tie-breaker: ให้ warningDetector=true มาก่อน (เฉพาะตอนจำนวนเท่ากัน)
       const byDetector = Number(b.warningDetector) - Number(a.warningDetector);
       if (byDetector !== 0) return byDetector;
-
-      // 3) tie-breaker สุดท้าย: ชื่อคนขับ (โลแคลไทย)
       return a.firstName.localeCompare(b.firstName, 'th');
     });
 
-    this.onShowAllLoggers = filtered;
+    // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
+    this.onShowAllLoggers = [...filtered];
+    this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
+  }
+
+  ngOnDestroy() {
+    this.subscriptions.forEach(s => s.unsubscribe());
   }
 
   // ถ้าเลือก "ทั้งหมด" พร้อมกับตัวอื่น ให้เหลือแค่ "ทั้งหมด"
@@ -170,7 +155,7 @@ export class DashboardComponent implements OnInit {
     this.wasAllSelected = (this.filterLogger.value ?? values).includes('all');
 
     // อัปเดตผลทุกครั้งหลังเปลี่ยน
-    this.updateView();
+    this.updateView(this.allLoggers);
   }
 
   get allWarning(): LoggerModel[] {
@@ -180,7 +165,7 @@ export class DashboardComponent implements OnInit {
   onToggleSort(): void {
     const desc = !!this.formGroup.value.sortType; // true = มาก - น้อย
     this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
-    this.updateView(); // 👉 เรียงใหม่ตามสถานะล่าสุด
+    this.updateView(this.allLoggers); // 👉 เรียงใหม่ตามสถานะล่าสุด
   }
 
   navigateToLoggerDetail() {

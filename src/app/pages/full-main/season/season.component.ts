@@ -18,10 +18,10 @@ export class SeasonComponent implements OnInit {
 
   ngOnInit() {
     this.allSeason = [
-      {
-        seasonId: 1,
-        seasonName: 'TSS The Super Series by B-Quik 2025',
-      }
+    //   {
+    //     seasonId: 1,
+    //     seasonName: 'TSS The Super Series by B-Quik 2025',
+    //   }
     ]
     this.loadSeason();
   }
