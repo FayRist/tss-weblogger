@@ -39,6 +39,12 @@ const PAL = {
   axis:      '#3B444D',
   series:    ['#4FC3F7', '#00E5A8', '#FFCA28', '#7E57C2']
 };
+const SERIES_COLORS: Record<ChartKey, string> = {
+  avgAfr:      '#4FC3F7',
+  realtimeAfr: '#00E5A8',
+  warningAfr:  '#FFCA28',
+  speed:       '#7E57C2',
+};
 //-----Chart--------------###############################################
 
 @Component({
@@ -155,7 +161,7 @@ private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
     series: [],
     chart: {
       id: 'brushChart',
-      type: 'area',
+      type: 'line',
       height: 120,
       brush: { enabled: true, target: 'detailChart' },
       selection: { enabled: true },       // ลากเลือกช่วง
@@ -168,7 +174,7 @@ private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
     },
     yaxis: { labels: { show: false } },
     colors: [PAL.series[1]],              // สีเดียวกับ overviewKey
-    fill: { type: 'gradient', gradient: { shade: 'dark', opacityFrom: 0.25, opacityTo: 0.05, stops: [0,100] } },
+    fill: { type: 'gradient', gradient: { shade: 'dark'} },
     grid: { borderColor: PAL.grid, strokeDashArray: 3 },
     dataLabels: { enabled: false },
     stroke: { curve: 'smooth', width: 1.5 },
@@ -230,6 +236,7 @@ private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
     }
     this.selectedKeys = arr.filter((k): k is ChartKey => k !== 'all');
     this.refreshDetail(); // หรือ applySeries()
+    this.refreshBrush();
   }
   // ---------- Helpers ----------
   private refreshDetail() {
@@ -244,16 +251,27 @@ private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
     this.detailOpts = { ...this.detailOpts, series };
   }
 
-  private refreshBrush() {
-    const field = this.fieldMap[this.brushOverviewKey];
-    const data = this.currentPoints.map(p => ({ x: p.ts, y: Number(p[field]) || null }));
+  private refreshBrush(): void {
+    // ซีรีส์ทั้งหมดตามที่เลือกในกราฟแรก
+    const series: ApexAxisChartSeries = this.selectedKeys.map(k => {
+      const field = this.fieldMap[k];
+      const name  = this.options.find(o => o.value === k)?.label ?? k;
+      const data  = this.currentPoints.map(p => ({ x: p.ts, y: Number(p[field]) || null }));
+      return { name, data };
+    }) as ApexAxisChartSeries;
+
+    // สี/เส้น ของ brush ให้เรียงตาม selectedKeys เช่นเดียวกับกราฟหลัก
+    const colors      = this.selectedKeys.map(k => SERIES_COLORS[k]);
+    const strokeWidth = this.selectedKeys.map(k => (k === 'warningAfr' ? 2 : 1.5));
+    const dashArray   = this.selectedKeys.map(k => (k === 'warningAfr' ? 5 : 0));
+
     this.brushOpts = {
       ...this.brushOpts,
-      series: [{ name: 'Overview', data }] as ApexAxisChartSeries,
-      colors: [PAL.series[this.keyIndex(this.brushOverviewKey)]]
+      series,
+      colors,
+      stroke: { ...this.brushOpts.stroke, width: strokeWidth, dashArray }
     };
   }
-
   private keyIndex(k: ChartKey) {
     return ['avgAfr','realtimeAfr','warningAfr','speed'].indexOf(k);
   }
