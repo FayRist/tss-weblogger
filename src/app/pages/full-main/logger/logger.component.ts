@@ -74,7 +74,7 @@ const COLORS = {
   warn:  '#F59E0B',      // จุดเตือน (เหลือง)
   live:  '#00FFA3'       // ตำแหน่งล่าสุด
 };
-
+type PointDef = { idMap: string; lat: number; lon: number; zoom?: number };
 //-----MapRace--------------###############################################
 
 
@@ -97,6 +97,13 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
   @ViewChild('select') select!: MatSelect;
   @ViewChild('chart') chart!: ChartComponent;
+
+
+  pointMap: PointDef[] = [
+    { idMap:'bric', lat: 14.9635357, lon: 103.085812,   zoom: 16 },
+    { idMap:'sic',  lat:  2.76101,   lon: 101.7343345,  zoom: 16 },
+    { idMap:'bsc',  lat: 13.304051,  lon: 100.9014779,  zoom: 16 },
+  ];
 
   currentPoints: LoggerPoint[] = [];
   options: { value: ChartKey; label: string; }[] = [
@@ -361,28 +368,40 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   }
 
   //////////// RACE /////////////////////////////////
+  // ช่วยค้นหา
+  private siteById(id: string): PointDef | undefined {
+    return this.pointMap.find(p => p.idMap === id);
+  }
+
+
   initMap(): void {
     // พื้นภาพดาวเทียม (MapTiler Satellite) – ใส่คีย์ของคุณเอง
-    const MAPTILER_KEY = 'YOUR_MAPTILER_KEY';
-    const satellite = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20,
-      attribution: '© CARTO © OpenStreetMap'
-    })
+    // const MAPTILER_KEY = 'YOUR_MAPTILER_KEY';
+    const satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxZoom: 50,
+        attribution:
+          'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+      }
+    );
 
     // แผนที่โทนมืด (สำรอง)
     const dark = L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      { maxZoom: 20, attribution: '© CARTO © OpenStreetMap' }
+      { maxZoom: 50, attribution: '© CARTO © OpenStreetMap' }
     );
 
     this.baseLayers = { Satellite: satellite, Dark: dark };
 
+    const site = this.siteById('bric') ?? this.pointMap[0];  // แทน 'bric' ด้วยค่าจาก route/detail ของคุณ
     this.map = L.map(this.raceMapRef.nativeElement, {
-      center: [14.96, 103.09], // ตำแหน่งเริ่มต้น (สุ่มแถวบุรีรัมย์)
-      zoom: 15,
+      center: [site.lat, site.lon],
+      zoom: site.zoom ?? 16,
       layers: [satellite],
       zoomControl: true
     });
+
 
     L.control.layers(this.baseLayers, { Warnings: this.warnLayer }).addTo(this.map);
     this.warnLayer.addTo(this.map);
