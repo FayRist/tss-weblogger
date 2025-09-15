@@ -16,6 +16,7 @@ import { MaterialModule } from '../../../material.module';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
 import { RaceModel } from '../../../model/season-model';
+import { AddEventComponent } from '../add-event/add-event.component';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule, DatePipe],
@@ -26,6 +27,63 @@ export class RaceComponent implements OnInit {
   readonly dialog = inject(MatDialog);
   allRace: RaceModel[] = [];
   private subscriptions: Subscription[] = [];
+
+  sessionList: any[] = [
+    {
+      value:'practice',
+      name:'Practice'
+    },{
+      value:'testsession',
+      name:'Test Session'
+    },{
+      value:'qualify',
+      name:'Qualifying'
+    },{
+      value:'race1',
+      name:'Race 1'
+    },{
+      value:'race2',
+      name:'Race 2'
+    },{
+      value:'race3',
+      name:'Race 3'
+    },{
+      value:'race4',
+      name:'Race 4'
+    },{
+      value:'race5',
+      name:'Race 5'
+    }
+  ];
+
+  raceSegment: any[] = [
+    {
+      value: 'pickup',
+      name:'Pickup'
+    },{
+      value: 'touring',
+      name:'Touring'
+    }
+  ];
+
+  classList: any[] = [
+    {
+      value: 'a',
+      name:'Class A'
+    },{
+      value: 'b',
+      name:'Class B'
+    },{
+      value: 'c',
+      name:'Class C'
+    },{
+      value: 'ab',
+      name:'Class A-B'
+    },{
+      value: 'overall',
+      name:'Over All'
+    },
+  ];
 
   constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService) {
 
@@ -46,6 +104,18 @@ export class RaceComponent implements OnInit {
     ];
     this.loadRace();
   }
+  getSessionName(value: string): string {
+    const found = this.sessionList.find(m => m.value === value);
+    return found ? found.name : value;
+  }
+  getRaceSegmentName(value: string): string {
+    const found = this.raceSegment.find(m => m.value === value);
+    return found ? found.name : value;
+  }
+  getClassName(value: string): string {
+    const found = this.classList.find(m => m.value === value);
+    return found ? found.name : value;
+  }
 
   private loadRace(): void {
     const RaceSub = this.eventService.getRace().subscribe(
@@ -65,15 +135,20 @@ export class RaceComponent implements OnInit {
     this.router.navigate(['/pages', 'dashboard']);
   }
 
-  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number): void {
-    let arrayData = this.allRace.filter(x => x.id_list == raceId);
+  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number = 0): void {
+    let arrayData: any[] = [];
+    if(raceId){
+      arrayData = this.allRace.filter(x => x.id_list == raceId);
+    }
 
-    const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
+    const dialogRef = this.dialog.open(AddEventComponent, {
       width: "100vw",
       maxWidth: "750px",
       enterAnimationDuration,
       exitAnimationDuration,
-      data: {race_data: arrayData}
+      data: {race_data: arrayData,
+        NameTab: 'Race'
+      }
     });
 
     dialogRef.afterClosed().subscribe((updated: RaceModel | undefined) => {
@@ -193,35 +268,48 @@ export class DialogAnimationsModalEdit implements OnInit {
       name:'Over All'
     },
   ];
+  typeModal: string = 'เพิ่ม';
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalEdit>);
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
   readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
 
+  constructor() {
+    this.typeModal = 'เพิ่ม'
+    if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
+      this.range.patchValue({
+        start: this.data.race_data[0].raceStart,
+        end: this.data.race_data[0].raceEnd
+      });
+      this.typeModal = 'แก้ไข'
+    }
+  }
+
   readonly range = new FormGroup({
-      start: new FormControl<Date>(this.data.race_data[0].raceStart),
-      end: new FormControl<Date>(this.data.race_data[0].raceEnd),
+      start: new FormControl<Date | null>(new Date()),
+      end: new FormControl<Date | null>(new Date()),
   });
 
-  eventId = new FormControl(this.data.race_data[0].eventId);
-  seasonId = new FormControl(this.data.race_data[0].seasonId);
-  classValue = new FormControl(this.data.race_data[0].raceClass);
-  sessionValue = new FormControl(this.data.race_data[0].raceSession);
-  eventName = new FormControl(this.data.race_data[0].eventId);
-  segmentValue = new FormControl(this.data.race_data[0].raceSegment);
+  eventId = new FormControl(null);
+  seasonId = new FormControl(null);
+  classValue = new FormControl(null);
+  sessionValue = new FormControl(null);
+  eventName = new FormControl(null);
+  segmentValue = new FormControl(null);
 
   ngOnInit() {
-    console.log(this.data.race_data[0]);
-    this.raceMatchId  = this.data.race_data[0].raceMatchId
-    this.seasonId  = this.data.race_data[0].seasonId
-    this.eventId = this.data.race_data[0].eventId;
-    this.classValue = this.data.race_data[0].raceClass;
-    this.sessionValue = this.data.race_data[0].raceSession;
-    this.segmentValue = this.data.race_data[0].raceSegment;
-    this.eventName = this.data.race_data[0].eventId;
-    this.raceName = this.data.race_data[0].raceName;
-
+    if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
+      console.log(this.data.race_data[0]);
+      this.raceMatchId  = this.data.race_data[0].raceMatchId
+      this.seasonId  = this.data.race_data[0].seasonId
+      this.eventId = this.data.race_data[0].eventId;
+      this.classValue = this.data.race_data[0].raceClass;
+      this.sessionValue = this.data.race_data[0].raceSession;
+      this.segmentValue = this.data.race_data[0].raceSegment;
+      this.eventName = this.data.race_data[0].eventId;
+      this.raceName = this.data.race_data[0].raceName;
+    }
     // this.dateSessionStart = this.data.race_data[0].eventStart;
     // this.dateSessionEnd = this.data.race_data[0].eventEnd;
 
@@ -231,6 +319,7 @@ export class DialogAnimationsModalEdit implements OnInit {
 
 
   }
+
   onSubmit(): void {
     let submit = {
       "raceMatchId": this.raceMatchId,

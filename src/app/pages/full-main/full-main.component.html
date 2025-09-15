@@ -12,14 +12,46 @@
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
 
-                <mat-chip disabled style="width: auto;">Thailand Super Pickup D2</mat-chip>
-                <mat-chip disabled>4 July, 2030</mat-chip>
+                <mat-chip disabled style="width: auto;">Event : BANGSAEN</mat-chip>
+                <mat-chip disabled style="width: auto;">Category : Test Session</mat-chip>
+                <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
 
             </div>
           </mat-chip-set>
         </div>
       </div>
-    } @else {
+    }@else if (isSettingLogger$ | async) {
+      <span>Data Logger</span>
+
+      <div class="container">
+        <div class="row w-100">
+          <mat-chip-set aria-label="Fish selection">
+            <div class="col-6">
+
+                <mat-chip disabled style="width: auto;">Event : BANGSAEN</mat-chip>
+                <mat-chip disabled style="width: auto;">Category : Test Session(Pickup Class A)</mat-chip>
+                <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
+
+            </div>
+          </mat-chip-set>
+        </div>
+      </div>
+    } @else if (isRace$ | async) {
+      <span>Data Logger</span>
+
+      <div class="container">
+        <div class="row w-100">
+          <mat-chip-set aria-label="Fish selection">
+            <div class="col-6">
+
+                <mat-chip disabled style="width: auto;">Event : BANGSAEN</mat-chip>
+                <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
+
+            </div>
+          </mat-chip-set>
+        </div>
+      </div>
+    }@else {
       <span>Data Logger</span>
     }
     <span class="example-spacer"></span>
@@ -59,12 +91,12 @@
         </div>
       </button>
 
-      <button (click)="drawer.toggle(); navigateToAddSeason('0ms','0ms')" mat-list-item >
+      <!-- <button (click)="drawer.toggle(); navigateToAddSeason('0ms','0ms')" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/dashboard.png"></div>
           <div class="col-10 pt-1">เพิ่มรายการ</div>
         </div>
-      </button>
+      </button> -->
 
       <button (click)="drawer.toggle(); navigateToListSettingLogger()" mat-list-item >
         <div class="row">

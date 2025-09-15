@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, map, Observable } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
@@ -20,6 +20,7 @@ export interface ApiLoggerData {
   car_number: string;
   first_name: string;
   last_name: string;
+  class_type: string;
 }
 
 export interface ApiEventResponse {
@@ -175,9 +176,18 @@ export class EventService {
     );
   }
 // --------- Logger -------------------------------
-    getLogger(): Observable<LoggerModel[]> {
+    getLogger(classType?: string | string[]): Observable<LoggerModel[]> {
+
+      let params = new HttpParams();
+      if (Array.isArray(classType)) {
+        // ส่งหลายค่า: /loggers?class_type=a&class_type=b
+        classType.forEach(v => params = params.append('class_type', v));
+      } else if (classType) {
+        // ส่งค่าเดียว: /loggers?class_type=a
+        params = params.set('class_type', classType);
+      }
       const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS);
-      return this.http.get<ApiLoggerResponse>(loggersUrl).pipe(
+      return this.http.get<ApiLoggerResponse>(loggersUrl, { params }).pipe(
         map(response => {
           // Map API data to Match interface
           this.loggerList = response.data.map((apiData) => ({

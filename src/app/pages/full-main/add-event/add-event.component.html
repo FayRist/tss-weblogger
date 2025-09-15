@@ -1,7 +1,7 @@
 <h2 mat-dialog-title>เพิ่ม {{ NameTab }}</h2>
 <mat-dialog-content>
-    <mat-tab-group animationDuration="0ms" (selectedTabChange)="changeName($event)">
-      <mat-tab label="เพิ่ม รายการ">
+  <!-- <mat-tab-group animationDuration="0ms" (selectedTabChange)="changeName($event)"> -->
+      <!-- <mat-tab label="เพิ่ม รายการ">
         <div class="card card-bg-transparen">
           <div class="card-body bg-transparen">
 
@@ -26,19 +26,19 @@
             </div>
           </div>
         </div>
-      </mat-tab>
-      <mat-tab label="เพิ่ม Event">
+      </mat-tab> -->
+      <!-- <mat-tab label="เพิ่ม Event"> -->
+        @if (NameTab == 'Event') {
         <div class="card card-bg-transparen">
           <!-- <div class="card-header">
           </div> -->
           <div class="card-body">
 
-            <div class="row">
+            <!-- <div class="row">
               <div class="col-12">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                     <mat-label>เลือก รายการ</mat-label>
-                    <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
                       <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
                         @for (season of seasonList; track season) {
                           <mat-option [value]="season.value">{{season.name}}</mat-option>
@@ -49,7 +49,7 @@
               </div>
             </div>
 
-            <hr style="margin: 0.3rem 0; color: #FFF;" >
+            <hr style="margin: 0.3rem 0; color: #FFF;" > -->
 
             <div class="row mt-3">
               <div class="col-6">
@@ -108,19 +108,20 @@
             </div>
           </div>
         </div>
-      </mat-tab>
-      <mat-tab label="เพิ่ม Race">
+        }
+      <!-- </mat-tab> -->
+      <!-- <mat-tab label="เพิ่ม Race"> -->
+        @if (NameTab == 'Race') {
         <div class="card card-bg-transparen">
           <!-- <div class="card-header">
           </div> -->
           <div class="card-body">
 
             <div class="row">
-              <div class="col-6">
+              <!-- <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                     <mat-label>เลือก รายการ</mat-label>
-                    <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
                       <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
                         @for (season of seasonList; track season) {
                           <mat-option [value]="season.value">{{season.name}}</mat-option>
@@ -128,12 +129,11 @@
                       </mat-select>
                   </mat-form-field>
                 </form>
-              </div>
-              <div class="col-6">
+              </div> -->
+              <div class="col-12">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                     <mat-label>เลือก Event</mat-label>
-                    <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
                       <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="eventId">
                         @for (events of eventList; track events) {
                           <mat-option [value]="events.value">{{events.name}}</mat-option>
@@ -147,16 +147,16 @@
             <hr style="margin: 0.3rem 0; color: #FFF;" >
 
             <div class="row mt-3">
-              <div class="col-6">
+              <!-- <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ Race</mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="raceName">
                   </mat-form-field>
                 </form>
-              </div>
+              </div> -->
 
-              <div class="col-3">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>รุ่น</mat-label>
@@ -168,7 +168,7 @@
                   </mat-form-field>
                 </form>
               </div>
-              <div class="col-3">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Class</mat-label>
@@ -289,8 +289,9 @@
             </div>
           </div>
         </div>
-      </mat-tab>
-  </mat-tab-group>
+        }
+      <!-- </mat-tab> -->
+  <!-- </mat-tab-group> -->
 </mat-dialog-content>
 
 <!-- <mat-dialog-actions>

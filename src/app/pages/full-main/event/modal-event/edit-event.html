@@ -1,16 +1,15 @@
-<h2 mat-dialog-title>แก้ไข Event</h2>
+<h2 mat-dialog-title>{{ typeModal }} Event</h2>
 <mat-dialog-content>
         <div class="card card-bg-transparen">
           <!-- <div class="card-header">
           </div> -->
           <div class="card-body">
 
-            <div class="row">
+            <!-- <div class="row">
               <div class="col-12">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                     <mat-label>เลือก รายการ</mat-label>
-                    <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
                       <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
                         @for (season of seasonList; track season) {
                           <mat-option [value]="season.value">{{season.name}}</mat-option>
@@ -21,7 +20,7 @@
               </div>
             </div>
 
-            <hr style="margin: 0.3rem 0; color: #FFF;" >
+            <hr style="margin: 0.3rem 0; color: #FFF;" > -->
 
             <div class="row mt-3">
               <div class="col-6">

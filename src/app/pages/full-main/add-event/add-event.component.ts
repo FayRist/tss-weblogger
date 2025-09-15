@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, model, OnInit, signal } from '@angular/core';
 import {
+  MAT_DIALOG_DATA,
   MatDialog,
   MatDialogActions,
   MatDialogClose,
@@ -20,6 +21,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
 import { ToastrService } from 'ngx-toastr';
 import { EventService } from '../../../service/event.service';
+import { RaceModel } from '../../../model/season-model';
 
 type SessionKey = 'practice' | 'testsession' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -159,6 +161,7 @@ export class AddEventComponent implements OnInit {
   ];
 
   readonly dialogRef = inject(MatDialogRef<AddEventComponent>);
+  readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
 
@@ -190,8 +193,13 @@ export class AddEventComponent implements OnInit {
   selectedSessions: SessionRow[] = [];
   constructor(private eventService: EventService, private toastr: ToastrService) {}
 
+    labels = [
+      // 'รายการแข่ง',
+      'Event',
+      'Race'];
   ngOnInit() {
-    this.NameTab = "รายการแข่ง";
+    // this.NameTab = this.labels[0];
+    this.NameTab = this.data.NameTab;
 
     this.selectedSessions = this.order.map(key => ({
       key,
@@ -205,8 +213,7 @@ export class AddEventComponent implements OnInit {
   }
 
   changeName(event: any) {
-    const labels = ['รายการแข่ง', 'Event', 'Race'];
-    this.NameTab = labels[event.index];
+    this.NameTab = this.labels[event.index];
   }
 
   readonly range = new FormGroup({

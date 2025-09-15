@@ -33,12 +33,26 @@ export class FullMainComponent implements OnInit {
 
   /** true เฉพาะเมื่อ URL เริ่มด้วย /pages/dashboard */
   isDashboard$: Observable<boolean>;
+  isRace$: Observable<boolean>;
+  isSettingLogger$: Observable<boolean>;
 
   constructor(private router: Router, private auth: AuthService) {
     this.isDashboard$ = this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
       map(() => this.router.url.startsWith('/pages/dashboard'))    // หรือจะใช้ regex ก็ได้
+    );
+
+    this.isRace$ = this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
+      map(() => this.router.url.startsWith('/pages/race'))    // หรือจะใช้ regex ก็ได้
+    );
+
+    this.isSettingLogger$ = this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
+      map(() => this.router.url.startsWith('/pages/setting-logger'))    // หรือจะใช้ regex ก็ได้
     );
   }
 
@@ -48,7 +62,8 @@ export class FullMainComponent implements OnInit {
   }
 
   navigateToDashboard() { this.router.navigate(['/pages', 'dashboard']); }
-  navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
+  // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
+  navigateToListAllSeason() { this.router.navigate(['/pages', 'event']); }
   navigateToListSettingLogger() { this.router.navigate(['/pages', 'setting-logger']); }
   navigateToLogout() { this.router.navigate(['/login']); }
 

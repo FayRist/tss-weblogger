@@ -115,7 +115,7 @@ export class SettingLoggerComponent implements OnInit {
 
   loadLogger(){
     this.allLoggers = []
-    const loggerData = this.eventService.getLogger().subscribe(
+    const loggerData = this.eventService.getLogger('PickupA').subscribe(
       loggerRes => {
         this.allLoggers = loggerRes;
       },

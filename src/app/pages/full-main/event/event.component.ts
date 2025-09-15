@@ -16,6 +16,7 @@ import { DateRangePipe } from '../../../utility/date-range.pipe';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 import { Subscription } from 'rxjs';
+import { AddEventComponent } from '../add-event/add-event.component';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -44,6 +45,20 @@ export class EventComponent implements OnInit {
       }];
   private subscriptions: Subscription[] = [];
 
+
+  mapsList: any[] = [
+    {
+      value:'bsc',
+      name:'Bangsaen Street Circuit, Thailand'
+    },{
+      value:'sic',
+      name:'Petronas Sepang International Circuit, Malaysia'
+    },{
+      value:'bric',
+      name:'Buriram International Circuit, Thailand'
+    },
+  ];
+
   constructor(private router: Router, private route: ActivatedRoute,
       private eventService: EventService, private toastr: ToastrService) {
   }
@@ -53,6 +68,12 @@ export class EventComponent implements OnInit {
     this.loadEvent();
 
   }
+
+  getCircuitName(value: string): string {
+    const found = this.mapsList.find(m => m.value === value);
+    return found ? found.name : value;
+  }
+
 
   loadEvent(){
     const eventData = this.eventService.getEvent().subscribe(
@@ -70,15 +91,20 @@ export class EventComponent implements OnInit {
   navigateToRace(){
     this.router.navigate(['/pages', 'race']);
   }
-  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any): void {
-    let arrayData = this.allEvent.filter(x => x.event_id == eventId);
+  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any = 0): void {
+    let arrayData: any[] = [];
+    if(eventId){
+      arrayData = this.allEvent.filter(x => x.event_id == eventId);
+    }
 
-    const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
+    const dialogRef = this.dialog.open(AddEventComponent, {
       width: "100vw",
       maxWidth: "750px",
       enterAnimationDuration,
       exitAnimationDuration,
-      data: {event_data: arrayData}
+      data: {event_data: arrayData,
+        NameTab: 'Event'
+      }
     });
 
     dialogRef.afterClosed().subscribe((updated: eventModel | undefined) => {
@@ -132,7 +158,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   seasonId: number = 0;
   dateSessionStart = new FormControl(new Date());
   dateSessionEnd = new FormControl(new Date());
-
+  typeModal: string = 'เพิ่ม';
 
   seasonList: any[] = [
     {
@@ -178,23 +204,33 @@ export class DialogAnimationsModalEdit implements OnInit {
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
 
   readonly range = new FormGroup({
-      start: new FormControl<Date | null>(this.data.event_data[0].eventStart),
-      end: new FormControl<Date | null>(this.data.event_data[0].eventEnd),
+      start: new FormControl<Date | null>(new Date()),
+      end: new FormControl<Date | null>(new Date()),
   });
 
   constructor() {
-
+    this.typeModal = 'เพิ่ม'
+    if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
+      this.range.patchValue({
+        start: this.data.event_data[0].eventStart,
+        end: this.data.event_data[0].eventEnd
+      });
+      this.typeModal = 'แก้ไข'
+    }
   }
 
   ngOnInit() {
-    console.log(this.data.event_data[0]);
-    this.eventId = this.data.event_data[0].eventId;
-    this.eventName = this.data.event_data[0].eventName;
-    this.circuitName = this.data.event_data[0].circuitName;
-    this.seasonId = this.data.event_data[0].seasonId;
+    if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
+      console.log(this.data.event_data[0]);
+      this.eventId = this.data.event_data[0].eventId;
+      this.eventName = this.data.event_data[0].eventName;
+      this.circuitName = this.data.event_data[0].circuitName;
+      this.seasonId = this.data.event_data[0].seasonId;
 
-    this.dateSessionStart = this.data.event_data[0].eventStart;
-    this.dateSessionEnd = this.data.event_data[0].eventEnd;
+      this.dateSessionStart = this.data.event_data[0].eventStart;
+      this.dateSessionEnd = this.data.event_data[0].eventEnd;
+
+    }
 
     this._locale.set('fr');
     this._adapter.setLocale(this._locale());

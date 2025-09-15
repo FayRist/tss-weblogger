@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>แก้ไข Race</h2>
+<h2 mat-dialog-title>{{ typeModal }} Race</h2>
 <mat-dialog-content>
         <div class="card card-bg-transparen">
           <!-- <div class="card-header">
@@ -6,11 +6,10 @@
           <div class="card-body">
 
             <div class="row">
-              <div class="col-6">
+              <!-- <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                     <mat-label>เลือก รายการ</mat-label>
-                    <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
                       <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
                         @for (seasons of seasonList; track seasons) {
                           <mat-option [value]="seasons.value">{{seasons.name}}</mat-option>
@@ -18,8 +17,8 @@
                       </mat-select>
                   </mat-form-field>
                 </form>
-              </div>
-              <div class="col-6">
+              </div> -->
+              <div class="col-12">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                     <mat-label>เลือก Event</mat-label>
@@ -37,16 +36,16 @@
             <hr style="margin: 0.3rem 0; color: #FFF;" >
 
             <div class="row mt-3">
-              <div class="col-6">
+              <!-- <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>ชื่อ Race</mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="raceName">
                   </mat-form-field>
                 </form>
-              </div>
+              </div> -->
 
-              <div class="col-3">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>รุ่น</mat-label>
@@ -58,7 +57,7 @@
                   </mat-form-field>
                 </form>
               </div>
-              <div class="col-3">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Class</mat-label>
@@ -71,7 +70,7 @@
                 </form>
               </div>
 
-              <div class="col-3">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Session</mat-label>
@@ -83,7 +82,7 @@
                   </mat-form-field>
                 </form>
               </div>
-              <div class="col-9">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                       <mat-label mat-label>วันที่เริ่ม - สิ้นสุด race</mat-label>
