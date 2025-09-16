@@ -15,8 +15,10 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MaterialModule } from '../../../material.module';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
-import { RaceModel } from '../../../model/season-model';
+import { optionModel, RaceModel } from '../../../model/season-model';
 import { AddEventComponent } from '../add-event/add-event.component';
+import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
+import { ToastrService } from 'ngx-toastr';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule, DatePipe],
@@ -26,69 +28,26 @@ import { AddEventComponent } from '../add-event/add-event.component';
 export class RaceComponent implements OnInit {
   readonly dialog = inject(MatDialog);
   allRace: RaceModel[] = [];
+  eventRes: optionModel[] = [];
   private subscriptions: Subscription[] = [];
+  CurrentEventId: any = null;
+  sessionList = SESSION_LIST;
+  raceSegment = RACE_SEGMENT;
+  classList = CLASS_LIST;
 
-  sessionList: any[] = [
-    {
-      value:'practice',
-      name:'Practice'
-    },{
-      value:'testsession',
-      name:'Test Session'
-    },{
-      value:'qualify',
-      name:'Qualifying'
-    },{
-      value:'race1',
-      name:'Race 1'
-    },{
-      value:'race2',
-      name:'Race 2'
-    },{
-      value:'race3',
-      name:'Race 3'
-    },{
-      value:'race4',
-      name:'Race 4'
-    },{
-      value:'race5',
-      name:'Race 5'
-    }
-  ];
-
-  raceSegment: any[] = [
-    {
-      value: 'pickup',
-      name:'Pickup'
-    },{
-      value: 'touring',
-      name:'Touring'
-    }
-  ];
-
-  classList: any[] = [
-    {
-      value: 'a',
-      name:'Class A'
-    },{
-      value: 'b',
-      name:'Class B'
-    },{
-      value: 'c',
-      name:'Class C'
-    },{
-      value: 'ab',
-      name:'Class A-B'
-    },{
-      value: 'overall',
-      name:'Over All'
-    },
-  ];
-
-  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService) {
+  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService, private toastr: ToastrService) {
 
   }
   ngOnInit() {
+    this.route.paramMap.subscribe(pm => {
+      const eventId = pm.get('eventId');        // string | null
+      if (eventId) {
+        // เรียก service where ด้วย raceId
+        this.loadRace(eventId);
+        this.CurrentEventId= eventId
+      }
+    });
+
     this.allRace = [
       {
         id_list: 1,
@@ -102,8 +61,24 @@ export class RaceComponent implements OnInit {
         session_end: new Date('6/9/2024 15:30:00'),
       }
     ];
-    this.loadRace();
+    this.loadDropDownEvent();
   }
+
+
+  loadDropDownEvent(){
+    const eventData = this.eventService.getDropDownEvent().subscribe(
+      eventReslist => {
+        this.eventRes = []
+        this.eventRes = eventReslist;
+      },
+      error => {
+        console.error('Error loading matchList:', error);
+      }
+    );
+    this.subscriptions.push(eventData);
+  }
+
+
   getSessionName(value: string): string {
     const found = this.sessionList.find(m => m.value === value);
     return found ? found.name : value;
@@ -117,8 +92,8 @@ export class RaceComponent implements OnInit {
     return found ? found.name : value;
   }
 
-  private loadRace(): void {
-    const RaceSub = this.eventService.getRace().subscribe(
+  private loadRace(eventId: any): void {
+    const RaceSub = this.eventService.getRace(eventId).subscribe(
       race => {
         this.allRace = race;
       },
@@ -131,11 +106,13 @@ export class RaceComponent implements OnInit {
     this.subscriptions.push(RaceSub);
   }
 
-  navigateToDashboard(raceId:number){
-    this.router.navigate(['/pages', 'dashboard']);
+  navigateToDashboard(raceId: number, classType: string) {
+    this.router.navigate(['/pages', 'dashboard'], {
+      queryParams: { raceId, class: classType }   // ➜ /pages/dashboard?raceId=10&class=c
+    });
   }
 
-  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number = 0): void {
+  openAdd(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number = 0): void {
     let arrayData: any[] = [];
     if(raceId){
       arrayData = this.allRace.filter(x => x.id_list == raceId);
@@ -146,6 +123,7 @@ export class RaceComponent implements OnInit {
       maxWidth: "750px",
       enterAnimationDuration,
       exitAnimationDuration,
+      autoFocus: false,
       data: {race_data: arrayData,
         NameTab: 'Race'
       }
@@ -160,6 +138,34 @@ export class RaceComponent implements OnInit {
           { ...this.allRace[idx], ...updated }, // merge field ที่แก้
           ...this.allRace.slice(idx + 1),
         ];
+      }
+      // this.loadRace();
+
+    });
+  }
+
+  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number = 0): void {
+    let arrayData: any[] = [];
+    if(raceId){
+      arrayData = this.allRace.filter(x => x.id_list == raceId);
+    }
+
+    const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
+      width: "100vw",
+      maxWidth: "750px",
+      enterAnimationDuration,
+      exitAnimationDuration,
+      data: {race_data: arrayData,
+        NameTab: 'Race',
+        eventRes: this.eventRes
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      // console.log('The dialog was closed');
+      if(result == 'success'){
+        this.toastr.success('แก้ไข Event เรียบร้อย')
+        this.loadRace(this.CurrentEventId);
       }
     });
   }
@@ -194,18 +200,20 @@ export class RaceComponent implements OnInit {
 })
 export class DialogAnimationsModalEdit implements OnInit {
 
+  sessionList = SESSION_LIST;
+  raceSegment = RACE_SEGMENT;
+  classList = CLASS_LIST;
+
   raceMatchId: number = 0;
-  // seasonId: number = 0;
-  // classValue: string = '';
-  // sessionValue: string = '';
-  // eventName: string = '';
-  // segmentValue: string = '';
+  seasonId: number = 0;
+  eventId: number = 0;
+  classValue: string = '';
+  sessionValue: string = '';
+  eventName: string = '';
+  segmentValue: string = '';
   raceName: string = '';
-  eventList: any[] = [
-    {
-      value: 1,
-      name:'TSS Bangsaen Grand Prix 2025'
-    },
+  eventList: optionModel[] = [
+
   ];
 
   seasonList: any[] = [
@@ -215,124 +223,83 @@ export class DialogAnimationsModalEdit implements OnInit {
     },
   ];
 
-  sessionList: any[] = [
-    {
-      value:'Free Practice',
-      name:'freepractice'
-    },{
-      value:'qualify',
-      name:'Qualifying'
-    },{
-      value:'race1',
-      name:'Race 1'
-    },{
-      value:'race2',
-      name:'Race 2'
-    },{
-      value:'race3',
-      name:'Race 3'
-    },{
-      value:'race4',
-      name:'Race 4'
-    },{
-      value:'race5',
-      name:'Race 5'
-    }
-  ];
-
-  raceSegment: any[] = [
-    {
-      value: 'pickup',
-      name:'Pickup'
-    },{
-      value: 'touring',
-      name:'Touring'
-    }
-  ];
-
-  classList: any[] = [
-    {
-      value: 'a',
-      name:'Class A'
-    },{
-      value: 'b',
-      name:'Class B'
-    },{
-      value: 'c',
-      name:'Class C'
-    },{
-      value: 'ab',
-      name:'Class A-B'
-    },{
-      value: 'overall',
-      name:'Over All'
-    },
-  ];
   typeModal: string = 'เพิ่ม';
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalEdit>);
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
   readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
-
-  constructor() {
-    this.typeModal = 'เพิ่ม'
-    if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
-      this.range.patchValue({
-        start: this.data.race_data[0].raceStart,
-        end: this.data.race_data[0].raceEnd
-      });
-      this.typeModal = 'แก้ไข'
-    }
-  }
+  private subscriptions: Subscription[] = [];
 
   readonly range = new FormGroup({
       start: new FormControl<Date | null>(new Date()),
       end: new FormControl<Date | null>(new Date()),
   });
 
-  eventId = new FormControl(null);
-  seasonId = new FormControl(null);
-  classValue = new FormControl(null);
-  sessionValue = new FormControl(null);
-  eventName = new FormControl(null);
-  segmentValue = new FormControl(null);
+  constructor(private eventService: EventService, private toastr: ToastrService) {
+    this.eventList = this.eventService.eventOption;
+    this.typeModal = 'เพิ่ม'
+    if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
+      this.range.patchValue({
+        start: this.data.race_data[0].session_start,
+        end: this.data.race_data[0].session_end
+      });
+      this.typeModal = 'แก้ไข'
+    }
+  }
+
+  // eventId = new FormControl(null);
+  // seasonId = new FormControl(null);
+  // classValue = new FormControl(null);
+  // sessionValue = new FormControl(null);
+  // eventName = new FormControl(null);
+  // segmentValue = new FormControl(null);
 
   ngOnInit() {
     if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
       console.log(this.data.race_data[0]);
-      this.raceMatchId  = this.data.race_data[0].raceMatchId
-      this.seasonId  = this.data.race_data[0].seasonId
-      this.eventId = this.data.race_data[0].eventId;
-      this.classValue = this.data.race_data[0].raceClass;
-      this.sessionValue = this.data.race_data[0].raceSession;
-      this.segmentValue = this.data.race_data[0].raceSegment;
-      this.eventName = this.data.race_data[0].eventId;
-      this.raceName = this.data.race_data[0].raceName;
+      // this.eventList = this.data.race_data[0].eventRes // drop Down
+
+      this.raceMatchId  = this.data.race_data[0].id_list
+      // this.seasonId  = this.data.race_data[0].seasonId
+      this.eventId = this.data.race_data[0].event_id.toString();
+      this.classValue = this.data.race_data[0].class_value;
+      this.sessionValue = this.data.race_data[0].session_value;
+      this.segmentValue = this.data.race_data[0].segment_value;
+      this.raceName = this.data.race_data[0].race_name;
     }
     // this.dateSessionStart = this.data.race_data[0].eventStart;
     // this.dateSessionEnd = this.data.race_data[0].eventEnd;
 
-    this._locale.set('fr');
+    this._locale.set('en');
     this._adapter.setLocale(this._locale());
     // this.updateCloseButtonLabel('Fermer le calendrier');
-
 
   }
 
   onSubmit(): void {
-    let submit = {
-      "raceMatchId": this.raceMatchId,
-      "raceName": this.raceName,
-      "eventId": this.eventId,
-      "seasonId": this.seasonId,
-      "raceSegment": this.raceSegment,
-      "raceSession": this.sessionValue,
-      "raceClass": this.classValue,
-      "raceStart": this.range.controls.start.value,
-      "raceEnd": this.range.controls.end.value,
+    let payload = {
+      id_list: this.raceMatchId,
+      race_name: '',
+      event_id: Number(this.eventId),
+      // seasonId: this.seasonId,
+      segment_value: this.segmentValue,
+      session_value: this.sessionValue,
+      class_value: this.classValue,
+      session_start: this.range.controls.start.value,
+      session_end: this.range.controls.end.value,
     }
-    this.dialogRef.close(submit);
+
+    this.eventService.updateRace(payload).subscribe(
+      response => {
+        console.log('Race added/updated successfully:', response);
+        this.dialogRef.close('success');
+      },
+      error => {
+        console.error('Error adding/updating Race:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Race');
+      }
+    );
   }
 }
 
@@ -340,7 +307,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   selector: 'dialog-animations-race-dialog',
   templateUrl: './modal-race/delete-race.html',
   styleUrl: './race.component.scss',
-  imports: [MatButtonModule, MatDialogActions, MatDialogClose,
+  imports: [MatButtonModule, MatDialogContent, MatDialogClose,
     MatDialogTitle, MatTabsModule,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
     MatDatepickerModule, MatCheckboxModule, MatRadioModule],
@@ -348,16 +315,36 @@ export class DialogAnimationsModalEdit implements OnInit {
 })
 export class DialogAnimationsRaceModalDelete {
   raceMatchId: number = 0;
+  raceName: String = '';
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsRaceModalDelete>);
     readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
+
+  constructor(private eventService: EventService, private toastr: ToastrService) {}
+
   ngOnInit() {
     console.log(this.data.race_id);
     this.raceMatchId = this.data.race_id;
+    this.raceMatchId = this.data.race_id;
   }
 
-  onSubmit(): void {
-    this.dialogRef.close(this.raceMatchId);
+  onDelete(): void {
+    const payload = {
+      raceMatchId: this.raceMatchId,
+      raceName: this.raceName,
+    }
+
+    this.eventService.deleteRace(payload).subscribe(
+        response => {
+          console.log('Event added/updated successfully:', response);
+          this.toastr.success(`ลบ รายการ ${this.raceName} สำเร็จ`);
+          this.dialogRef.close(this.raceMatchId);
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการ ลบ Logger');
+        }
+    );
   }
 }
 

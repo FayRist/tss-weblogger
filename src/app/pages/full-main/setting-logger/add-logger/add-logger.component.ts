@@ -61,16 +61,15 @@ export class AddLoggerComponent implements OnInit {
     const file = input.files && input.files[0];
     if (!file) return;
 
-    // ตรวจนามสกุล/ MIME type
+    // ตรวจไฟล์
     const validExt = /\.(xlsx|xls)$/i.test(file.name);
-    const validMime =
-      [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-      ].includes(file.type) || file.type === '';
+    const validMime = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ].includes(file.type) || file.type === '';
     if (!validExt && !validMime) {
       this.error = 'รองรับเฉพาะไฟล์ Excel (.xlsx หรือ .xls)';
-      (evt.target as HTMLInputElement).value = '';
+      input.value = '';
       return;
     }
 
@@ -86,65 +85,80 @@ export class AddLoggerComponent implements OnInit {
         }
 
         const ws = wb.Sheets[firstSheetName];
-        // อ่านเป็นอ็อบเจกต์ โดยใช้แถวแรกเป็น header
         const raw = XLSX.utils.sheet_to_json<Record<string, any>>(ws, {
-          defval: '', // ค่าดีฟอลต์ถ้าเซลล์ว่าง
+          defval: '',
           raw: true,
         });
-
         if (!raw.length) {
           this.error = 'ไฟล์ว่าง หรือไม่พบข้อมูล';
           return;
         }
 
-        // ตรวจว่ามีคอลัมน์ที่ต้องการครบหรือไม่ (ไม่สนตัวพิมพ์เล็กใหญ่/ช่องว่าง)
-        const required = ['logger', 'nbr', 'firstname', 'lastname', 'class'];
-        const normalize = (s: string) => s?.toString().trim().toLowerCase();
+        // ====== เฉพาะ ANGULAR: alias mapping สำหรับหัวตาราง ======
+        type Canon = 'logger' | 'nbr' | 'firstname' | 'lastname' | 'class' | 'team';
+        const REQUIRED: Canon[] = ['logger', 'nbr', 'firstname', 'lastname', 'class']; // team ไม่บังคับ
 
-        // แผนที่ชื่อ header เดิม -> ชื่อมาตรฐาน
-        const headerMap = new Map<string, string>();
-        Object.keys(raw[0]).forEach((k) => {
-          const nk = normalize(k);
-          if (required.includes(nk)) headerMap.set(k, nk);
+        const normalize = (s: string) =>
+          s?.toString().trim().toLowerCase().replace(/\s+/g, '');
+
+        // alias ตามไฟล์จริงของคุณ
+        const ALIASES: Record<Canon, string[]> = {
+          logger:     ['logger', 'loggerid', 'logger_id'],
+          nbr:        ['number', 'nbr', 'no', '#'],       // ไฟล์ใช้ "Number"
+          firstname:  ['name', 'firstname'],              // ไฟล์ใช้ "Name"
+          lastname:   ['surname', 'lastname'],            // ไฟล์ใช้ "Surname"
+          class:      ['class', 'classtype', 'category'], // ไฟล์ใช้ "Class"
+          team:       ['team'],                           // optional
+        };
+
+        // map: headerเดิม -> canonical
+        const sample = raw[0];
+        const headerToCanon = new Map<string, Canon>();
+        Object.keys(sample).forEach((orig) => {
+          const nk = normalize(orig);
+          for (const canon of Object.keys(ALIASES) as Canon[]) {
+            if (ALIASES[canon].some(a => normalize(a) === nk)) {
+              headerToCanon.set(orig, canon);
+              break;
+            }
+          }
         });
 
-        const hasAllHeaders =
-          required.every((req) =>
-            Array.from(headerMap.values()).includes(req)
-          );
-
-        if (!hasAllHeaders) {
+        // เช็คว่าครบทุกฟิลด์ที่ต้องการ
+        const found = new Set<Canon>(Array.from(headerToCanon.values()));
+        const missing = REQUIRED.filter(k => !found.has(k));
+        if (missing.length) {
           this.error =
-            'รูปแบบคอลัมน์ไม่ถูกต้อง ต้องมีคอลัมน์: logger, nbr, firstname, lastname (แถวแรกเป็น header)';
+            'รูปแบบคอลัมน์ไม่ถูกต้อง ต้องมี: logger, Number/Name/Surname, Class (รองรับ alias ได้)';
           return;
         }
 
-        // แปลงทุกแถวเป็นรูปแบบ ExcelRow (ข้ามแถวที่ว่างทั้งหมด)
+        // helper: ดึงค่าตาม canonical
+        const getByCanon = (row: Record<string, any>, canon: Canon) => {
+          const entry = Array.from(headerToCanon.entries()).find(([, v]) => v === canon);
+          if (!entry) return '';
+          const [origKey] = entry;
+          return row[origKey];
+        };
+
+        // พาร์สเป็นแถวที่เราต้องการ
         const parsed: ExcelRow[] = raw
-          .map((row) => {
-            const get = (key: string) => {
-              // หา key ดั้งเดิมที่แม็ปมาที่ชื่อมาตรฐาน "key"
-              const sourceKey = [...headerMap.entries()].find(
-                ([, std]) => std === key
-              )?.[0];
-              return sourceKey ? row[sourceKey] : '';
-            };
+        .map((row) => {
+          const nbrRaw = getByCanon(row, 'nbr');
+          const nbrNum = Number(nbrRaw);
+          const rec: ExcelRow = {
+            logger: (getByCanon(row, 'logger') ?? '').toString().trim(),
+            nbr: Number.isFinite(nbrNum) ? nbrNum : (nbrRaw ?? '').toString().trim(),
+            firstname: (getByCanon(row, 'firstname') ?? '').toString().trim(),
+            lastname: (getByCanon(row, 'lastname') ?? '').toString().trim(),
+            class: (getByCanon(row, 'class') ?? '').toString().trim(),
+            // team: (getByCanon(row, 'team') ?? '').toString().trim(), // ถ้าอยากเก็บทีมด้วย ให้เติมใน interface ด้วย
+          };
 
-            const rec: ExcelRow = {
-              logger: (get('logger') ?? '').toString().trim(),
-              nbr: get('nbr') ?? '',
-              firstname: (get('firstname') ?? '').toString().trim(),
-              lastname: (get('lastname') ?? '').toString().trim(),
-              class: (get('class') ?? '').toString().trim(),
-            };
-
-
-            // ข้ามถ้าทั้งแถวว่าง
-            const allEmpty =
-              !rec.logger && !rec.nbr && !rec.firstname && !rec.lastname;
-            return allEmpty ? null : rec;
-          })
-          .filter((r): r is ExcelRow => !!r);
+          const empty = !rec.logger && !rec.nbr && !rec.firstname && !rec.lastname && !rec.class;
+          return empty ? null : rec;
+        })
+        .filter((r): r is ExcelRow => !!r);
 
         if (!parsed.length) {
           this.error = 'ไม่พบข้อมูลที่ใช้งานได้ในไฟล์';
@@ -152,7 +166,7 @@ export class AddLoggerComponent implements OnInit {
         }
 
         this.rowsExcel = parsed;
-      } catch (e: any) {
+      } catch (e) {
         console.error(e);
         this.error = 'ไม่สามารถอ่านไฟล์ได้ กรุณาตรวจสอบรูปแบบไฟล์';
       }
@@ -163,6 +177,7 @@ export class AddLoggerComponent implements OnInit {
 
     reader.readAsArrayBuffer(file);
   }
+
 
   submitAllLoggers(){
     const payload: any[] = this.rowsExcel.map(r => ({

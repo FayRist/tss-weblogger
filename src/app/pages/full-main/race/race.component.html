@@ -18,7 +18,7 @@
             <th class="text-center">Class</th>
             <th class="text-center">วันที่เริ่มแข่ง</th>
             <th class="text-center">
-              <button type="button" class="btn btn-secondary w-100" (click)="openEdit('0ms', '0ms')">เพิ่ม รายการแข่ง</button>
+              <button type="button" class="btn btn-secondary w-100" (click)="openAdd('0ms', '0ms')">เพิ่ม รายการแข่ง</button>
             </th>
           </tr>
         </thead>
@@ -26,16 +26,16 @@
         @for (raceData of allRace; track raceData) {
           <tr>
             <!-- <td class="text-center">{{raceData.category_name}}</td> -->
-            <td class="text-center w-25" (click)="navigateToDashboard(raceData.id_list)">
+            <td class="text-center w-25" (click)="navigateToDashboard(raceData.id_list, (raceData.segment_value + raceData.class_value))">
               {{ getSessionName(raceData.session_value) }}
             </td>
-            <td class="text-center" (click)="navigateToDashboard(raceData.id_list)">
+            <td class="text-center" >
               {{ getRaceSegmentName(raceData.segment_value) }}
             </td>
-            <td class="text-center" (click)="navigateToDashboard(raceData.id_list)">
+            <td class="text-center" >
               {{ getClassName(raceData.class_value) }}
             </td>
-            <td class="text-center w-25" (click)="navigateToDashboard(raceData.id_list)">
+            <td class="text-center w-25" >
               {{ raceData.session_start| date:'dd/MM/yyyy HH:mm' }}
             <td class="text-center">
               <div class="row d-flex justify-content-center">

@@ -2,72 +2,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, map, Observable } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
-import { eventModel, LoggerModel, RaceModel, SeasonalModel } from '../model/season-model';
+import { eventModel, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-
-
-// API Response interface for loggers
-export interface ApiLoggerResponse {
-  count: number;
-  data: ApiLoggerData[];
-  success: boolean;
-}
-
-export interface ApiLoggerData {
-  id: number;
-  logger_id: string;
-  car_number: string;
-  first_name: string;
-  last_name: string;
-  class_type: string;
-}
-
-export interface ApiEventResponse {
-  count: number;
-  data: ApiEventData[];
-  success: boolean;
-}
-
-export interface ApiEventData {
-  event_id: number;
-  season_id: number;
-  event_name: string;
-  circuit_name: string;
-  event_start: Date;
-  event_end: Date;
-}
-
-
-export interface ApiSeasonResponse {
-  count: number;
-  data: ApiSeasonData[];
-  success: boolean;
-}
-
-export interface ApiSeasonData {
-  season_id: number;
-  season_name: string;
-  created_at: Date;
-}
-
-export interface ApiRaceResponse {
-  count: number;
-  data: ApiRaceData[];
-  success: boolean;
-}
-
-export interface ApiRaceData {
-  id_list: number;
-  event_id: number;
-  season_id: number;
-  category_name: string;
-  class_value: string;
-  segment_value: string;
-  session_value: string;
-  session_start: Date;
-  session_end: Date;
-}
+import { ApiDropDownResponse, ApiEventResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse } from '../model/api-response-model';
 
 @Injectable({
   providedIn: 'root'
@@ -77,6 +15,7 @@ export class EventService {
   private seasonalList: SeasonalModel[] = [];
   private raceList: RaceModel[] = [];
   private eventList: eventModel[] = [];
+  public eventOption: optionModel[] = [];
   constructor(private http: HttpClient) {  }
 
   // --------- Event -------------------------------------------------------
@@ -97,6 +36,21 @@ export class EventService {
         })
       );
   }
+
+  getDropDownEvent(): Observable<optionModel[]> {
+    const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.EVENT_DROPDOWN);
+      return this.http.get<ApiDropDownResponse>(seasonURL).pipe(
+        map(response => {
+          // Map API data to Match interface
+          this.eventOption = response.data.map((apiData) => ({
+              name: apiData.name,
+              value: apiData.value,
+          }));
+          return this.eventOption;
+        })
+      );
+  }
+
   addNewEvent(addEvent: eventPayLoad): Observable<unknown> {
     const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_EVENT);
     return this.http.post(eventUrl, addEvent).pipe(
@@ -110,12 +64,46 @@ export class EventService {
       })
     );
   }
+
+  updateEditEvent(editEvent: any): Observable<unknown> {
+      const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_EVENT);
+      return this.http.post(eventUrl, editEvent).pipe(
+        map(response => {
+          console.log('Event added/updated successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error adding/updating Event:', error);
+          throw error;
+        })
+      );
+    }
+
+  deleteEvent(eventID: any): Observable<unknown> {
+    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_EVENT);
+    return this.http.post(eventUrl, eventID).pipe(
+      map(response => {
+        console.log('Event Delete successfully:', response);
+        return response;
+      }),
+      catchError(error => {
+        console.error('Error Delete Event:', error);
+        throw error;
+      })
+    );
+  }
+
   // ------------Race-----------------------------
 
-  getRace(): Observable<RaceModel[]> {
-    const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_RACE);
-      return this.http.get<ApiRaceResponse>(seasonURL).pipe(
-        map(response => {
+  getRace(eventId: any): Observable<RaceModel[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_RACE);
+    let params = new HttpParams();
+    if (eventId != null) {
+      params = params.set('eventId', eventId.toString());
+    }
+
+    return this.http.get<ApiRaceResponse>(url, { params }).pipe(
+          map(response => {
           // Map API data to Match interface
 
           this.raceList = response.data.map((apiData) => ({
@@ -133,6 +121,7 @@ export class EventService {
         })
       );
   }
+
   addNewRace(addEvent: RaceModel[]): Observable<unknown> {
     const raceUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_RACE);
     return this.http.post(raceUrl, addEvent).pipe(
@@ -142,6 +131,34 @@ export class EventService {
       }),
       catchError(error => {
         console.error('Error adding Event:', error);
+        throw error;
+      })
+    );
+  }
+
+  updateRace(editRace: any): Observable<unknown> {
+      const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_RACE);
+      return this.http.post(eventUrl, editRace).pipe(
+        map(response => {
+          console.log('Race added/updated successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Race adding/updating Event:', error);
+          throw error;
+        })
+      );
+    }
+
+  deleteRace(eventID: any): Observable<unknown> {
+    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_RACE);
+    return this.http.post(eventUrl, eventID).pipe(
+      map(response => {
+        console.log('Event Delete successfully:', response);
+        return response;
+      }),
+      catchError(error => {
+        console.error('Error Delete Event:', error);
         throw error;
       })
     );

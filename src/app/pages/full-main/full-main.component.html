@@ -61,9 +61,9 @@
     </button>
     <mat-menu #profileMenu="matMenu">
       <button mat-menu-item disabled>
-        Logged in as: {{ (userName$ | async) || '-' }}
+        Username: {{ (userName$ | async) || '-' }}
       </button>
-      <button mat-menu-item (click)="logout()">Logout</button>
+      <button mat-menu-item (click)="logout()" class="text-center">Logout</button>
     </mat-menu>
   </ng-container>
 </mat-toolbar>

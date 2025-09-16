@@ -4,8 +4,12 @@
 <!-- <mat-dialog-content>
   Would you like to delete cat.jpeg?
 </mat-dialog-content> -->
-<mat-dialog-actions >
-  <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
-  <button type="button" class="btn btn-success" (click)="onSubmit()"  matButton mat-dialog-close cdkFocusInitial>ยืนยัน</button>
-</mat-dialog-actions>
+<mat-dialog-content>
+    <div class="row">
+      <div class="col-12 d-flex justify-content-center mt-2">
+        <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
+        <button type="button" class="btn btn-success" (click)="onDelete()"  matButton mat-dialog-close cdkFocusInitial>ยืนยัน</button>
+      </div>
+    </div>
+</mat-dialog-content>
 

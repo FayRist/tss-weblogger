@@ -24,6 +24,13 @@ export interface eventModel {
   event_end: Date;
 }
 
+export interface optionModel {
+  value: string;
+  name: string;
+}
+
+
+
 
 export interface LoggerModel {
   id: number;

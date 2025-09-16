@@ -17,6 +17,7 @@ import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 import { Subscription } from 'rxjs';
 import { AddEventComponent } from '../add-event/add-event.component';
+import { MAPS_LIST } from '../../../constants/race-data';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -34,6 +35,8 @@ interface SessionRow {
   styleUrl: './event.component.scss'
 })
 export class EventComponent implements OnInit {
+  mapsList = MAPS_LIST;
+
   readonly dialog = inject(MatDialog);
   allEvent: eventModel[] = [{
         event_id: 1,
@@ -45,19 +48,6 @@ export class EventComponent implements OnInit {
       }];
   private subscriptions: Subscription[] = [];
 
-
-  mapsList: any[] = [
-    {
-      value:'bsc',
-      name:'Bangsaen Street Circuit, Thailand'
-    },{
-      value:'sic',
-      name:'Petronas Sepang International Circuit, Malaysia'
-    },{
-      value:'bric',
-      name:'Buriram International Circuit, Thailand'
-    },
-  ];
 
   constructor(private router: Router, private route: ActivatedRoute,
       private eventService: EventService, private toastr: ToastrService) {
@@ -88,10 +78,11 @@ export class EventComponent implements OnInit {
     this.subscriptions.push(eventData);
   }
 
-  navigateToRace(){
-    this.router.navigate(['/pages', 'race']);
+  navigateToRace(eventId: number) {
+    this.router.navigate(['/pages', 'race', eventId]);
   }
-  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any = 0): void {
+
+  openAdd(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any = 0): void {
     let arrayData: any[] = [];
     if(eventId){
       arrayData = this.allEvent.filter(x => x.event_id == eventId);
@@ -118,16 +109,57 @@ export class EventComponent implements OnInit {
           ...this.allEvent.slice(idx + 1),
         ];
       }
+      this.loadEvent();
     });
   }
 
+  openEdit(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any = 0): void {
+    let arrayData: any[] = [];
+    if(eventId){
+      arrayData = this.allEvent.filter(x => x.event_id == eventId);
+    }
+
+    const dialogRef = this.dialog.open(DialogAnimationsModalEdit, {
+      width: "100vw",
+      maxWidth: "750px",
+      enterAnimationDuration,
+      exitAnimationDuration,
+      data: {event_data: arrayData,
+        NameTab: 'Event'
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      // console.log('The dialog was closed');
+      if(result == 'success'){
+        this.toastr.success('แก้ไข Event เรียบร้อย')
+        this.loadEvent();
+      }
+    });
+
+    // dialogRef.afterClosed().subscribe((updated: eventModel | undefined) => {
+    //   if (!updated) return; // กดยกเลิก
+    //   // อัปเดต allEvent แบบ immutable (เหมาะกับ OnPush)
+    //   const idx = this.allEvent.findIndex(e => e.event_id === updated.event_id);
+    //   if (idx > -1) {
+    //     this.allEvent = [
+    //       ...this.allEvent.slice(0, idx),
+    //       { ...this.allEvent[idx], ...updated }, // merge field ที่แก้
+    //       ...this.allEvent.slice(idx + 1),
+    //     ];
+    //   }
+    //   this.loadEvent();
+    // });
+  }
+
   openDelete(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any): void {
+    let arrayData = this.allEvent.filter(x => x.event_id == eventId);
     const dialogRef = this.dialog.open(DialogAnimationsModalDelete, {
       width: "100vw",
       maxWidth: "350px",
       enterAnimationDuration,
       exitAnimationDuration,
-      data: {event_id: eventId}
+      data: {event_id: eventId, event_name: arrayData[0].event_name}
     });
 
     dialogRef.afterClosed().subscribe(result => {
@@ -151,6 +183,7 @@ export class EventComponent implements OnInit {
 })
 
 export class DialogAnimationsModalEdit implements OnInit {
+  mapsList = MAPS_LIST;
 
   eventName: string = '';
   eventId: number = 0;
@@ -170,18 +203,7 @@ export class DialogAnimationsModalEdit implements OnInit {
     },
   ];
 
-  mapsList: any[] = [
-    {
-      value:'bsc',
-      name:'Bangsaen Street Circuit, Thailand'
-    },{
-      value:'sic',
-      name:'Petronas Sepang International Circuit, Malaysia'
-    },{
-      value:'bric',
-      name:'Buriram International Circuit, Thailand'
-    },
-  ];
+
   // mapsList: string[] = ['Extra cheese', 'Mushroom', 'Onion', 'Pepperoni', 'Sausage', 'Tomato'];
 
   private order: SessionKey[] = [
@@ -208,12 +230,13 @@ export class DialogAnimationsModalEdit implements OnInit {
       end: new FormControl<Date | null>(new Date()),
   });
 
-  constructor() {
+
+  constructor(private eventService: EventService, private toastr: ToastrService) {
     this.typeModal = 'เพิ่ม'
     if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
       this.range.patchValue({
-        start: this.data.event_data[0].eventStart,
-        end: this.data.event_data[0].eventEnd
+        start: this.data.event_data[0].event_start,
+        end: this.data.event_data[0].event_end
       });
       this.typeModal = 'แก้ไข'
     }
@@ -222,30 +245,39 @@ export class DialogAnimationsModalEdit implements OnInit {
   ngOnInit() {
     if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
       console.log(this.data.event_data[0]);
-      this.eventId = this.data.event_data[0].eventId;
-      this.eventName = this.data.event_data[0].eventName;
-      this.circuitName = this.data.event_data[0].circuitName;
-      this.seasonId = this.data.event_data[0].seasonId;
+      this.eventId = this.data.event_data[0].event_id;
+      this.eventName = this.data.event_data[0].event_name;
+      this.circuitName = this.data.event_data[0].circuit_name;
+      // this.seasonId = this.data.event_data[0].season_id;
 
-      this.dateSessionStart = this.data.event_data[0].eventStart;
-      this.dateSessionEnd = this.data.event_data[0].eventEnd;
+      this.dateSessionStart = this.data.event_data[0].event_start;
+      this.dateSessionEnd = this.data.event_data[0].event_end;
 
     }
 
-    this._locale.set('fr');
+    this._locale.set('en');
     this._adapter.setLocale(this._locale());
   }
 
-  onNoClick(): void {
-    let submit = {
-      "eventName": this.eventName,
-      "eventId": this.eventId,
-      "circuitName": this.circuitName,
-      "seasonId": this.seasonId,
-      "dateSessionStart": this.range.controls.start,
-      "dateSessionEnd": this.range.controls.end,
+  onSubmitEvent(): void {
+    let payload = {
+      event_name: this.eventName,
+      event_id: this.eventId,
+      circuit_name: this.circuitName,
+      event_start: this.range.controls.start.value,
+      event_end: this.range.controls.end.value,
     }
-    this.dialogRef.close(submit);
+
+    this.eventService.updateEditEvent(payload).subscribe(
+      response => {
+        console.log('Event added/updated successfully:', response);
+        this.dialogRef.close('success');
+      },
+      error => {
+        console.error('Error adding/updating Event:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Event');
+      }
+    );
   }
 }
 
@@ -253,7 +285,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   selector: 'dialog-animations-example-dialog',
   templateUrl: './modal-event/delete-event.html',
   styleUrl: './event.component.scss',
-  imports: [MatButtonModule, MatDialogActions, MatDialogClose,
+  imports: [MatButtonModule, MatDialogContent, MatDialogClose,
     MatDialogTitle, MatTabsModule,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
     MatDatepickerModule, MatCheckboxModule, MatRadioModule],
@@ -262,17 +294,36 @@ export class DialogAnimationsModalEdit implements OnInit {
 export class DialogAnimationsModalDelete {
 
   eventId: string = ''
+  eventName: string = ''
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalDelete>);
   readonly data:any = inject<eventModel>(MAT_DIALOG_DATA);
 
+  constructor(private eventService: EventService, private toastr: ToastrService) {}
+
   ngOnInit() {
     console.log(this.data.event_id);
     this.eventId = this.data.event_id;
+    this.eventName = this.data.event_name;
   }
 
-  onSubmit(): void {
-    this.dialogRef.close(this.eventId);
+  onDelete(): void {
+    const payload = {
+      event_id : this.eventId,
+      event_name : this.eventName
+    }
+
+    this.eventService.deleteEvent(payload).subscribe(
+        response => {
+          console.log('Event added/updated successfully:', response);
+          this.toastr.success(`ลบ Logger ${this.eventId} สำเร็จ`);
+          this.dialogRef.close(this.eventId);
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการ ลบ Logger');
+        }
+    );
   }
 }
 

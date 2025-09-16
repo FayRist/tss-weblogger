@@ -21,7 +21,9 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
 import { ToastrService } from 'ngx-toastr';
 import { EventService } from '../../../service/event.service';
-import { RaceModel } from '../../../model/season-model';
+import { optionModel, RaceModel } from '../../../model/season-model';
+import { CLASS_LIST, MAPS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
+import { Subscription } from 'rxjs';
 
 type SessionKey = 'practice' | 'testsession' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -75,10 +77,14 @@ export class AddEventComponent implements OnInit {
   sessionValue = new FormControl(null);
   segmentValue = new FormControl(null);
 
+  sessionList = SESSION_LIST;
+  raceSegment = RACE_SEGMENT;
+  classList = CLASS_LIST;
+  mapsList = MAPS_LIST;
 
-  eventList: any[] = [
+  eventList: optionModel[] = [
     {
-      value: 6,
+      value: '6',
       name:'BANGSAEN'
     },
   ];
@@ -90,75 +96,7 @@ export class AddEventComponent implements OnInit {
     },
   ];
 
-  sessionList: any[] = [
-    {
-      value:'testsession',
-      name:'Test Session'
-    },{
-      value:'ractice',
-      name:'Practice'
-    },{
-      value:'qualify',
-      name:'Qualifying'
-    },{
-      value:'race1',
-      name:'Race 1'
-    },{
-      value:'race2',
-      name:'Race 2'
-    },{
-      value:'race3',
-      name:'Race 3'
-    },{
-      value:'race4',
-      name:'Race 4'
-    },{
-      value:'race5',
-      name:'Race 5'
-    }
-  ];
-
-  raceSegment: any[] = [
-    {
-      value: 'pickup',
-      name:'Pickup'
-    },{
-      value: 'touring',
-      name:'Touring'
-    }
-  ];
-
-  classList: any[] = [
-    {
-      value: 'a',
-      name:'Class A'
-    },{
-      value: 'b',
-      name:'Class B'
-    },{
-      value: 'c',
-      name:'Class C'
-    },{
-      value: 'ab',
-      name:'Class A-B'
-    },{
-      value: 'overall',
-      name:'Over All'
-    },
-  ];
-
-  mapsList: any[] = [
-    {
-      value:'bsc',
-      name:'Bangsaen Street Circuit, Thailand'
-    },{
-      value:'sic',
-      name:'Petronas Sepang International Circuit, Malaysia'
-    },{
-      value:'bric',
-      name:'Buriram International Circuit, Thailand'
-    },
-  ];
+  private subscriptions: Subscription[] = [];
 
   readonly dialogRef = inject(MatDialogRef<AddEventComponent>);
   readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
@@ -191,7 +129,8 @@ export class AddEventComponent implements OnInit {
 
    // แถวที่ใช้แสดงใน <tbody>
   selectedSessions: SessionRow[] = [];
-  constructor(private eventService: EventService, private toastr: ToastrService) {}
+  constructor(private eventService: EventService, private toastr: ToastrService) {
+  }
 
     labels = [
       // 'รายการแข่ง',
@@ -207,9 +146,25 @@ export class AddEventComponent implements OnInit {
       start: null,
       end:  null,
     }));
-    this._locale.set('fr');
+    this._locale.set('en');
     this._adapter.setLocale(this._locale());
+
     // this.updateCloseButtonLabel('Fermer le calendrier');
+    this.loadDropDownEvent();
+  }
+
+
+  loadDropDownEvent(){
+    const eventData = this.eventService.getDropDownEvent().subscribe(
+      eventRes => {
+        this.eventList = []
+        this.eventList = eventRes;
+      },
+      error => {
+        console.error('Error loading matchList:', error);
+      }
+    );
+    this.subscriptions.push(eventData);
   }
 
   changeName(event: any) {
@@ -342,8 +297,8 @@ export class AddEventComponent implements OnInit {
       let prePayload = {
         id_list: null,
         season_id: this.seasonId,
-        event_id: this.eventId,
-        category_name: this.raceName,
+        event_id: Number(this.eventId),
+        category_name: "",
         class_value: this.classValue,
         segment_value: this.segmentValue,
         session_value: element.key,

@@ -109,6 +109,8 @@ export class SettingLoggerComponent implements OnInit {
       // console.log('The dialog was closed');
       if(result == 'success'){
         this.loadLogger();
+        this.toastr.success('แก้ไข Logger เรียบร้อย')
+
       }
     });
   }

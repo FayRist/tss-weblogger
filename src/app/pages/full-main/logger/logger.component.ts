@@ -97,7 +97,7 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
   @ViewChild('select') select!: MatSelect;
   @ViewChild('chart') chart!: ChartComponent;
-
+  chartsReady = false;
 
   pointMap: PointDef[] = [
     { idMap:'bric', lat: 14.9635357, lon: 103.085812,   zoom: 16 },
@@ -231,20 +231,18 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
   }
 
   ngOnInit() {
-    this.chartFilter.valueChanges.pipe(startWith(this.chartFilter.value))
+    this.chartFilter.valueChanges
+      .pipe(startWith(this.chartFilter.value))
       .subscribe(values => {
         let v = (values ?? []) as SelectKey[];
-
-        // ถ้าเลือก "ทั้งหมด" → ใช้ทุกเส้นจริง แล้ว sync ค่าใน dropdown
         if (v.includes('all')) {
-          v = this.options.map(o => o.value); // type = ChartKey[]
+          v = this.options.map(o => o.value);
           this.chartFilter.setValue(v, { emitEvent: false });
         }
-
-        // กรอง 'all' ออกก่อนส่งเข้า series
-        const keys = v.filter(this.isChartKey); // type = ChartKey[]
-        this.selectedKeys = keys;
-        this.refreshDetail(); // หรือ applySeries()
+        this.selectedKeys = v.filter(this.isChartKey);
+        this.refreshDetail();
+        this.refreshBrush();
+        this.chartsReady = true; // ✅ พร้อมแล้ว
       });
   }
 
@@ -282,41 +280,69 @@ export class LoggerComponent implements OnInit , OnDestroy, AfterViewInit {
     this.refreshBrush();
   }
   // ---------- Helpers ----------
-  private refreshDetail() {
-    const series: ApexAxisChartSeries = this.selectedKeys.map((k) => {
-      const name = this.options.find(o => o.value === k)?.label ?? k;
-      const field = this.fieldMap[k];
-      // ใช้รูปแบบ {x: timestamp(ms), y: number}
-      const data = this.currentPoints.map(p => ({ x: p.ts, y: Number(p[field]) || null }));
-      return { name, data };
-    }) as ApexAxisChartSeries;
+  // private refreshDetail() {
+  //   const series: ApexAxisChartSeries = this.selectedKeys.map((k) => {
+  //     const name = this.options.find(o => o.value === k)?.label ?? k;
+  //     const field = this.fieldMap[k];
+  //     // ใช้รูปแบบ {x: timestamp(ms), y: number}
+  //     const data = this.currentPoints.map(p => ({ x: p.ts, y: Number(p[field]) || null }));
+  //     return { name, data };
+  //   }) as ApexAxisChartSeries;
 
-    this.detailOpts = { ...this.detailOpts, series };
+  //   this.detailOpts = { ...this.detailOpts, series };
+  // }
+
+  private buildSeries(keys: ChartKey[]): ApexAxisChartSeries {
+    if (!Array.isArray(this.currentPoints) || !this.currentPoints.length || !keys.length) {
+      return [];
+    }
+    return keys.map(k => {
+      const field = this.fieldMap[k];
+      const name  = this.options.find(o => o.value === k)?.label ?? k;
+      const data  = this.currentPoints.map(p => {
+        const y = Number(p[field]);
+        return { x: p.ts, y: isFinite(y) ? y : null }; // null ได้ แต่หลีกเลี่ยง undefined/NaN
+      });
+      return { name, data };
+    });
+  }
+
+
+  private refreshDetail(): void {
+    const series = this.buildSeries(this.selectedKeys);
+    if (!series.length) {
+      // เคลียร์แบบปลอดภัย (บางเวอร์ชันของ Apex ไม่ชอบ series = undefined)
+      this.detailOpts = { ...this.detailOpts, series: [] };
+      return;
+    }
+    const widthArr    = new Array(series.length).fill(2);
+    const dashArr     = this.selectedKeys.map(k => k === 'warningAfr' ? 6 : 0);
+    const colorArr    = this.selectedKeys.map(k => SERIES_COLORS[k]).filter(Boolean);
+
+    this.detailOpts = {
+      ...this.detailOpts,
+      series,
+      colors: colorArr.length ? colorArr : PAL.series.slice(0, series.length),
+      stroke: { ...this.detailOpts.stroke, curve: 'smooth', width: widthArr, dashArray: dashArr }
+    };
   }
 
   private refreshBrush(): void {
-    // ซีรีส์ทั้งหมดตามที่เลือกในกราฟแรก
-    const series: ApexAxisChartSeries = this.selectedKeys.map(k => {
-      const field = this.fieldMap[k];
-      const name  = this.options.find(o => o.value === k)?.label ?? k;
-      const data  = this.currentPoints.map(p => ({ x: p.ts, y: Number(p[field]) || null }));
-      return { name, data };
-    }) as ApexAxisChartSeries;
-
-    // สี/เส้น ของ brush ให้เรียงตาม selectedKeys เช่นเดียวกับกราฟหลัก
-    const colors      = this.selectedKeys.map(k => SERIES_COLORS[k]);
-    const strokeWidth = this.selectedKeys.map(k => (k === 'warningAfr' ? 2 : 1.5));
-    const dashArray   = this.selectedKeys.map(k => (k === 'warningAfr' ? 5 : 0));
+    const series = this.buildSeries(this.selectedKeys);
+    if (!series.length) {
+      this.brushOpts = { ...this.brushOpts, series: [] };
+      return;
+    }
+    const colorArr    = this.selectedKeys.map(k => SERIES_COLORS[k]).filter(Boolean);
+    const widthArr    = this.selectedKeys.map(k => (k === 'warningAfr' ? 2 : 1.5));
+    const dashArr     = this.selectedKeys.map(k => (k === 'warningAfr' ? 5 : 0));
 
     this.brushOpts = {
       ...this.brushOpts,
       series,
-      colors,
-      stroke: { ...this.brushOpts.stroke, width: strokeWidth, dashArray }
+      colors: colorArr.length ? colorArr : [PAL.series[1]],
+      stroke: { ...this.brushOpts.stroke, width: widthArr, dashArray: dashArr }
     };
-  }
-  private keyIndex(k: ChartKey) {
-    return ['avgAfr','realtimeAfr','warningAfr','speed'].indexOf(k);
   }
 
   // ---- Mock data (แทน service จริง) ----

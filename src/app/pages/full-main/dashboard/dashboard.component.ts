@@ -93,7 +93,7 @@ export class DashboardComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    const dataSub = this.eventService.getLogger()
+    const dataSub = this.eventService.getLogger('PickupA')
       .pipe(take(1))
       .subscribe({
         next: (loggerRes) => {

@@ -30,6 +30,7 @@ export const APP_CONFIG = {
       UPDATE_EVENT: '/event/updateEvent',
       DELETE_EVENT: '/event/deleteEvent',
       END_EVENT: '/event/endEvent',
+      EVENT_DROPDOWN: '/event/dropDownValue',
 
       // Season
       GET_SEASON: '/seasonal/getSeason',
