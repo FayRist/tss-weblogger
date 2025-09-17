@@ -193,35 +193,29 @@ export class EventService {
     );
   }
 // --------- Logger -------------------------------
-    getLogger(classType?: string | string[]): Observable<LoggerModel[]> {
+  getLogger(params: { classTypes?: string[] }) {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS);
+    let httpParams = new HttpParams();
 
-      let params = new HttpParams();
-      if (Array.isArray(classType)) {
-        // ส่งหลายค่า: /loggers?class_type=a&class_type=b
-        classType.forEach(v => params = params.append('class_type', v));
-      } else if (classType) {
-        // ส่งค่าเดียว: /loggers?class_type=a
-        params = params.set('class_type', classType);
-      }
-      const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS);
-      return this.http.get<ApiLoggerResponse>(loggersUrl, { params }).pipe(
-        map(response => {
-          // Map API data to Match interface
-          this.loggerList = response.data.map((apiData) => ({
-            id: apiData.id,
-            loggerId: apiData.logger_id,
-            carNumber: apiData.car_number,
-            firstName: apiData.first_name,
-            lastName: apiData.last_name,
-            createdDate: new Date(),
-            numberWarning: 0,
-            warningDetector: false,
-
-          }));
-          return this.loggerList;
-        })
-      );
+    if (params.classTypes?.length) {
+      params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct)); // class_type=pickupa&class_type=pickupb
     }
+
+    return this.http.get<ApiLoggerResponse>(url, { params: httpParams }).pipe(
+      map(response => response.data.map(api => ({
+        id: api.id,
+        loggerId: api.logger_id,
+        carNumber: api.car_number,
+        firstName: api.first_name,
+        lastName: api.last_name,
+        createdDate: new Date(),
+        numberWarning: 0,
+        warningDetector: false,
+      })))
+    );
+  }
+
+
 
     addAllNewLogger(addLoggers: ExcelRowPayLoad[]): Observable<unknown> {
       const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_LOGGER);

@@ -61,7 +61,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Class</mat-label>
-                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="classValue">
+                      <mat-select [ngModelOptions]="{standalone: true}" multiple [(ngModel)]="classValue">
                         @for (classS of classList; track classS) {
                           <mat-option [value]="classS.value">{{classS.name}}</mat-option>
                         }

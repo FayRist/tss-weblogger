@@ -18,7 +18,7 @@
             <tr>
               <td class="text-center" (click)="navigateToRace(eventList.event_id)">{{ eventList.event_name }}</td>
               <td class="text-center">
-                {{ eventList.event_start| dateRange:eventList.event_end :'en-GB' }}
+                {{ eventList.event_start| dateRange:eventList.event_end }}
               </td>
               <!-- <td class="text-center" >2 - 6 Jun 2025</td> -->
               <td class="text-center">

@@ -19,8 +19,7 @@ export const CLASS_LIST = [
   { value:'a',       name:'Class A' },
   { value:'b',       name:'Class B' },
   { value:'c',       name:'Class C' },
-  { value:'ab',      name:'Class A-B' },
-  { value:'overall', name:'Over All' },
+  // { value:'overall', name:'Over All' },
 ];
 
 export const MAPS_LIST = [

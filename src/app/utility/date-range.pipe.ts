@@ -1,36 +1,37 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
-@Pipe({
-  name: 'dateRange',
-  standalone: true,
-  pure: true,
-})
+@Pipe({ name: 'dateRange', standalone: true })
 export class DateRangePipe implements PipeTransform {
-  transform(start: Date | string | null | undefined,
-            end: Date | string | null | undefined,
-            locale: string = 'en-GB'): string {
-    if (!start || !end) return '';
-
+  transform(start: Date | string | number | null | undefined, end: Date | string | number | null | undefined): string {
+    if (!start) return '';
     const s = new Date(start);
-    const e = new Date(end);
-    if (isNaN(s.getTime()) || isNaN(e.getTime())) return '';
+    const e = end ? new Date(end) : s;
 
-    const sameMonth = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth();
+    if (isNaN(+s) || isNaN(+e)) return '';
+
+    const dd = (d: Date) => d.getDate();
+    const mon = (d: Date) => d.toLocaleString('en-GB', { month: 'short' }).toUpperCase(); // MAR, APR
+    const yyyy = (d: Date) => d.getFullYear();
+
+    const sameDay   = s.toDateString() === e.toDateString();
+    const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
     const sameYear  = s.getFullYear() === e.getFullYear();
 
-    const dayFmt            = new Intl.DateTimeFormat(locale, { day: 'numeric' });
-    const dayMonthFmt       = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' });
-    const dayMonthYearFmt   = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+    if (sameDay) {
+      return `${dd(s)} ${mon(s)} ${yyyy(s)}`;
+    }
 
     if (sameMonth) {
-      // -> 2 - 6 Jun 2025
-      return `${dayFmt.format(s)} - ${dayMonthYearFmt.format(e)}`;
+      // 21–22 MAR 2025
+      return `${dd(s)}–${dd(e)} ${mon(s)} ${yyyy(s)}`;
     }
+
     if (sameYear) {
-      // -> 28 Jun - 2 Jul 2025
-      return `${dayMonthFmt.format(s)} - ${dayMonthYearFmt.format(e)}`;
+      // 21 MAR – 02 APR 2025
+      return `${dd(s)} ${mon(s)} – ${dd(e)} ${mon(e)} ${yyyy(s)}`;
     }
-    // -> 30 Dec 2025 - 3 Jan 2026
-    return `${dayMonthYearFmt.format(s)} - ${dayMonthYearFmt.format(e)}`;
+
+    // คนละปี
+    return `${dd(s)} ${mon(s)} ${yyyy(s)} – ${dd(e)} ${mon(e)} ${yyyy(e)}`;
   }
 }

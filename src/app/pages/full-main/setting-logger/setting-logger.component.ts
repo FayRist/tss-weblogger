@@ -117,15 +117,15 @@ export class SettingLoggerComponent implements OnInit {
 
   loadLogger(){
     this.allLoggers = []
-    const loggerData = this.eventService.getLogger('PickupA').subscribe(
-      loggerRes => {
-        this.allLoggers = loggerRes;
-      },
-      error => {
-        console.error('Error loading matchList:', error);
-      }
-    );
-    this.subscriptions.push(loggerData);
+    // const loggerData = this.eventService.getLogger('PickupA').subscribe(
+    //   loggerRes => {
+    //     this.allLoggers = loggerRes;
+    //   },
+    //   error => {
+    //     console.error('Error loading matchList:', error);
+    //   }
+    // );
+    // this.subscriptions.push(loggerData);
   }
 
 }

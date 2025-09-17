@@ -19,8 +19,11 @@ import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 import { merge, startWith, Subscription, take } from 'rxjs';
+import { RACE_SEGMENT } from '../../../constants/race-data';
+import { parseClassQueryToCombined } from '../../../utility/race-param.util';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect';
+
 @Component({
   selector: 'app-dashboard',
   imports: [MatCardModule, MatChipsModule, MatProgressBarModule
@@ -93,28 +96,41 @@ export class DashboardComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    const dataSub = this.eventService.getLogger('PickupA')
-      .pipe(take(1))
-      .subscribe({
+    const qpSub = this.route.queryParamMap.pipe(take(1)).subscribe(qp => {
+      // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
+      const classMulti = qp.getAll('class');
+      const classSingle = qp.get('class');
+      const segmentQP = qp.get('segment') || undefined; // เผื่อส่งมาด้วย
+
+      const { classTypes } = parseClassQueryToCombined(
+        classMulti.length ? classMulti : classSingle,
+        segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
+      );
+
+      // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
+      const sub = this.eventService.getLogger({ classTypes }).subscribe({
         next: (loggerRes) => {
           this.allLoggers = loggerRes ?? [];
           this.updateView(this.allLoggers);
           this.cdr.markForCheck();
         },
-        error: (err) => console.error('Error loading matchList:', err)
+        error: (err) => console.error('Error loading logger list:', err)
       });
-    this.subscriptions.push(dataSub);
+      this.subscriptions.push(sub);
 
-    const reactSub = merge(
-      this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
-      this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
-    ).subscribe(() => {
-      this.updateView(this.allLoggers);
-      this.cdr.markForCheck();
+      // reactive UI เดิม
+      const reactSub = merge(
+        this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
+        this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
+      ).subscribe(() => {
+        this.updateView(this.allLoggers);
+        this.cdr.markForCheck();
+      });
+      this.subscriptions.push(reactSub);
+
+      this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
     });
-    this.subscriptions.push(reactSub);
-
-    this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
+    this.subscriptions.push(qpSub);
   }
 
   isAllSelected(): boolean {

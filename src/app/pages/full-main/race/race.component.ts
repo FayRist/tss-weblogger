@@ -19,9 +19,13 @@ import { optionModel, RaceModel } from '../../../model/season-model';
 import { AddEventComponent } from '../add-event/add-event.component';
 import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
 import { ToastrService } from 'ngx-toastr';
+import { DateRangePipe } from '../../../utility/date-range.pipe';
+import { TimeRangePipe } from '../../../utility/time-range.pipe';
 @Component({
   selector: 'app-race',
-  imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule, DatePipe],
+  imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule,
+    DateRangePipe,
+    TimeRangePipe],
   templateUrl: './race.component.html',
   styleUrl: './race.component.scss'
 })
@@ -88,9 +92,16 @@ export class RaceComponent implements OnInit {
     return found ? found.name : value;
   }
   getClassName(value: string): string {
-    const found = this.classList.find(m => m.value === value);
-    return found ? found.name : value;
+    // ถ้า value เป็นหลายตัวอักษร เช่น 'ab'
+    if (value && value.length > 1) {
+      const parts = value.toUpperCase().split('');
+      return parts.join('-');
+    }
+
+    // ค่า default
+    return value.toUpperCase();
   }
+
 
   private loadRace(eventId: any): void {
     const RaceSub = this.eventService.getRace(eventId).subscribe(
@@ -106,9 +117,9 @@ export class RaceComponent implements OnInit {
     this.subscriptions.push(RaceSub);
   }
 
-  navigateToDashboard(raceId: number, classType: string) {
+  navigateToDashboard(raceId: number, segmentType: string, classType: string) {
     this.router.navigate(['/pages', 'dashboard'], {
-      queryParams: { raceId, class: classType }   // ➜ /pages/dashboard?raceId=10&class=c
+      queryParams: { raceId, segment: segmentType, class: classType }   // ➜ /pages/dashboard?raceId=10&class=c
     });
   }
 

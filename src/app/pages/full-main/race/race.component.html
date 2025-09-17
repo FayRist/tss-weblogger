@@ -16,7 +16,8 @@
             <th class="text-center">Category</th>
             <th class="text-center">รุ่น</th>
             <th class="text-center">Class</th>
-            <th class="text-center">วันที่เริ่มแข่ง</th>
+            <th class="text-center">วันที่แข่ง</th>
+            <th class="text-center">เวลาแข่งขัน</th>
             <th class="text-center">
               <button type="button" class="btn btn-secondary w-100" (click)="openAdd('0ms', '0ms')">เพิ่ม รายการแข่ง</button>
             </th>
@@ -26,7 +27,7 @@
         @for (raceData of allRace; track raceData) {
           <tr>
             <!-- <td class="text-center">{{raceData.category_name}}</td> -->
-            <td class="text-center w-25" (click)="navigateToDashboard(raceData.id_list, (raceData.segment_value + raceData.class_value))">
+            <td class="text-center w-25" (click)="navigateToDashboard(raceData.id_list, raceData.segment_value, raceData.class_value)">
               {{ getSessionName(raceData.session_value) }}
             </td>
             <td class="text-center" >
@@ -35,9 +36,17 @@
             <td class="text-center" >
               {{ getClassName(raceData.class_value) }}
             </td>
-            <td class="text-center w-25" >
-              {{ raceData.session_start| date:'dd/MM/yyyy HH:mm' }}
+            <!-- วันที่แข่ง -->
             <td class="text-center">
+              {{ raceData.session_start | dateRange: raceData.session_end }}
+            </td>
+
+            <!-- เวลาแข่งขัน -->
+            <td class="text-center">
+              {{ raceData.session_start | timeRange: raceData.session_end }}
+            </td>
+
+            <td class="text-center w-25">
               <div class="row d-flex justify-content-center">
                 <div class="col-2">
                   <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
