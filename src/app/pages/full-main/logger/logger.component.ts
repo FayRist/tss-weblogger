@@ -61,7 +61,7 @@ const SERIES_COLORS: Record<ChartKey, string> = {
 
 
 //-----MapRace--------------###############################################
-// type FilterKey = '4/7/2025' | '5/7/2025';
+type FilterKey = '4/7/2025' | '5/7/2025';
 
 type RawRow = {
   gps_time: string;  // ISO
@@ -124,8 +124,8 @@ private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
   options: { value: ChartKey; label: string; }[] = [
     { value: 'avgAfr',      label: 'Average AFR' },
     { value: 'realtimeAfr', label: 'Realtime AFR' },
-    { value: 'warningAfr',  label: 'Warning AFR' },
-    { value: 'speed',       label: 'Speed' },
+    // { value: 'warningAfr',  label: 'Warning AFR' },
+    // { value: 'speed',       label: 'Speed' },
   ];
 
   selectedKeys: ChartKey[] = ['avgAfr', 'realtimeAfr'];
@@ -147,7 +147,7 @@ private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
     speed: 'speed'
   };
   //--- Chart ------
-  // filterRace = new FormControl<FilterKey[]>(['4/7/2025'], { nonNullable: true });
+  filterRace = new FormControl<FilterKey[]>(['4/7/2025'], { nonNullable: true });
 
 
   //--- Race ------
@@ -564,71 +564,66 @@ private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
       });
   }
 
-generateSVGPoints(mapPoints: any) {
-  // ขนาดผืนผ้าใบจริง
-  const W = 800, H = 600;
-  const PAD = 10;               // เผื่อขอบใน
-  const innerW = W - PAD * 2;   // = 780
-  const innerH = H - PAD * 2;   // = 580
+  cal = { tx: 6, ty: 33, sx: 1, sy: 1, rot: 0 };
+  readonly SVG_W = 800;
+  readonly SVG_H = 600;
 
-  this.svgPoints = '';
-  this.hasRouteData = false;
-
-  if (!Array.isArray(mapPoints) || mapPoints.length === 0) {
-    this.startPoint = { x: 0, y: 0, lat: 0, long: 0 };
-    this.endPoint   = { x: 0, y: 0, lat: 0, long: 0 };
-    return;
+  get polyTransform(): string {
+    const { tx, ty, sx, sy, rot } = this.cal;
+    return `translate(${tx},${ty}) scale(${sx},${sy}) rotate(${rot} ${this.SVG_W/2} ${this.SVG_H/2})`;
   }
+  generateSVGPoints(mapPoints:any) {
+    if (!mapPoints || mapPoints.length === 0) {
+      this.svgPoints = '';
+      this.hasRouteData = false;
+      return;
+    }
 
-  // กรองเฉพาะจุดที่มี lat/lon เป็นตัวเลข
-  const valid = mapPoints.filter((p: any) =>
-    p?.lat != null && p?.lon != null &&
-    !Number.isNaN(parseFloat(p.lat)) &&
-    !Number.isNaN(parseFloat(p.lon))
-  );
-  if (valid.length === 0) {
-    this.startPoint = { x: 0, y: 0, lat: 0, long: 0 };
-    this.endPoint   = { x: 0, y: 0, lat: 0, long: 0 };
-    return;
+    // กรองเฉพาะข้อมูลที่มี lat, long
+    const validPoints = mapPoints.filter((log: { lat: string; lon: string; }) =>
+      log.lat && log.lon &&
+      !isNaN(parseFloat(log.lat)) &&
+      !isNaN(parseFloat(log.lon))
+    );
+
+    if (validPoints.length === 0) {
+      this.svgPoints = '';
+      this.hasRouteData = false;
+      return;
+    }
+
+    // คำนวณขอบเขตของข้อมูล GPS จากทุกจุด (ไม่ slice)
+    const lats = validPoints.map((p: { lat: string; }) => parseFloat(p.lat));
+    const longs = validPoints.map((p: { lon: string; }) => parseFloat(p.lon));
+
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLong = Math.min(...longs);
+    const maxLong = Math.max(...longs);
+    const SVG_W = 800;
+    const SVG_H = 600;
+    // สร้างจุดสำหรับ SVG โดยแปลงพิกัด GPS เป็นพิกัด SVG (0-800, 0-600)
+    const points = validPoints.map((p: { lat: string; lon: string; }) => {
+      const lat = parseFloat(p.lat);
+      const long = parseFloat(p.lon);
+      const x = ((long - minLong) / (maxLong - minLong)) * SVG_W;
+      const y = SVG_H - ((lat - minLat) / (maxLat - minLat)) * SVG_H;
+      return { x, y, lat, long };
+    });
+
+
+    this.svgPoints = points.map((pt: { x: any; y: any; }) => `${pt.x},${pt.y}`).join(' ');
+    this.hasRouteData = points.length > 1;
+
+    // กำหนดจุดเริ่มต้นและจุดสิ้นสุด
+    if (points.length > 0) {
+      this.startPoint = points[0];
+      this.endPoint = points[points.length - 1];
+    } else {
+      this.startPoint = { x: 0, y: 0, lat: 0, long: 0 };
+      this.endPoint = { x: 0, y: 0, lat: 0, long: 0 };
+    }
   }
-
-  // ขอบเขตพิกัด geodecimal
-  const lats  = valid.map((p: any) => parseFloat(p.lat));
-  const lons  = valid.map((p: any) => parseFloat(p.lon));
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-
-  // กันหารศูนย์ (เส้นตรงแนวตั้ง/แนวนอน)
-  const latRange = (maxLat - minLat) || 1e-9;
-  const lonRange = (maxLon - minLon) || 1e-9;
-
-  // project → เฟรมด้านใน (0..innerW, 0..innerH) แล้วค่อยใส่ padding
-  const points = valid.map((p: any) => {
-    const lat = parseFloat(p.lat);
-    const lon = parseFloat(p.lon);
-
-    const nx = (lon - minLon) / lonRange;          // 0..1
-    const ny = (lat - minLat) / latRange;          // 0..1
-
-    const x = PAD + nx * innerW;                   // 10 .. 790
-    const y = PAD + (1 - ny) * innerH;             // invert แกน Y แล้วเผื่อขอบ
-
-    return { x, y, lat, long: lon };
-  });
-
-  this.svgPoints   = points.map(pt => `${pt.x},${pt.y}`).join(' ');
-  this.hasRouteData = points.length > 1;
-
-  // จุดเริ่ม/จุดจบ
-  if (points.length) {
-    this.startPoint = points[0];
-    this.endPoint   = points[points.length - 1];
-  } else {
-    this.startPoint = { x: 0, y: 0, lat: 0, long: 0 };
-    this.endPoint   = { x: 0, y: 0, lat: 0, long: 0 };
-  }
-}
-
 
   // === เมื่อโหลด/เปลี่ยนข้อมูล ===
   setCurrentPoints(points: LoggerPoint[]) {
