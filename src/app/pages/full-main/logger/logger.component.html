@@ -223,36 +223,40 @@
                   <div class="card-body">
                     <div class="chart-wrapper">
                       <div id="chart-detail">
-                        <!-- @if (chartsReady) { -->
-                        <apx-chart
-                          [series]="detailOpts.series"
-                          [chart]="detailOpts.chart"
-                          [xaxis]="detailOpts.xaxis"
-                          [yaxis]="detailOpts.yaxis"
-                          [stroke]="detailOpts.stroke"
-                          [dataLabels]="detailOpts.dataLabels"
-                          [grid]="detailOpts.grid"
-                          [fill]="detailOpts.fill"
-                          [tooltip]="detailOpts.tooltip"
-                          [legend]="detailOpts.legend"
-                          [theme]="detailOpts.theme"
-                          [colors]="detailOpts.colors"
-                        ></apx-chart>
-                        <!-- } -->
+                        @if (detailOpts?.series?.length) {
+                          <apx-chart
+                            [series]="detailOpts.series"
+                            [chart]="detailOpts.chart"
+                            [xaxis]="detailOpts.xaxis"
+                            [yaxis]="detailOpts.yaxis"
+                            [stroke]="detailOpts.stroke"
+                            [dataLabels]="detailOpts.dataLabels"
+                            [grid]="detailOpts.grid"
+                            [fill]="detailOpts.fill"
+                            [tooltip]="detailOpts.tooltip"
+                            [legend]="detailOpts.legend"
+                            [theme]="detailOpts.theme"
+                            [colors]="detailOpts.colors"
+                          ></apx-chart>
+                        }
                       </div>
 
+
+                      <!-- brush -->
                       <div id="chart-brush">
-                        <apx-chart
-                          [series]="brushOpts.series"
-                          [chart]="brushOpts.chart"
-                          [xaxis]="brushOpts.xaxis"
-                          [yaxis]="brushOpts.yaxis"
-                          [dataLabels]="brushOpts.dataLabels"
-                          [stroke]="brushOpts.stroke"
-                          [fill]="brushOpts.fill"
-                          [grid]="brushOpts.grid"
-                          [theme]="brushOpts.theme"
-                        ></apx-chart>
+                        @if (brushOpts?.series?.length) {
+                          <apx-chart
+                            [series]="brushOpts.series"
+                            [chart]="brushOpts.chart"
+                            [xaxis]="brushOpts.xaxis"
+                            [yaxis]="brushOpts.yaxis"
+                            [dataLabels]="brushOpts.dataLabels"
+                            [stroke]="brushOpts.stroke"
+                            [fill]="brushOpts.fill"
+                            [grid]="brushOpts.grid"
+                            [theme]="brushOpts.theme"
+                          ></apx-chart>
+                        }
                       </div>
                     </div>
 

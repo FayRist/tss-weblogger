@@ -23,6 +23,13 @@ import { HttpClient } from '@angular/common/http';
 type ChartKey   = 'avgAfr' | 'realtimeAfr' | 'warningAfr' | 'speed'; // ใช้กับกราฟจริง
 type SelectKey  = ChartKey | 'all';
 
+// ======= Drop-in utils =======
+type XYPoint = { x: number | null; y: number | null; meta?: any };
+const toNumOrNull = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 //-----Chart--------------###############################################
 // === โมเดลจุดข้อมูล (x = เวลาแบบ ms, y = ค่าตัวเลข) ===
 interface LoggerPoint {
@@ -164,6 +171,9 @@ private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
 
   // เพิ่ม property เก็บ cache (ใน component class)
   private chartPointsByDate: Record<string, LoggerPoint[]> = {}; // or Map<string, LoggerPoint[]>
+  private upsertCacheForDate(dateKey: string, pts: LoggerPoint[]) {
+    this.chartPointsByDate[dateKey] = Array.isArray(pts) ? pts : [];
+  }
 
   private map!: L.Map;
   private baseLayers!: Record<string, L.TileLayer>;
@@ -346,42 +356,41 @@ private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
     };
   }
 
-  private buildCompareSeriesFromCache(
-    selectedDates: string[],
-    metric: 'avgAfr' | 'realtimeAfr' = 'avgAfr'
-  ): ApexAxisChartSeries {
+  // ===== ช่วยกัน NaN/undefined =====
+  private n(v: any): number | null {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  }
+  private sanitizeSeries(series: ApexAxisChartSeries | any): ApexAxisChartSeries {
+    if (!Array.isArray(series)) return [];
+    return series.map(s => {
+      const data = Array.isArray(s.data) ? s.data : [];
+      const safe = data.map((d: any) => {
+        if (d && typeof d === 'object') {
+          return { x: this.n(d.x), y: this.n(d.y), meta: d.meta ?? null };
+        }
+        const y = this.n(d);
+        return y === null ? null : { x: null, y };
+      }).filter(Boolean);
+      return { ...s, data: safe };
+    });
+  }
+
+  private buildCompareSeriesFromCache(dates: string[], metric: keyof LoggerPoint = 'avgAfr'): ApexAxisChartSeries {
     const out: ApexAxisChartSeries = [];
+    for (const d of dates) {
+      const pts = this.chartPointsByDate[d] ?? [];
+      if (!pts.length) continue;
 
-    for (const d of selectedDates) {
-      const pts = this.chartPointsByDate[d];
-      if (!pts?.length) continue;
+      const useX = pts.some(p => Number.isFinite((p as any).x));
+      const data = pts.map(p => ({
+        x: useX ? Number((p as any).x) : Number(p.ts),
+        y: this.n(p[metric]),
+        meta: { lat: (p as any).lat, lon: (p as any).lon, gps_time: (p as any).gps_time }
+      })).filter(dp => Number.isFinite(dp.x) && dp.y !== null);
 
-      // ถ้า rowToLoggerPoint เก็บ lon เป็น p.x แล้ว ใช้ p.x; ไม่งั้น fallback เป็น p.ts
-      const dataMain = pts.map(p => {
-        const x = (p as any).x ?? p.ts;
-        const y = Number(p[metric]);
-        return this.toPoint(Number(x), y);
-      });
-
-      out.push({
-        name: `${metric === 'avgAfr' ? 'Average AFR' : 'Realtime AFR'} ${d}`,
-        data: dataMain,
-      } as any);
-
-      // (ถ้าต้องการ 2 เส้น/วัน): เพิ่มเส้น realtime/avg อีกชุด
-      const second: 'avgAfr' | 'realtimeAfr' = metric === 'avgAfr' ? 'realtimeAfr' : 'avgAfr';
-      const dataSecond = pts.map(p => {
-        const x = (p as any).x ?? p.ts;
-        const y = Number(p[second]);
-        return this.toPoint(Number(x), y);
-      });
-
-      out.push({
-        name: `${second === 'avgAfr' ? 'Average AFR' : 'Realtime AFR'} ${d}`,
-        data: dataSecond,
-      } as any);
+      if (data.length) out.push({ name: d, data });
     }
-
     return out;
   }
 
@@ -422,30 +431,68 @@ const firstPoint: unknown =
     // -------- ตั้งค่า chart options (formatter ต้องรับ string) --------
     this.detailOpts = {
       ...this.detailOpts,
-      series: safeSeries,
+      chart: {
+        id: 'detailChart',
+        type: 'line',
+        height: 300,
+        animations: { enabled: false },   // กันพังช่วงอัปเดต
+        toolbar: { show: true },
+        background: 'transparent',
+        foreColor: '#CFD8DC',
+      },
       xaxis: {
         ...this.detailOpts.xaxis,
-                type: 'numeric',
-        title: { text: 'Longitude (°)' },
-        // labels: { formatter: (v: any) => v.toFixed(5) }
-        labels: { show: false }
+        // type ตั้งให้ตรงก่อน render จริง (ดูข้อ 4 ใช้ useX)
+        labels: { formatter: (v: string) => String(v) } // ต้องคืน string เสมอ
       },
       tooltip: {
         ...this.detailOpts.tooltip,
         shared: false,
-        x: {
-          formatter: (v: any) => usingLonX ? Number(v).toFixed(6) + '°' : v
-        },
-        y: {
-          formatter: (val: number) => Number.isFinite(val) ? val.toFixed(2) : ''
+        intersect: true,
+        followCursor: false,
+        x: { formatter: (v: any) => String(v) },
+        y: { formatter: (val: number) => Number.isFinite(val) ? val.toFixed(2) : '' },
+        // *** สำคัญ: ห้ามส่ง undefined ออกไป ***
+        custom: ({ w, seriesIndex, dataPointIndex }: any): string => {
+          try {
+            const series = Array.isArray(w?.config?.series) ? w.config.series : [];
+            const s = series[seriesIndex];
+            const dp = s && Array.isArray(s.data) ? s.data[dataPointIndex] : null;
+            if (!dp) return '';
+            const y = Number((dp as any).y);
+            const meta = (dp as any).meta ?? {};
+            const lat = Number(meta.lat), lon = Number(meta.lon);
+            const afrTxt = Number.isFinite(y) ? y.toFixed(2) : '—';
+            const latTxt = Number.isFinite(lat) ? lat.toFixed(6) : '—';
+            const lonTxt = Number.isFinite(lon) ? lon.toFixed(6) : '—';
+            return `<div class="apx-tip">
+              <div><b>AFR:</b> ${afrTxt}</div>
+              <div><b>Lat/Lon:</b> ${latTxt}, ${lonTxt}</div>
+            </div>`;
+          } catch { return ''; }
         }
-      }
+      },
+      legend: { ...this.detailOpts.legend, formatter: (name?: string) => String(name ?? '') },
+      dataLabels: { enabled: false, formatter: (v: number) => Number.isFinite(v) ? String(v) : '' }
     };
 
     this.brushOpts = {
       ...this.brushOpts,
-      series: safeSeries,
-      xaxis: { ...this.brushOpts.xaxis, type: usingLonX ? 'numeric' : 'datetime' }
+      chart: {
+        id: 'brushChart',
+        type: 'line',
+        height: 120,
+        animations: { enabled: false },
+        brush: { enabled: true, target: 'detailChart' },
+        selection: { enabled: true },
+        background: 'transparent',
+        foreColor: '#CFD8DC'
+      },
+      xaxis: {
+        ...this.brushOpts.xaxis,
+        labels: { formatter: (v: string) => String(v) }
+      },
+      dataLabels: { enabled: false },
     };
     this.cdr.markForCheck();
   }
@@ -482,19 +529,19 @@ const firstPoint: unknown =
   private _afrBuf: number[] = [];
   private _afrSum = 0;
 
-  private rowToLoggerPoint(row: any) {
-    const afr = parseFloat(row?.data);        // คุณใช้ heading เป็น AFR ในไฟล์ก่อนหน้า
+  private rowToLoggerPoint(row: any): LoggerPoint {
+    const afr = parseFloat(row?.data);        // <- AFR
     const spd = parseFloat(row?.velocity);
-    const lon = Number(row?.lon ?? row?.long);
     return {
-      ts: this.toEpochMs(row),
-      x: Number.isFinite(lon) ? lon : undefined,   // <- เก็บ lon
-      avgAfr: Number.isFinite(afr) ? afr : NaN,
-      realtimeAfr: Number.isFinite(afr) ? afr : NaN,
-      warningAfr: NaN,
-      speed: Number.isFinite(spd) ? spd : NaN,
-    };
-  }
+      ts: this.toEpochMs(row),                // หรือ Date.parse(row.gps_time)
+      x: this.n(row?.lon) ?? undefined,       // ถ้าอยากใช้ lon เป็นแกน X
+      avgAfr: this.n(afr),
+      realtimeAfr: this.n(afr),
+      warningAfr: null,
+      speed: this.n(spd),
+      // meta lat/lon เอาไปวางใน tooltip ได้
+    } as any;
+}
 
 
 // ======= mock แหล่งข้อมูลรายวัน =======
@@ -516,6 +563,9 @@ const firstPoint: unknown =
       { lat: 13.3042, lon: 100.9018, heading: 13.1 },
     ],
   };
+
+  // === Compare/Cache ===
+  selectedDates: string[] = [];  // เก็บวันที่ที่เลือกจาก <mat-select multiple>
 
   ngOnInit() {
     this.generateSVGPointsFromFile('/models/mock-logger-2.txt');
@@ -548,8 +598,9 @@ const firstPoint: unknown =
 
     // ทุกครั้งที่เปลี่ยน → render จาก cache เท่านั้น
     this.subscriptions.push(
-      this.filterRace.valueChanges.subscribe(dates => {
-        this.renderSelectedFromCache(dates ?? []);
+      this.filterRace.valueChanges.subscribe((v: string[] | null) => {
+        this.selectedDates = Array.isArray(v) ? v : [];
+        this.setCurrentPoints(this.currentPoints); // reuse cache & render ใหม่
       })
     );
   }
@@ -822,60 +873,91 @@ const firstPoint: unknown =
     }
   }
 
+  // helper ทั่วไป
+  private toNumOrNull(v: unknown): number | null {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // metric: 'avgAfr' | 'realtimeAfr' | 'speed' | 'warningAfr'
+  private buildSeriesFromCurrentPoints(metric: keyof LoggerPoint = 'avgAfr'): ApexAxisChartSeries {
+    const pts = this.currentPoints ?? [];
+    if (!pts.length) return [];
+
+    const useX = pts.some(p => Number.isFinite((p as any).x));
+    const data = pts.map(p => ({
+      x: useX ? Number((p as any).x) : Number(p.ts),
+      y: this.n(p[metric]),
+      meta: { lat: (p as any).lat, lon: (p as any).lon, gps_time: (p as any).gps_time }
+    })).filter(dp => Number.isFinite(dp.x) && dp.y !== null);
+
+    return [{ name: this.seriesNameFor(metric), data }];
+  }
+
+  private seriesNameFor(metric: keyof LoggerPoint) {
+    switch (metric) {
+      case 'realtimeAfr': return 'Realtime AFR';
+      case 'speed':       return 'Speed';
+      case 'warningAfr':  return 'Warning AFR';
+      default:            return 'Average AFR';
+    }
+  }
+
   // === เมื่อโหลด/เปลี่ยนข้อมูล ===
   setCurrentPoints(points: LoggerPoint[] | null | undefined) {
-    // 1) เตรียมข้อมูล + sanitize (กัน NaN/undefined)
-    const toNumOrNull = (v: any) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
-
+    // 1) เตรียม currentPoints + กัน NaN
     const arr = Array.isArray(points) ? points : [];
     this.currentPoints = arr.map((p: any) => ({
       ...p,
-      // ถ้ามี x (longitude) ให้คงไว้เป็น number; ถ้าไม่มีปล่อย undefined
       x: (p?.x != null && Number.isFinite(Number(p.x))) ? Number(p.x) : undefined,
-      ts: Number.isFinite(Number(p?.ts)) ? Number(p.ts) : Date.now(), // fallback กันพัง
-      avgAfr: toNumOrNull(p?.avgAfr),
-      realtimeAfr: toNumOrNull(p?.realtimeAfr),
-      warningAfr: toNumOrNull(p?.warningAfr),
-      speed: toNumOrNull(p?.speed),
+      ts: Number.isFinite(Number(p?.ts)) ? Number(p.ts) : Date.now(),
+      avgAfr: this.n(p?.avgAfr),
+      realtimeAfr: this.n(p?.realtimeAfr),
+      warningAfr: this.n(p?.warningAfr),
+      speed: this.n(p?.speed),
     }));
 
-    // 2) คำนวณแกน X ที่จะใช้ (มี x ใช้ x; ไม่มีก็ใช้ ts)
-    const useX = this.currentPoints.some(p => Number.isFinite((p as any).x));
-    const xs = this.currentPoints
-      .map(p => useX ? Number((p as any).x) : Number(p.ts))
-      .filter(n => Number.isFinite(n));
+    // 2) สร้าง series: ถ้าเลือกหลายวัน → compare, ไม่งั้นใช้ current
+    let series: ApexAxisChartSeries =
+      (this.selectedDates?.length ? this.buildCompareSeriesFromCache(this.selectedDates, 'avgAfr')
+                                  : this.buildSeriesFromCurrentPoints('avgAfr'));
 
-    // 3) ตั้งค่า selection สำหรับ brush แบบปลอดภัย
-    if (xs.length >= 2) {
-      const last  = xs[xs.length - 1];
-      const first = xs[Math.max(0, xs.length - 45)];
-      this.brushOpts = {
-        ...this.brushOpts,
-        chart: {
-          ...this.brushOpts.chart,
-          selection: { enabled: true, xaxis: { min: first, max: last } },
-        },
-        // บอกชนิดแกน X ให้ตรงกับข้อมูล (numeric เมื่อใช้ lon, datetime เมื่อใช้ ts)
-        xaxis: { ...(this.brushOpts as any).xaxis, type: useX ? 'numeric' : 'datetime' },
-      };
-    } else {
-      // จุดน้อยเกินไป → ปิด selection กัน error
-      this.brushOpts = {
-        ...this.brushOpts,
-        chart: { ...this.brushOpts.chart, selection: { enabled: false } },
-      };
+    // 2.1 ถ้า metric avgAfr ว่าง ลอง fallback เป็น realtimeAfr
+    if (!series.length || !series.some(s => s.data?.length)) {
+      series = this.selectedDates?.length
+        ? this.buildCompareSeriesFromCache(this.selectedDates, 'realtimeAfr')
+        : this.buildSeriesFromCurrentPoints('realtimeAfr');
     }
 
-    // 4) อัปเดตซีรีส์ของกราฟ (ฟังก์ชันเดิมของคุณ)
-    this.refreshBrush();   // series ของกราฟล่าง (อ่านจาก this.currentPoints)
-    this.refreshDetail();  // series ของกราฟบน  (อ่านจาก this.currentPoints)
+    // sanitize กัน NaN/undefined
+    const safeSeries = this.sanitizeSeries(series);
 
-    // 5) ให้ Angular ตรวจวัดการเปลี่ยนแปลง
+    // 3) ตั้งชนิดแกน X และ selection เริ่มต้น
+    const firstPt = safeSeries[0]?.data?.[0] as any;
+    const useX = !!(firstPt && typeof firstPt === 'object' && typeof firstPt.x === 'number');
+
+    // ช่วงเลือกเริ่มต้น (ท้ายสุด ~45 จุด)
+    const xs: number[] = (safeSeries[0]?.data ?? []).map((d: any) => d?.x).filter((n: any) => Number.isFinite(n));
+    const hasRange = xs.length >= 2;
+    const end = hasRange ? xs[xs.length - 1] : undefined;
+    const start = hasRange ? xs[Math.max(0, xs.length - 45)] : undefined;
+
+    // 4) ตั้งค่าลง brush/detail + series
+    this.brushOpts = {
+      ...this.brushOpts,
+      chart: { ...this.brushOpts.chart, selection: hasRange ? { enabled: true, xaxis: { min: start, max: end } } : { enabled: false } },
+      xaxis: { ...this.brushOpts.xaxis, type: useX ? 'numeric' : 'datetime' },
+      series: safeSeries
+    };
+    this.detailOpts = {
+      ...this.detailOpts,
+      xaxis: { ...this.detailOpts.xaxis, type: useX ? 'numeric' : 'datetime' },
+      series: safeSeries
+    };
+
     this.cdr.markForCheck();
   }
+
 
 
   // === เมื่อผู้ใช้เลือกเส้น (จาก mat-select multiple ของคุณ) ===
