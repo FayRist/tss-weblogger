@@ -21,3 +21,14 @@ export interface CarLogger {
   Time_ms: string;
   averageHeight: number;
 };
+
+
+export interface CarLoggerMeta {
+  loggerId: string;
+  carNumber: string;
+  firstName: string;
+  lastName: string;
+  createdDate: Date;
+  numberWarning: number;
+  warningDetector: boolean;
+}

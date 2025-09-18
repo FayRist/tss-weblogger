@@ -258,5 +258,29 @@ export class EventService {
         })
       );
     }
+
+
+
+
+    getLoggerDataByKey(key: string, date:string): Observable<unknown> {
+      const addLoggerUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.LIST_LOGGER_FOREXCEL);
+      const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_RACE);
+      // Map Racer interface to API request format
+      const requestData = {
+        key: key,
+        date: date
+      };
+      return this.http.post(addLoggerUrl, requestData).pipe(
+        map(response => {
+          console.log('Logger added/updated successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error adding/updating Logger:', error);
+          throw error;
+        })
+      );
+      // return this.http.post<unknown>(url, { key });
+    }
 }
 

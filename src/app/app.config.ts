@@ -49,6 +49,7 @@ export const APP_CONFIG = {
       ADD_LOGGER: '/logger/add-allnew-logger',
       UPDATE_LOGGER: '/logger/updateLoger',
       DELETE_LOGGER: '/logger/deleteLoger',
+      LIST_LOGGER_FOREXCEL: '/logger/getListLoger',
 
       // Users (สำหรับอนาคต)
       GET_USERS: '/users/getUsers',

@@ -13,6 +13,7 @@ import { LoggerModel } from '../../../model/season-model';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
 import { ToastrService } from 'ngx-toastr';
+import { parseClassQueryToCombined } from '../../../utility/race-param.util';
 
 export interface DialogLoggerData {
   id: number;
@@ -117,15 +118,22 @@ export class SettingLoggerComponent implements OnInit {
 
   loadLogger(){
     this.allLoggers = []
-    // const loggerData = this.eventService.getLogger('PickupA').subscribe(
-    //   loggerRes => {
-    //     this.allLoggers = loggerRes;
-    //   },
-    //   error => {
-    //     console.error('Error loading matchList:', error);
-    //   }
-    // );
-    // this.subscriptions.push(loggerData);
+    const { classTypes } = parseClassQueryToCombined(
+            'abcd',
+            'classSingle' // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
+          );
+
+          // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
+          const sub = this.eventService.getLogger({ classTypes }).subscribe({
+            next: (loggerRes) => {
+              this.allLoggers = loggerRes ?? [];
+              // this.updateView(this.allLoggers);
+              // this.cdr.markForCheck();
+            },
+            error: (err) => console.error('Error loading logger list:', err)
+          });
+          this.subscriptions.push(sub);
+
   }
 
 }

@@ -73,7 +73,7 @@ export class AddEventComponent implements OnInit {
 
   dateSessionStart = new FormControl(new Date());
   dateSessionEnd = new FormControl(new Date());
-  classValue = new FormControl(null);
+  classValue:any = [];
   sessionValue = new FormControl(null);
   segmentValue = new FormControl(null);
 
@@ -292,6 +292,7 @@ export class AddEventComponent implements OnInit {
 
   submitRace(){
     const payload: any[] =[]
+    let classJoin:any = this.classValue;
     for (let index = 0; index < this.selectedSessions.length; index++) {
       const element = this.selectedSessions[index];
       let prePayload = {
@@ -299,7 +300,7 @@ export class AddEventComponent implements OnInit {
         season_id: this.seasonId,
         event_id: Number(this.eventId),
         category_name: "",
-        class_value: this.classValue,
+        class_value: classJoin.join(''),
         segment_value: this.segmentValue,
         session_value: element.key,
         session_start: element.start,
