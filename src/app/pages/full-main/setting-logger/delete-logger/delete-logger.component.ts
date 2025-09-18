@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, model, OnInit, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import {
@@ -12,10 +12,15 @@ import {
 import { DialogLoggerData } from '../setting-logger.component';
 import { EventService } from '../../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
+import { MatIcon } from '@angular/material/icon';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { AuthService } from '../../../../core/auth/auth.service';
 
 @Component({
   selector: 'app-delete-logger',
-  imports: [MatButtonModule, MatDialogClose, MatDialogContent,
+  imports: [MatButtonModule, MatDialogClose, MatDialogContent, MatIcon,
+    FormsModule, MatFormFieldModule, MatInputModule, ReactiveFormsModule,
     MatDialogTitle, FormsModule],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,7 +34,7 @@ export class DeleteLoggerComponent implements OnInit {
   logger_id = this.data.loggerId;
   id = this.data.id;
   car_number = this.data.carNumber;
-  constructor(private eventService: EventService, private toastr: ToastrService) {}
+  constructor(private eventService: EventService, private authService: AuthService,private toastr: ToastrService) {}
 
   ngOnInit() {
   }
@@ -37,8 +42,13 @@ export class DeleteLoggerComponent implements OnInit {
   onNoClick(): void {
     this.dialogRef.close();
   }
-
+ password: string = '';
+  hide = true;
   onSubmitDelete(){
+    if (!this.authService.validatePassword(this.password)) {
+       this.toastr.error('รหัสผ่านไม่ถูกต้อง');
+      return;
+    }
     const payload = {
       id: this.id,   // <- map ชื่อคีย์
       logger_id: this.logger_id,   // <- map ชื่อคีย์

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
-import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { DateAdapter, MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
@@ -18,6 +18,8 @@ import { ToastrService } from 'ngx-toastr';
 import { Subscription } from 'rxjs';
 import { AddEventComponent } from '../add-event/add-event.component';
 import { MAPS_LIST } from '../../../constants/race-data';
+import { MatIcon } from '@angular/material/icon';
+import { AuthService } from '../../../core/auth/auth.service';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -286,7 +288,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   templateUrl: './modal-event/delete-event.html',
   styleUrl: './event.component.scss',
   imports: [MatButtonModule, MatDialogContent, MatDialogClose,
-    MatDialogTitle, MatTabsModule,
+    MatDialogTitle, MatTabsModule, MatIcon,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
     MatDatepickerModule, MatCheckboxModule, MatRadioModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -298,8 +300,9 @@ export class DialogAnimationsModalDelete {
 
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalDelete>);
   readonly data:any = inject<eventModel>(MAT_DIALOG_DATA);
-
-  constructor(private eventService: EventService, private toastr: ToastrService) {}
+  password: string = '';
+  hide = true;
+  constructor(private eventService: EventService,   private authService: AuthService,private toastr: ToastrService) {}
 
   ngOnInit() {
     console.log(this.data.event_id);
@@ -308,6 +311,10 @@ export class DialogAnimationsModalDelete {
   }
 
   onDelete(): void {
+    if (!this.authService.validatePassword(this.password)) {
+       this.toastr.error('รหัสผ่านไม่ถูกต้อง');
+      return;
+    }
     const payload = {
       event_id : this.eventId,
       event_name : this.eventName

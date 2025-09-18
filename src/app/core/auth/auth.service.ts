@@ -43,4 +43,15 @@ export class AuthService {
   hasAnyRole(...roles: Role[]): boolean {
     const r = this.current?.role; return !!r && roles.includes(r);
   }
+
+
+  validatePassword(password: string): boolean {
+    const userState = this._user$.value;   // ดึงค่าล่าสุดจาก BehaviorSubject
+    if (!userState) return false;
+
+    const user = USERS[userState.username];
+    if (!user) return false;
+
+    return user.password === password;
+  }
 }

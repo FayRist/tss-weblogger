@@ -21,6 +21,8 @@ import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-
 import { ToastrService } from 'ngx-toastr';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
 import { TimeRangePipe } from '../../../utility/time-range.pipe';
+import { AuthService } from '../../../core/auth/auth.service';
+import { MatIcon } from '@angular/material/icon';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule,
@@ -319,7 +321,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   templateUrl: './modal-race/delete-race.html',
   styleUrl: './race.component.scss',
   imports: [MatButtonModule, MatDialogContent, MatDialogClose,
-    MatDialogTitle, MatTabsModule,
+    MatDialogTitle, MatTabsModule, MatIcon,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
     MatDatepickerModule, MatCheckboxModule, MatRadioModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -331,7 +333,9 @@ export class DialogAnimationsRaceModalDelete {
   readonly dialogRef = inject(MatDialogRef<DialogAnimationsRaceModalDelete>);
     readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
 
-  constructor(private eventService: EventService, private toastr: ToastrService) {}
+  constructor(private eventService: EventService,  private authService: AuthService,private toastr: ToastrService) {}
+  password: string = '';
+  hide = true;
 
   ngOnInit() {
     console.log(this.data.race_id);
@@ -340,6 +344,11 @@ export class DialogAnimationsRaceModalDelete {
   }
 
   onDelete(): void {
+
+    if (!this.authService.validatePassword(this.password)) {
+       this.toastr.error('รหัสผ่านไม่ถูกต้อง');
+      return;
+    }
     const payload = {
       raceMatchId: this.raceMatchId,
       raceName: this.raceName,

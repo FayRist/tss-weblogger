@@ -120,7 +120,7 @@ export class SettingLoggerComponent implements OnInit {
     this.allLoggers = []
     const { classTypes } = parseClassQueryToCombined(
             'abcd',
-            'classSingle' // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
+            'pickup' //
           );
 
           // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
