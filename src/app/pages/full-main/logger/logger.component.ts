@@ -153,6 +153,7 @@ private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
   showRoutePath: boolean = true;
   private subscriptions: Subscription[] = [];
 
+  
 
   allLogger: CarLogger[] = [];
 

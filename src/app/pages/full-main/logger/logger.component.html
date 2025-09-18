@@ -223,7 +223,7 @@
                   <div class="card-body">
                     <div class="chart-wrapper">
                       <div id="chart-detail">
-                        @if (detailOpts?.series?.length) {
+                        @if (brushOpts.series.length > 0) {
                           <apx-chart
                             [series]="detailOpts.series"
                             [chart]="detailOpts.chart"
@@ -244,7 +244,7 @@
 
                       <!-- brush -->
                       <div id="chart-brush">
-                        @if (brushOpts?.series?.length) {
+                        @if (brushOpts.series.length > 0) {
                           <apx-chart
                             [series]="brushOpts.series"
                             [chart]="brushOpts.chart"
