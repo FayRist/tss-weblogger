@@ -568,8 +568,14 @@ const firstPoint: unknown =
   // === Compare/Cache ===
   selectedDates: string[] = [];  // เก็บวันที่ที่เลือกจาก <mat-select multiple>
 
+  private publicUrl(path: string): string {
+    // path: 'models/mock-logger-2.txt' หรือ '/models/mock-logger-2.txt'
+    const base = document.baseURI.replace(/\/$/, '');     // เคารพ <base href="...">
+    const clean = path.replace(/^\/+/, '');               // ตัด / นำหน้าออกกันพลาด
+    return `${base}/${clean}`;
+  }
   ngOnInit() {
-    this.generateSVGPointsFromFile('/models/mock-logger-2.txt');
+    this.generateSVGPointsFromFile('models/mock-logger-2.txt');
 
     let arrayTest : any[] = ['4/7/68' , '5/7/68']
     let arrayIDTest : any[] = ['client_1456' , 'client_456']
@@ -783,35 +789,35 @@ const firstPoint: unknown =
   }
 
     // ====== เวอร์ชันใหม่: อ่านจากไฟล์ ======
-  generateSVGPointsFromFile(fileUrl: string) {
-    // ตัวอย่าง fileUrl: '/models/mock-logger-2.txt' หรือ '/assets/models/mock-logger-2.txt'
-    this.http.get(fileUrl, { responseType: 'text' }).pipe(take(1))
-      .subscribe({
-        next: (text) => {
-          const points = this.parseLoggerTextToPoints(text);
-          const slim = this.decimateFile(points, 8000);   // ลดจุดกันไฟล์ใหญ่
+    async generateSVGPointsFromFile(url: string) {
+      try {
+        // ถ้าใช้วิธี 1 ให้คง mode:'cors'; ถ้าวิธี 2 (proxy) จะไม่ต้อง CORS
+        const res = await fetch(url, { mode: 'cors', cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
 
-          // เรียกเวอร์ชันเดิมของคุณต่อได้เลย
-          this.generateSVGPoints(slim);               // <— ฟังก์ชันเดิม (รับ MapPoint[])
-          // ถ้าคุณวาดด้วย Leaflet ให้เรียก this.setMapPoints(slim)
-          // this.setMapPoints(slim);
+        const text = await res.text();
+        const lines = text.split(/\r?\n/).filter(Boolean);
 
-          // ถ้าอยากอัพเดตกราฟ:
-          const chartPoints = slim.map(p => ({
-            ts: p.ts,
-            // avgAfr: p.afr ?? NaN,
-            // realtimeAfr: p.afr ?? NaN,
-            warningAfr: NaN,
-            speed: p.velocity ?? NaN,
-          }));
-          // this.setCurrentPoints(chartPoints);         // <— ระบบกราฟเดิม
-          this.cdr.markForCheck();
-        },
-        error: err => {
-          console.error('load file error:', err);
-        }
-      });
-  }
+        // หา section [data]
+        const dataStart = lines.findIndex(l => /^\[data\]/i.test(l));
+        if (dataStart === -1) throw new Error('No [data] section');
+
+        const rows = lines.slice(dataStart + 1);
+
+        const mapPoints = rows.map(r => {
+          const [sats, time, lat, lon, velocity, heading] = r.split(',');
+          return { lat, lon, velocity, heading };
+        });
+
+        this.generateSVGPoints(mapPoints); // วาด polyline ตามที่คุณทำไว้
+      } catch (err) {
+        console.error('Load model file failed:', err);
+        this.svgPoints = '';
+        this.hasRouteData = false;
+      }
+    }
+
+
 
   cal = { tx: 6, ty: 33, sx: 1, sy: 1, rot: 0 };
   readonly SVG_W = 800;
