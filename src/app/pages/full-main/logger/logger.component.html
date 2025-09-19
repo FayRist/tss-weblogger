@@ -108,14 +108,16 @@
                         <!-- Route Path -->
                         <g [attr.transform]="polyTransform">
                           @if (showRoutePath) {
-                            @for (k of selectedRaceKeys; track k; let i = $index) {
-                              <polyline
-                                [attr.points]="svgPointsByKey[k]"
-                                fill="none"
-                                [attr.stroke]="['#007bff','#28a745','#dc3545','#ffc107','#6f42c1','#20c997'][i % 6]"
-                                stroke-width="2"
-                                opacity="0.9"
-                              />
+                            @for (k of selectedRaceKeys; track k) {
+                              <g>
+                                @for (seg of segmentsByKey[k]; track seg.i) {
+                                  <line
+                                    [attr.x1]="seg.x1" [attr.y1]="seg.y1"
+                                    [attr.x2]="seg.x2" [attr.y2]="seg.y2"
+                                    [attr.stroke]="seg.c"
+                                    stroke-width="2" stroke-linecap="round" />
+                                }
+                              </g>
                             }
                           }
 
