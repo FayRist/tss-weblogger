@@ -9,7 +9,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
-import { delay, of, startWith, Subscription } from 'rxjs';
+import { delay, distinctUntilChanged, map, of, startWith, Subscription } from 'rxjs';
 import {
   ApexAxisChartSeries, ApexChart, ApexXAxis, ApexYAxis, ApexStroke, ApexDataLabels,
   ApexFill, ApexMarkers, ApexGrid, ApexLegend, ApexTooltip, ApexTheme,
@@ -19,6 +19,7 @@ import {
 import * as L from 'leaflet';
 import { LoggerDataService } from '../../../service/logger-data.service';
 import { HttpClient } from '@angular/common/http';
+import { CommonModule } from '@angular/common';
 
 
 type ChartKey = 'avgAfr' | 'realtimeAfr' | 'warningAfr' | 'speed'; // ใช้กับกราฟจริง
@@ -41,7 +42,7 @@ type MapPoint = {
   lon: any;
   velocity?: number;
   heading?: number;
-  afr?: number;
+  afrValue?: number;
   time?: string | number; // ถ้าพี่มีเวลาใน CSV
 };
 
@@ -109,13 +110,15 @@ type RawRow = {
 };
 
 type ChartPoint = { x: number; y: number; meta?: any };
+const MAX_STORE_POINTS = 10_000; // เก็บสูงสุดต่อไฟล์
+// const MAX_STORE_POINTS = 1_000_000; // เก็บสูงสุดต่อไฟล์
 
 
 @Component({
   selector: 'app-logger',
   imports: [FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
     , ReactiveFormsModule, MatButtonModule, MatDividerModule, MatIconModule
-    , MatToolbarModule, NgxApexchartsModule],
+    , MatToolbarModule, NgxApexchartsModule, CommonModule],
   templateUrl: './logger.component.html',
   styleUrl: './logger.component.scss',
   providers: [
@@ -133,11 +136,31 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private pathsByLoggerId: Record<string, MapPoint[]> = {};
   private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
 
+  // ====== เพิ่มฟิลด์/ยูทิล ======
+  private isSyncingChart = false;
+  private isSyncingRace  = false;
+
+  private arraysEqual(a?: any[], b?: any[]) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
   pointMap: PointDef[] = [
     { idMap: 'bric', lat: 14.9635357, lon: 103.085812, zoom: 16 },
     { idMap: 'sic', lat: 2.76101, lon: 101.7343345, zoom: 16 },
     { idMap: 'bsc', lat: 13.304051, lon: 100.9014779, zoom: 15 },
   ];
+
+  // พาเล็ตต์สีและแมปสีต่อ key (ใช้กับ legend/polyline)
+  private palette = ['#007bff','#28a745','#dc3545','#ffc107','#6f42c1','#20c997','#17a2b8','#6610f2','#e83e8c','#795548'];
+  colorByKey: Record<string, string> = {};
+  private recomputeColors(keys: string[]) {
+    this.colorByKey = {};
+    keys.forEach((k, i) => this.colorByKey[k] = this.palette[i % this.palette.length]);
+  }
 
   currentPoints: LoggerPoint[] = [];
   options: { value: ChartKey; label: string; }[] = [
@@ -217,7 +240,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         axisTicks: { color: PAL.axis },
         labels: { style: { colors: PAL.textMuted } }
       },
-      yaxis: { labels: { style: { colors: PAL.textMuted } } },
+      yaxis: {
+        labels: {
+          formatter: (val: number) => {
+            // แปลงให้เป็นจำนวนเต็ม
+            return Math.round(val).toString();
+          }
+        }
+      },
       stroke: { curve: 'smooth', width: [2, 2, 3, 2], dashArray: [0, 0, 6, 0] }, // warning = เส้นประ
       dataLabels: { enabled: false },
       markers: { size: 0 },
@@ -292,12 +322,46 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }, {
       name: 'Qualifying',
       value: 'qualifying'
-    }, {
-      name: 'Race 1',
-      value: 'race1'
     }
+    // , {
+    //   name: 'Race 1',
+    //   value: 'race1'
+    // }
   ];
   // ////////////////////////
+
+
+private readonly intLabel = (val: number) =>
+  Number.isFinite(val) ? Math.round(val).toString() : '';
+
+private applyYAxisIntegerLabels() {
+  this.detailOpts = {
+    ...this.detailOpts,
+    yaxis: {
+      ...(this.detailOpts?.yaxis ?? {}),
+      labels: { formatter: this.intLabel }
+    }
+  };
+  this.brushOpts = {
+    ...this.brushOpts,
+    yaxis: {
+      ...(this.brushOpts?.yaxis ?? {}),
+      labels: { formatter: this.intLabel }
+    }
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+
   allDataLogger: Record<string, MapPoint[]> = {};
   loggerKey: any[] = [];
 
@@ -312,20 +376,49 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   }
 
+  // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======
+  // ---------- ตั้งค่า DEFAULT ----------
   ngOnInit() {
-    // this.generateSVGPointsFromFile('models/mock-logger-2.txt');
-    this.chartFilter.valueChanges
-      .pipe(startWith(this.chartFilter.value))
+    this.applyYAxisIntegerLabels();
+    // ----- DEFAULT: เลือกทั้งหมด -----
+    const allKeys = Object.keys(this.raceDateList || this.allDataLogger || {});
+    if (allKeys.length) {
+      this.isSyncingRace = true;
+      this.filterRace.setValue(allKeys, { emitEvent: false });
+      this.isSyncingRace = false;
+
+      this.selectedRaceKeys = allKeys.slice();
+      this.recomputeColors(this.selectedRaceKeys);
+      this.updateMapFromSelection(this.selectedRaceKeys);
+      this.updateChartsFromSelection(this.selectedRaceKeys); // ✅ กราฟอัปเดตจาก filterRace
+    }
+
+    // ----- WORKFLOW หลัก (ตัวเดียว) -----
+    this.filterRace.valueChanges
+      .pipe(
+        startWith(this.filterRace.value ?? []),
+        map(v => (v ?? []) as string[]),
+        distinctUntilChanged((a,b)=> this.arraysEqual(a,b))
+      )
       .subscribe(values => {
-        let v = (values ?? []) as SelectKey[];
-        if (v.includes('all')) {
-          v = this.options.map(o => o.value);
-          this.chartFilter.setValue(v, { emitEvent: false });
+        if (this.isSyncingRace) return;
+
+        let next = values;
+        if (next.includes('all')) {
+          const all = Object.keys(this.raceDateList || this.allDataLogger || {});
+          this.isSyncingRace = true;
+          this.filterRace.setValue(all, { emitEvent: false }); // กันยิงซ้ำ
+          this.isSyncingRace = false;
+          next = all;
         }
-        this.selectedKeys = v.filter(this.isChartKey);
-        this.refreshDetail();
-        this.refreshBrush();
-        this.chartsReady = true; // ✅ พร้อมแล้ว
+
+        if (!this.arraysEqual(this.selectedRaceKeys, next)) {
+          this.selectedRaceKeys = next.slice();
+          this.recomputeColors(this.selectedRaceKeys);
+          // อัปเดตทั้งสองอย่างพร้อมกัน
+          this.updateMapFromSelection(this.selectedRaceKeys);
+          this.updateChartsFromSelection(this.selectedRaceKeys);
+        }
       });
   }
 
@@ -368,26 +461,29 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
 
-  // ปรับชื่อฟังก์ชันให้สื่อว่าอ่าน CSV
+
+  // อ่าน CSV แล้วเก็บลง allDataLogger[key] (คงของเดิม)
   async loadCsvAndDraw(url: string) {
-  try {
-    const res = await fetch(url, { cache: 'no-store' });
-    const text = await res.text();
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const text = await res.text();
+      const mapPoints = this.csvToMapPoints(text);
 
-    const mapPoints = this.csvToMapPoints(text);
+      const filename = url.split('/').pop() ?? 'unknown.csv';
+      const key = this.extractKeyFromFilename(filename);
 
-    // ดึงชื่อไฟล์จาก url
-    const filename = url.split('/').pop() ?? 'unknown.csv';
-    const key = this.extractKeyFromFilename(filename);
-    this.loggerKey.push(key)
-    // push ลง array ในรูปแบบ [{practice: mapPoints}]
-    this.allDataLogger[key] = mapPoints;
-    // วาด polyline จาก mapPoints ได้เลย
-    // this.generateSVGPoints(mapPoints);
-  } catch (err) {
-    console.error('loadCsvAndStore error:', err);
+      const capped = mapPoints.length > MAX_STORE_POINTS
+        ? mapPoints.slice(0, MAX_STORE_POINTS)
+        : mapPoints;
+
+      this.loggerKey.push(key);
+      this.allDataLogger[key] = capped;
+
+      // ไม่ต้องวาดที่นี่ ถ้าคุณให้ filterRace คุมการอัปเดต
+    } catch (err) {
+      console.error('loadCsvAndStore error:', err);
+    }
   }
-}
   // ใช้ตอนมี text ของ CSV แล้ว (เช่นจาก fetch หรือ FileReader)
   csvToMapPoints(text: string): MapPoint[] {
     // กัน BOM + ตัดบรรทัดว่าง
@@ -522,20 +618,21 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // === เมื่อผู้ใช้เลือกเส้น (จาก mat-select multiple ของคุณ) ===
   // เรียกตอน select เปลี่ยน (รับเป็น string[] ตรง ๆ)
   onMultiSelectRaceChange(values: string[]) {
-    // กด "ทั้งหมด"
-    if (values?.includes('all')) {
-      // ดึงทุก key ที่มีใน allDataLogger
-      this.selectedRaceKeys = Object.keys(this.allDataLogger);
+    if (this.isSyncingRace) return;
 
-      // อัปเดตค่าใน control โดยไม่ยิง event ซ้ำ
-      this.filterRace.setValue(this.selectedRaceKeys, { emitEvent: false });
-    } else {
-      this.selectedRaceKeys = values ?? [];
+    let next: string[] = values ?? [];
+
+    // กรณีเลือก "all" -> แทนที่ด้วยทุก key
+    if (next.includes('all')) {
+      next = Object.keys(this.allDataLogger);
+
+      this.isSyncingRace = true;
+      this.filterRace.setValue(next, { emitEvent: false }); // << สำคัญ
+      this.isSyncingRace = false;
     }
 
-    // อัปเดตแผนที่และกราฟตาม key ที่เลือก
-    this.updateMapFromSelection(this.selectedRaceKeys);
-    // this.updateChartsFromSelection(this.selectedRaceKeys);
+    this.selectedRaceKeys = next;
+    this.updateMapFromSelection(next);
   }
 
   private updateChartsFromSelection(keys: string[]) {
@@ -545,7 +642,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // เลือกแกน X: ใช้ time ถ้ามี ไม่งั้นใช้ index
       const seriesData = data.map((p, idx) => {
         const x = (p.time ?? idx);
-        const y = Number.isFinite(p.afr as number) ? (p.afr as number)
+        const y = Number.isFinite(p.afrValue as number) ? (p.afrValue  as number)
                 : Number.isFinite(p.velocity as number) ? (p.velocity as number)
                 : null;
         return y == null ? null : { x, y };
