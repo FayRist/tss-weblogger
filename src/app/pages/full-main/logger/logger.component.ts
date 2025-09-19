@@ -194,7 +194,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   options: { value: ChartKey; label: string; }[] = [
     { value: 'avgAfr', label: 'Average AFR' },
     { value: 'realtimeAfr', label: 'Realtime AFR' },
-    { value: 'warningAfr', label: 'Warning AFR' },
+    // { value: 'warningAfr', label: 'Warning AFR' },
   ];
 
   selectedKeys: ChartKey[] = ['avgAfr', 'realtimeAfr'];
@@ -485,8 +485,32 @@ private applyYAxisIntegerLabels() {
     return base.split('_')[0].toLowerCase();
   }
 
+  // --- เพิ่มฟิลด์กันรันซ้ำ ---
+  private initialisedDefault = false;
 
+  // เรียกหลังโหลดข้อมูลเสร็จ (allDataLogger / mapraceDateList พร้อมแล้ว)
+  private initDefaultSelectionOnce() {
+    if (this.initialisedDefault) return;
 
+    const keys = Object.keys(this.allDataLogger || this.mapraceDateList || {});
+    if (!keys.length) return;
+
+    // ถ้ามี practice ให้ใช้ practice; ถ้าไม่มีให้ใช้คีย์แรก
+    const defaultKey = keys.includes('practice') ? 'practice' : keys[0];
+
+    this.isSyncingRace = true;
+    this.filterRace.setValue([defaultKey], { emitEvent: false });
+    this.isSyncingRace = false;
+
+    this.selectedRaceKeys = [defaultKey];
+    this.recomputeColors?.(this.selectedRaceKeys);      // ถ้ามีระบบสี
+    this.updateMapFromSelection(this.selectedRaceKeys); // วาดแผนที่
+    this.updateChartsFromSelection?.(this.selectedRaceKeys); // อัปเดตกราฟ (AFR)
+    // this.refreshDetail?.();
+    // this.refreshBrush?.();
+
+    this.initialisedDefault = true;
+  }
   // อ่าน CSV แล้วเก็บลง allDataLogger[key] (คงของเดิม)
   async loadCsvAndDraw(url: string) {
     try {
@@ -503,7 +527,7 @@ private applyYAxisIntegerLabels() {
 
       this.loggerKey.push(key);
       this.allDataLogger[key] = capped;
-
+      this.initDefaultSelectionOnce();
       // ไม่ต้องวาดที่นี่ ถ้าคุณให้ filterRace คุมการอัปเดต
     } catch (err) {
       console.error('loadCsvAndStore error:', err);
