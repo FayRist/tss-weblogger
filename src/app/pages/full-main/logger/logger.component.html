@@ -108,7 +108,7 @@
                         <!-- Route Path -->
                         <g [attr.transform]="polyTransform">
                           @if (showRoutePath) {
-                            @for (k of selectedKeys; track k; let i = $index) {
+                            @for (k of selectedRaceKeys; track k; let i = $index) {
                               <polyline
                                 [attr.points]="svgPointsByKey[k]"
                                 fill="none"

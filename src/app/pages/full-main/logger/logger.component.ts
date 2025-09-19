@@ -37,8 +37,8 @@ interface LoggerPoint {
 // จุดบนแผนที่ (ใช้กับ Leaflet)
 type MapPoint = {
   ts: number;
-  lat: number;
-  lon: number;
+  lat: any;
+  lon: any;
   velocity?: number;
   heading?: number;
   afr?: number;
@@ -445,10 +445,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   readonly SVG_W = 800;
   readonly SVG_H = 600;
 
+  get polyTransform(): string {
+    const { tx, ty, sx, sy, rot } = this.cal;
+    return `translate(${tx},${ty}) scale(${sx},${sy}) rotate(${rot} ${this.SVG_W/2} ${this.SVG_H/2})`;
+  }
+
+
   svgPointsByKey: Record<string, string> = {};
   startPointByKey: Record<string, { x: number; y: number }> = {};
   endPointByKey: Record<string, { x: number; y: number }> = {};
-  polyTransform = '';
+  // polyTransform = '';
 
   generateSVGPoints(mapPoints: any) {
     if (!mapPoints || mapPoints.length === 0) {
@@ -529,7 +535,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // อัปเดตแผนที่และกราฟตาม key ที่เลือก
     this.updateMapFromSelection(this.selectedRaceKeys);
-    this.updateChartsFromSelection(this.selectedRaceKeys);
+    // this.updateChartsFromSelection(this.selectedRaceKeys);
   }
 
   private updateChartsFromSelection(keys: string[]) {
@@ -560,60 +566,96 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
   }
 
-  private updateMapFromSelection(keys: string[]) {
-    if (!keys?.length) {
-      this.svgPointsByKey = {};
-      this.hasRouteData = false;
-      return;
-    }
-    // รวมจุดทุกชุดเพื่อคำนวณ bounds เดียว
-    const allPts = keys.flatMap(k => this.allDataLogger[k] || [])
-                      .map(p => ({ x: p.lon, y: p.lat }))
-                      .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+private updateMapFromSelection(keys: string[]) {
+  // เคลียร์เมื่อไม่มีการเลือก
+  if (!keys?.length) {
+    this.svgPointsByKey = {};
+    this.startPointByKey = {};
+    this.endPointByKey = {};
+    this.hasRouteData = false;
+    return;
+  }
 
-    if (allPts.length < 2) {
-      this.svgPointsByKey = {};
-      this.hasRouteData = false;
-      return;
-    }
+  // ==== เตรียมข้อมูล (กรอง + แปลงเป็นตัวเลข) ====
+  type Pt = { key: string; lat: number; lon: number };
+  const perKeyValid: Record<string, Pt[]> = {};
+  const allValid: Pt[] = [];
 
-    const minX = Math.min(...allPts.map(p => p.x));
-    const maxX = Math.max(...allPts.map(p => p.x));
-    const minY = Math.min(...allPts.map(p => p.y));
-    const maxY = Math.max(...allPts.map(p => p.y));
+  for (const k of keys) {
+    const src = this.allDataLogger[k] || [];
+    const arr: Pt[] = [];
 
-    const spanX = Math.max(1e-6, maxX - minX);
-    const spanY = Math.max(1e-6, maxY - minY);
-    const svgW = 800, svgH = 600, margin = 20;
-
-    const scale = Math.min((svgW - margin * 2) / spanX, (svgH - margin * 2) / spanY);
-    const scaledH = spanY * scale;
-
-    const tx = margin - minX * scale;
-    const ty = margin + scaledH + minY * scale; // รองรับกลับแกน Y
-    this.polyTransform = `translate(${tx.toFixed(3)}, ${ty.toFixed(3)}) scale(${scale.toFixed(6)}, ${(-scale).toFixed(6)})`;
-
-    // ทำ points แยกแต่ละ key (ใช้พิกัดดิบ ให้ <g transform> จัด)
-    const outPoints: Record<string, string> = {};
-    const start: Record<string, {x:number; y:number}> = {};
-    const end:   Record<string, {x:number; y:number}> = {};
-
-    keys.forEach(k => {
-      const pts = (this.allDataLogger[k] || [])
-        .filter(p => Number.isFinite(p.lon) && Number.isFinite(p.lat));
-
-      outPoints[k] = pts.map(p => `${p.lon},${p.lat}`).join(' ');
-      if (pts.length) {
-        start[k] = { x: pts[0].lon, y: pts[0].lat };
-        end[k]   = { x: pts[pts.length - 1].lon, y: pts[pts.length - 1].lat };
+    for (const p of src) {
+      const lat = parseFloat(p.lat);
+      const lon = parseFloat(p.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        const item = { key: k, lat, lon };
+        arr.push(item);
+        allValid.push(item);
       }
+    }
+    perKeyValid[k] = arr;
+  }
+
+  if (allValid.length < 2) {
+    this.svgPointsByKey = {};
+    this.startPointByKey = {};
+    this.endPointByKey = {};
+    this.hasRouteData = false;
+    return;
+  }
+
+  // ==== หาขอบเขต global (เหมือน generateSVGPoints) ====
+  const lats = allValid.map(p => p.lat);
+  const lons = allValid.map(p => p.lon);
+
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+
+  // กัน divide-by-zero
+  const spanLat = Math.max(1e-9, maxLat - minLat);
+  const spanLon = Math.max(1e-9, maxLon - minLon);
+
+  const SVG_W = 800;
+  const SVG_H = 600;
+
+  // ==== นอร์มัลไลซ์และเติมผลลัพธ์ ====
+  const outPoints: Record<string, string> = {};
+  const start: Record<string, { x: number; y: number; lat: number; long: number }> = {};
+  const end:   Record<string, { x: number; y: number; lat: number; long: number }> = {};
+
+  for (const k of keys) {
+    const arr = perKeyValid[k];
+    if (!arr.length) {
+      continue;
+    }
+
+    // แปลงทุกจุดใน key นี้เป็นพิกัด SVG
+    const svgPts = arr.map(({ lat, lon }) => {
+      const x = ((lon - minLon) / spanLon) * SVG_W;
+      const y = SVG_H - ((lat - minLat) / spanLat) * SVG_H; // กลับแกน Y
+      return { x, y, lat, long: lon };
     });
 
-    this.svgPointsByKey = outPoints;
-    this.startPointByKey = start;
-    this.endPointByKey = end;
-    this.hasRouteData = true;
+    outPoints[k] = svgPts.map(pt => `${pt.x},${pt.y}`).join(' ');
+
+    // จุดเริ่ม-จบตามลำดับข้อมูล
+    const s = svgPts[0];
+    const e = svgPts[svgPts.length - 1];
+    start[k] = s;
+    end[k] = e;
   }
+
+  this.svgPointsByKey = outPoints;
+  this.startPointByKey = start;
+  this.endPointByKey = end;
+
+  // มีเส้นอย่างน้อย 1 เส้นที่ยาว > 1 จุด
+  this.hasRouteData = Object.values(this.svgPointsByKey).some(s => (s?.split(' ').length || 0) > 1);
+}
+
 
 
   // ---------- Helpers ----------
