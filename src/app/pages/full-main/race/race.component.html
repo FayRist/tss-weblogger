@@ -18,6 +18,7 @@
             <th class="text-center">Class</th>
             <th class="text-center">วันที่แข่ง</th>
             <th class="text-center">เวลาแข่งขัน</th>
+            <th class="text-center w-10">สถานะการแข่ง</th>
             <th class="text-center">
               <button type="button" class="btn btn-secondary w-100" (click)="openAdd('0ms', '0ms')">เพิ่ม รายการแข่ง</button>
             </th>
@@ -46,7 +47,8 @@
               {{ raceData.session_start | timeRange: raceData.session_end }}
             </td>
 
-            <td class="text-center w-25">
+            <td class="text-center" >จบการแข่ง</td>
+            <td class="text-center w-15">
               <div class="row d-flex justify-content-center">
                 <div class="col-2">
                   <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">

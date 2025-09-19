@@ -4,56 +4,35 @@
       <mat-icon>menu</mat-icon>
     </button>
 <!-- ถ้าเป็น /pages/dashboard ให้โชว์ฟอร์ม; ถ้าไม่ใช่ ให้โชว์ข้อความ Data Logger -->
-    @if (isDashboard$ | async) {
       <span>Data Logger</span>
 
       <div class="container">
         <div class="row w-100">
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
+            @if ((isDashboard$  | async) || (isRace$  | async)) {
+                <mat-chip matButton [matMenuTriggerFor]="Event" style="width: auto;">Event : BANGSAEN</mat-chip>
+                <mat-menu #Event="matMenu">
+                  <button mat-menu-item>BANGSAEN</button>
+                </mat-menu>
+            }
 
-                <mat-chip disabled style="width: auto;">Event : BANGSAEN</mat-chip>
-                <mat-chip disabled style="width: auto;">Category : Test Session</mat-chip>
+            @if ((isDashboard$  | async)) {
+                <mat-chip matButton [matMenuTriggerFor]="Category" style="width: auto;">Category : Test Session</mat-chip>
+                <mat-menu #Category="matMenu">
+                  <button mat-menu-item>Test Session</button>
+                </mat-menu>
+                <mat-chip matButton [matMenuTriggerFor]="menu" style="width: auto;">รุ่น : PickUp</mat-chip>
+                <mat-menu #menu="matMenu">
+                  <button mat-menu-item>PickUp</button>
+                </mat-menu>
+            }
                 <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
 
             </div>
           </mat-chip-set>
         </div>
       </div>
-    }@else if (isSettingLogger$ | async) {
-      <span>Data Logger</span>
-
-      <div class="container">
-        <div class="row w-100">
-          <mat-chip-set aria-label="Fish selection">
-            <div class="col-6">
-
-                <mat-chip disabled style="width: auto;">Event : BANGSAEN</mat-chip>
-                <mat-chip disabled style="width: auto;">Category : Test Session(Pickup Class A)</mat-chip>
-                <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
-
-            </div>
-          </mat-chip-set>
-        </div>
-      </div>
-    } @else if (isRace$ | async) {
-      <span>Data Logger</span>
-
-      <div class="container">
-        <div class="row w-100">
-          <mat-chip-set aria-label="Fish selection">
-            <div class="col-6">
-
-                <mat-chip disabled style="width: auto;">Event : BANGSAEN</mat-chip>
-                <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
-
-            </div>
-          </mat-chip-set>
-        </div>
-      </div>
-    }@else {
-      <span>Data Logger</span>
-    }
     <span class="example-spacer"></span>
 
     <button mat-icon-button class="example-icon" aria-label="profile" [matMenuTriggerFor]="profileMenu">

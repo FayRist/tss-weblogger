@@ -84,6 +84,7 @@ export class DashboardComponent implements OnInit {
   isChecked = true;
   formGroup = this._formBuilder.group({
     sortType: [true, Validators.requiredTrue],
+    sortLoggerType: [true, Validators.requiredTrue],
   });
 
   constructor(

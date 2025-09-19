@@ -17,6 +17,10 @@
         </div>
         <div class="col-6 ps-0 pe-0 d-flex  align-items-center">
           <form class="example-form" [formGroup]="formGroup" ngNativeValidate>
+            <mat-slide-toggle formControlName="sortLoggerType" (change)="onToggleSort()">ลำดับ Logger</mat-slide-toggle>
+          </form>
+
+          <form class="example-form ms-3" [formGroup]="formGroup" ngNativeValidate>
             <mat-slide-toggle formControlName="sortType" (change)="onToggleSort()">Warning {{sortStatus}}</mat-slide-toggle>
           </form>
         </div>
