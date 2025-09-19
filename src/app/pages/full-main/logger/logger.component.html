@@ -107,44 +107,56 @@
 
                         <!-- Route Path -->
                         <g [attr.transform]="polyTransform">
+                          @if (showRoutePath) {
+                            @for (k of selectedKeys; track k; let i = $index) {
+                              <polyline
+                                [attr.points]="svgPointsByKey[k]"
+                                fill="none"
+                                [attr.stroke]="['#007bff','#28a745','#dc3545','#ffc107','#6f42c1','#20c997'][i % 6]"
+                                stroke-width="2"
+                                opacity="0.9"
+                              />
+                            }
+                          }
 
-                        @if(showRoutePath){
+                          @if (hasRouteData) {
+                            @for (k of selectedKeys; track k; let i = $index) {
+                              <circle
+                                [attr.cx]="startPointByKey[k]?.x"
+                                [attr.cy]="startPointByKey[k]?.y"
+                                r="8"
+                                [attr.fill]="['#28a745','#007bff','#dc3545','#ffc107','#6f42c1','#20c997'][i % 6]"
+                                stroke="#fff"
+                                stroke-width="2"
+                              />
+                              <text
+                                [attr.x]="(startPointByKey[k]?.x || 0) + 10"
+                                [attr.y]="startPointByKey[k]?.y || 0"
+                                font-size="14"
+                                [attr.fill]="['#28a745','#007bff','#dc3545','#ffc107','#6f42c1','#20c997'][i % 6]"
+                                font-weight="bold"
+                              >{{ k }} Start</text>
 
-                          <polyline
-                            [attr.points]="svgPoints"
-                            fill="none"
-                            stroke="#007bff"
-                            stroke-width="2"
-                            opacity="0.9"
-                          />
-                        }
-
-                        <!-- Start Point -->
-                        @if(hasRouteData){
-                          <circle  [attr.cx]="startPoint.x" [attr.cy]="startPoint.y" r="10" fill="#28a745" stroke="#fff" stroke-width="3" />
-                          <text  [attr.x]="startPoint.x + 15" [attr.y]="startPoint.y" font-size="20" fill="#28a745" font-weight="bold">Start</text>
-                          <circle [attr.cx]="endPoint.x" [attr.cy]="endPoint.y" r="10" fill="#dc3545" stroke="#fff" stroke-width="3" />
-                          <text [attr.x]="endPoint.x + 15" [attr.y]="endPoint.y" font-size="20" fill="#dc3545" font-weight="bold">End</text>
-                        }
-
+                              <circle
+                                [attr.cx]="endPointByKey[k]?.x"
+                                [attr.cy]="endPointByKey[k]?.y"
+                                r="8"
+                                [attr.fill]="['#dc3545','#007bff','#28a745','#ffc107','#6f42c1','#20c997'][i % 6]"
+                                stroke="#fff"
+                                stroke-width="2"
+                              />
+                              <text
+                                [attr.x]="(endPointByKey[k]?.x || 0) + 10"
+                                [attr.y]="endPointByKey[k]?.y || 0"
+                                font-size="14"
+                                [attr.fill]="['#dc3545','#007bff','#28a745','#ffc107','#6f42c1','#20c997'][i % 6]"
+                                font-weight="bold"
+                              >{{ k }} End</text>
+                            }
+                          }
                         </g>
-
                         </svg>
                     </div>
-                    <!-- <div class="mt-3 d-flex align-items-center gap-4 flex-wrap">
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display:inline-block;width:24px;height:8px;background:#007bff;border-radius:4px;"></span>
-                        <span>เส้นทางการวิ่ง</span>
-                      </div>
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display:inline-block;width:18px;height:18px;background:#28a745;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #28a745;"></span>
-                        <span>จุดเริ่มต้น (Start)</span>
-                      </div>
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display:inline-block;width:18px;height:18px;background:#dc3545;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #dc3545;"></span>
-                        <span>จุดสิ้นสุด (End)</span>
-                      </div>
-                    </div> -->
           </div>
 
 
@@ -177,8 +189,8 @@
                     <div class="d-flex align-items-center gap-2">
                       <form class="mat-input-form">
                         <mat-form-field class="w-100">
-                          <mat-label>วันที่แข่ง</mat-label>
-                            <mat-select [formControl]="filterRace" multiple>
+                          <mat-label>Section</mat-label>
+                            <mat-select [formControl]="filterRace" multiple (selectionChange)="onMultiSelectRaceChange($event.value)">
                               @for (racesDate of raceDateList; track racesDate.value) {
                                 <mat-option [value]="racesDate.value">{{racesDate.name}}</mat-option>
                               }
@@ -217,46 +229,40 @@
                           </mat-select>
                         </button>
                       </div>
-
                     </div>
                   </div>
                   <div class="card-body">
                     <div class="chart-wrapper">
                       <div id="chart-detail">
-                        @if (brushOpts.series.length > 0) {
-                          <apx-chart
-                            [series]="detailOpts.series"
-                            [chart]="detailOpts.chart"
-                            [xaxis]="detailOpts.xaxis"
-                            [yaxis]="detailOpts.yaxis"
-                            [stroke]="detailOpts.stroke"
-                            [dataLabels]="detailOpts.dataLabels"
-                            [grid]="detailOpts.grid"
-                            [fill]="detailOpts.fill"
-                            [tooltip]="detailOpts.tooltip"
-                            [legend]="detailOpts.legend"
-                            [theme]="detailOpts.theme"
-                            [colors]="detailOpts.colors"
-                          ></apx-chart>
-                        }
+                        <apx-chart
+                          [series]="detailOpts.series"
+                          [chart]="detailOpts.chart"
+                          [xaxis]="detailOpts.xaxis"
+                          [yaxis]="detailOpts.yaxis"
+                          [stroke]="detailOpts.stroke"
+                          [dataLabels]="detailOpts.dataLabels"
+                          [markers]="detailOpts.markers"
+                          [colors]="detailOpts.colors"
+                          [fill]="detailOpts.fill"
+                          [tooltip]="detailOpts.tooltip"
+                          [legend]="detailOpts.legend"
+                          [theme]="detailOpts.theme"
+                        ></apx-chart>
                       </div>
 
-
-                      <!-- brush -->
                       <div id="chart-brush">
-                        @if (brushOpts.series.length > 0) {
-                          <apx-chart
-                            [series]="brushOpts.series"
-                            [chart]="brushOpts.chart"
-                            [xaxis]="brushOpts.xaxis"
-                            [yaxis]="brushOpts.yaxis"
-                            [dataLabels]="brushOpts.dataLabels"
-                            [stroke]="brushOpts.stroke"
-                            [fill]="brushOpts.fill"
-                            [grid]="brushOpts.grid"
-                            [theme]="brushOpts.theme"
-                          ></apx-chart>
-                        }
+                        <apx-chart
+                          [series]="brushOpts.series"
+                          [chart]="brushOpts.chart"
+                          [xaxis]="brushOpts.xaxis"
+                          [yaxis]="brushOpts.yaxis"
+                          [colors]="brushOpts.colors"
+                          [fill]="brushOpts.fill"
+                          [grid]="brushOpts.grid"
+                          [dataLabels]="brushOpts.dataLabels"
+                          [stroke]="brushOpts.stroke"
+                          [theme]="brushOpts.theme"
+                        ></apx-chart>
                       </div>
                     </div>
 
