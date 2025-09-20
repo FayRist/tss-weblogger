@@ -11,20 +11,24 @@
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
             @if ((isDashboard$  | async) || (isRace$  | async)) {
-                <mat-chip matButton [matMenuTriggerFor]="Event" style="width: auto;">Event : BANGSAEN</mat-chip>
+                <mat-chip matButton  [matMenuTriggerFor]="Event" style="width: auto;">Event : BANGSAEN</mat-chip>
                 <mat-menu #Event="matMenu">
-                  <button mat-menu-item>BANGSAEN</button>
+                  <button mat-menu-item (click)="navigateToListAllSeason()">BANGSAEN</button>
                 </mat-menu>
             }
 
             @if ((isDashboard$  | async)) {
-                <mat-chip matButton [matMenuTriggerFor]="Category" style="width: auto;">Category : Test Session</mat-chip>
-                <mat-menu #Category="matMenu">
-                  <button mat-menu-item>Test Session</button>
-                </mat-menu>
                 <mat-chip matButton [matMenuTriggerFor]="menu" style="width: auto;">รุ่น : PickUp</mat-chip>
                 <mat-menu #menu="matMenu">
-                  <button mat-menu-item>PickUp</button>
+                  <button mat-menu-item (click)="navigateToRace(6)">PickUp</button>
+                  <!-- @for (item of items; track $index) {
+                    <button mat-menu-item (click)="navigateToRace(eventList.event_id)">PickUp</button>
+                  } -->
+                </mat-menu>
+
+                <mat-chip matButton  [matMenuTriggerFor]="Category" style="width: auto;">Category : Test Session</mat-chip>
+                <mat-menu #Category="matMenu">
+                  <button mat-menu-item (click)="navigateToDashboard()">Test Session</button>
                 </mat-menu>
             }
                 <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>

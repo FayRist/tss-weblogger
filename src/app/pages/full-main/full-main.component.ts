@@ -128,6 +128,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
   navigateToListSettingLogger() { this.router.navigate(['/pages', 'setting-logger']); }
   navigateToLogout() { this.router.navigate(['/login']); }
 
+  navigateToRace(eventId: number) {
+    this.router.navigate(['/pages', 'race', eventId]);
+  }
+
   navigateToAddSeason(enterAnimationDuration: string, exitAnimationDuration: string): void {
        const dialogRef = this.dialog.open(AddEventComponent, {
       width: '100vw', maxWidth: '750px',

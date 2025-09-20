@@ -152,7 +152,7 @@ function afrToColor(v:number, min:number, max:number){
   ]
 })
 export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
-  segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string }>> = {};
+  segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
 
   //--- Chart ------
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
@@ -181,6 +181,34 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     { idMap: 'sic', lat: 2.76101, lon: 101.7343345, zoom: 16 },
     { idMap: 'bsc', lat: 13.304051, lon: 100.9014779, zoom: 15 },
   ];
+
+  // จุด (x,y,lat,long,afr) ต่อ key สำหรับ hover
+  svgPtsByKey: Record<string, Array<{ x:number; y:number; lat:number; long:number; afr?:number }>> = {};
+
+  // tooltip state
+  tip = { visible: false, x: 0, y: 0, afr: NaN as number, lat: NaN as number, lon: NaN as number, key: '' };
+  // อ้างอิงกล่องห่อ SVG เพื่อคำนวณตำแหน่งเมาส์สัมพัทธ์
+  @ViewChild('mapWrap', { static: true }) mapWrapEl!: { nativeElement: HTMLElement };
+
+  onPointEnter(evt: MouseEvent, key: string, p: {x:number;y:number;lat:number;long:number;afr?:number}) {
+    const rect = this.mapWrapEl?.nativeElement?.getBoundingClientRect();
+    const left = rect ? rect.left : 0;
+    const top  = rect ? rect.top  : 0;
+
+    this.tip = {
+      visible: true,
+      x: evt.clientX - left + 12,  // ขยับให้พ้นเมาส์นิด
+      y: evt.clientY - top  + 12,
+      afr: p.afr ?? NaN,
+      lat: p.lat,
+      lon: p.long,
+      key
+    };
+  }
+
+  onPointLeave() {
+    this.tip.visible = false;
+  }
 
   // พาเล็ตต์สีและแมปสีต่อ key (ใช้กับ legend/polyline)
   private palette = ['#007bff','#28a745','#dc3545','#ffc107','#6f42c1','#20c997','#17a2b8','#6610f2','#e83e8c','#795548'];
@@ -769,7 +797,7 @@ private updateMapFromSelection(keys: string[]) {
   const outPoints: Record<string, string> = {};
   const start: Record<string, {x:number;y:number;lat:number;long:number}> = {};
   const end:   Record<string, {x:number;y:number;lat:number;long:number}> = {};
-  const segs:  Record<string, Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string }>> = {};
+  const segs:  Record<string, Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string; afr:number;  }>> = {};
 
   for (const k of keys) {
     const arr = perKey[k];
@@ -789,7 +817,7 @@ private updateMapFromSelection(keys: string[]) {
 
     // ---- แตกเป็น segment พร้อมสีจากค่า AFR (ใช้ค่าเฉลี่ยของคู่จุด)
     const step = Math.max(1, Math.ceil(pts.length / 20000)); // กันหนัก: สูงสุด ~20k segment ต่อ key
-    const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string }> = [];
+    const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string , afr:number; }> = [];
     for (let i = 0; i < pts.length - step; i += step) {
       const a = pts[i], b = pts[i + step];
       const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
@@ -799,7 +827,8 @@ private updateMapFromSelection(keys: string[]) {
                    : afrB!=null ? afrB
                    : (afrMin + afrMax)/2; // ถ้าไม่มี ใช้กลางช่วง
       const color = afrToColor(afr, afrMin, afrMax);
-      s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y, c: color });
+
+      s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y, c: color ,afr});
     }
     segs[k] = s;
   }

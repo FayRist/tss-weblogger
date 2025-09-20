@@ -1,0 +1,7 @@
+.ellipsis-text {
+  display: block;         /* หรือ inline-block ก็ได้ */
+  white-space: nowrap;    /* ไม่ตัดบรรทัด */
+  overflow: hidden;       /* ซ่อนข้อความเกิน */
+  text-overflow: ellipsis;/* เติม ... */
+  max-width: 100%;        /* ใช้เต็มที่ตาม parent */
+}

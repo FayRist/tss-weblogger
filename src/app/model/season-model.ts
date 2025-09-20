@@ -41,5 +41,6 @@ export interface LoggerModel {
   createdDate: Date;
   numberWarning: number;
   warningDetector: boolean;
+  classType: string;
 }
 

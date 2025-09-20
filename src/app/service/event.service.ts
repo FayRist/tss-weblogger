@@ -211,6 +211,7 @@ export class EventService {
         createdDate: new Date(),
         numberWarning: 0,
         warningDetector: false,
+        classType  : api.class_type
       })))
     );
   }

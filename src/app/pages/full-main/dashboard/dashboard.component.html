@@ -7,9 +7,12 @@
             <mat-form-field class="w-100">
               <mat-label>Filter</mat-label>
               <!-- <input matInput class="text-center" value="Thailand Super Pickup D2"> -->
-                <mat-select [formControl]="filterLogger" multiple (selectionChange)="onSelectChange($event)">
+                <mat-select
+                  [formControl]="filterLogger"
+                  (selectionChange)="onSelectChange($event)"
+                >
                   @for (filterLog of filterLogList; track filterLog) {
-                    <mat-option [value]="filterLog.value">{{filterLog.name}}</mat-option>
+                    <mat-option [value]="filterLog.value">{{ filterLog.name }}</mat-option>
                   }
                 </mat-select>
             </mat-form-field>
@@ -17,7 +20,7 @@
         </div>
         <div class="col-6 ps-0 pe-0 d-flex  align-items-center">
           <form class="example-form" [formGroup]="formGroup" ngNativeValidate>
-            <mat-slide-toggle formControlName="sortLoggerType" (change)="onToggleSort()">ลำดับ Logger</mat-slide-toggle>
+            <mat-slide-toggle formControlName="sortLoggerType" (change)="onToggleSortCarNumber()">ลำดับ Logger</mat-slide-toggle>
           </form>
 
           <form class="example-form ms-3" [formGroup]="formGroup" ngNativeValidate>
@@ -96,11 +99,18 @@
             <div class="col-12">
               <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">No.{{logger.carNumber}}</span></h3>
             </div>
+            <!-- <div class="col-6">
+              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">{{logger.classType}}</span></h3>
+            </div> -->
             <div class="col-12">
-              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">{{logger.loggerId}}</span></h3>
+              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">Logger-{{logger.loggerId}}</span></h3>
+            </div>
+            <div class="col-12 text-center">
+              <h3 style="margin: 0.5rem 0 0 0;">
+                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
+              </h3>
             </div>
           </div>
-
           <hr style="margin: 0.3rem 0;">
           <div class="row justify-content-center">
             <div class="col-6 mt-1 pe-0 d-flex justify-content-center">

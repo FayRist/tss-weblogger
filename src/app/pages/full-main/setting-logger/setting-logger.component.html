@@ -4,7 +4,8 @@
       <h3>ตั้งค่า Logger</h3>
     </div>
     <div class="col-6 d-flex justify-content-end">
-      <button type="button" class="btn btn-secondary" (click)="addLogger('0ms','0ms')">เพิ่ม Logger</button>
+      <button type="button" class="btn btn-success" (click)="exportFileEx()">Export ไฟล์ Excel</button>
+      <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')">เพิ่ม Logger</button>
     </div>
   </div>
   <hr style="margin: 0.3rem 0; color: #FFF;" >
@@ -16,12 +17,25 @@
       <mat-card class="logger-card" appearance="outlined"  >
         <mat-card-content>
           <div class="row">
-            <div class="col-12">
+            <div class="col-6">
               <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">No.{{logger.carNumber}}</span></h3>
             </div>
-            <div class="col-12">
-              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">{{logger.loggerId}}</span></h3>
+            <div class="col-6">
+              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">{{logger.classType}}</span></h3>
             </div>
+            <div class="col-12">
+              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">Logger-{{logger.loggerId}}</span></h3>
+            </div>
+            <div class="col-12 text-center">
+              <h3 style="margin: 0.5rem 0 0 0;">
+                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
+              </h3>
+            </div>
+            <!-- <div class="col-6 text-center">
+              <h3 style="margin: 0.5rem 0 0 0;">
+                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.lastName">{{logger.lastName}}</span>
+              </h3>
+            </div> -->
           </div>
 
           <hr style="margin: 0.3rem 0;">

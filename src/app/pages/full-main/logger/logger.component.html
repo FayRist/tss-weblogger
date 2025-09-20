@@ -91,10 +91,10 @@
           </div>
           <div class="card-body">
                     <div class="track-image-container">
-                      <div class="form-check form-switch mb-2">
+                      <!-- <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="toggleRoutePath" [(ngModel)]="showRoutePath">
                         <label class="form-check-label" for="toggleRoutePath">แสดงเส้นทางการวิ่ง</label>
-                      </div>
+                      </div> -->
                       <svg width="800" height="600" viewBox="0 0 800 660">
                         <!-- BG Image -->
                         <!-- @if(trackImage){ -->
@@ -115,47 +115,13 @@
                                     [attr.x1]="seg.x1" [attr.y1]="seg.y1"
                                     [attr.x2]="seg.x2" [attr.y2]="seg.y2"
                                     [attr.stroke]="seg.c"
-                                    stroke-width="2" stroke-linecap="round" />
+                                    stroke-width="2" stroke-linecap="round" >
+                                    <title>AFR: {{ seg.afr | number:'1.0-1' }}</title>
+                                  </line>
                                 }
                               </g>
                             }
                           }
-
-                          <!-- @if (hasRouteData) {
-                            @for (k of selectedKeys; track k; let i = $index) {
-                              <circle
-                                [attr.cx]="startPointByKey[k]?.x"
-                                [attr.cy]="startPointByKey[k]?.y"
-                                r="8"
-                                [attr.fill]="['#28a745','#007bff','#dc3545','#ffc107','#6f42c1','#20c997'][i % 6]"
-                                stroke="#fff"
-                                stroke-width="2"
-                              />
-                              <text
-                                [attr.x]="(startPointByKey[k]?.x || 0) + 10"
-                                [attr.y]="startPointByKey[k]?.y || 0"
-                                font-size="14"
-                                [attr.fill]="['#28a745','#007bff','#dc3545','#ffc107','#6f42c1','#20c997'][i % 6]"
-                                font-weight="bold"
-                              >{{ k }} Start</text>
-
-                              <circle
-                                [attr.cx]="endPointByKey[k]?.x"
-                                [attr.cy]="endPointByKey[k]?.y"
-                                r="8"
-                                [attr.fill]="['#dc3545','#007bff','#28a745','#ffc107','#6f42c1','#20c997'][i % 6]"
-                                stroke="#fff"
-                                stroke-width="2"
-                              />
-                              <text
-                                [attr.x]="(endPointByKey[k]?.x || 0) + 10"
-                                [attr.y]="endPointByKey[k]?.y || 0"
-                                font-size="14"
-                                [attr.fill]="['#dc3545','#007bff','#28a745','#ffc107','#6f42c1','#20c997'][i % 6]"
-                                font-weight="bold"
-                              >{{ k }} End</text>
-                            }
-                          } -->
                         </g>
                         </svg>
                     </div>

@@ -22,7 +22,7 @@ import { merge, startWith, Subscription, take } from 'rxjs';
 import { RACE_SEGMENT } from '../../../constants/race-data';
 import { parseClassQueryToCombined } from '../../../utility/race-param.util';
 
-type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect';
+type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
 @Component({
   selector: 'app-dashboard',
@@ -46,6 +46,7 @@ export class DashboardComponent implements OnInit {
       loggerId: "Client121",
       createdDate: new Date(10/9/2025),
       numberWarning: 2,
+      classType: 'PickupA',
       warningDetector: false,
 
     },{
@@ -56,6 +57,7 @@ export class DashboardComponent implements OnInit {
       loggerId: "Client124",
       createdDate: new Date(10/9/2025),
       numberWarning: 0,
+      classType: 'PickupA',
       warningDetector: false,
     },
   ];
@@ -73,11 +75,11 @@ export class DashboardComponent implements OnInit {
       name: 'เฉพาะ ควันคำ',
       value: 'allSmokeDetect'
     },{
-      name: 'เฉพาะ Warning',
-      value: 'allWarning'
+      name: 'ยกเว้น ควันคำ',
+      value: 'excludeSmokeDetect'
     }
   ];
-  filterLogger = new FormControl<FilterKey[]>(['all'], { nonNullable: true });
+  filterLogger = new FormControl<FilterKey>('all', { nonNullable: true });
   private wasAllSelected = this.filterLogger.value.includes('all');
   private _formBuilder = inject(FormBuilder);
   filterIsAnd = false;
@@ -97,6 +99,8 @@ export class DashboardComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    this.filterLogger.setValue('all', { emitEvent: true });
+    this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
     const qpSub = this.route.queryParamMap.pipe(take(1)).subscribe(qp => {
       // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
       const classMulti = qp.getAll('class');
@@ -134,16 +138,35 @@ export class DashboardComponent implements OnInit {
     this.subscriptions.push(qpSub);
   }
 
+  onSelectChange(event: MatSelectChange) {
+  const value = event.value as FilterKey;
+  this.applyFilter(value);
+}
+
+private applyFilter(value: FilterKey) {
+  switch (value) {
+    case 'all':
+      this.onShowAllLoggers = this.allLoggers;
+      break;
+    case 'allSmokeDetect': // มี warning > 1
+      this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberWarning ?? 0) > 1);
+      break;
+    case 'excludeSmokeDetect': // ไม่มี warning เลย
+      this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberWarning ?? 0) === 0);
+      break;
+  }
+}
+
   isAllSelected(): boolean {
     return this.filterLogger.value.includes('all');
   }
 
-  private matchesFilters(item: LoggerModel, filters: FilterKey[]): boolean {
+  private matchesFilters(item: LoggerModel, filters: FilterKey): boolean {
     if (filters.length === 0 || filters.includes('all')) return true;
 
     const conds: any[] = [];
-    if (filters.includes('allWarning')) conds.push(item.numberWarning > 0 && !item.warningDetector);
-    if (filters.includes('allSmokeDetect')) conds.push(item.warningDetector === true);
+    if (filters.includes('allSmokeDetect')) conds.push(item.numberWarning > 0 && !item.warningDetector);
+    if (filters.includes('excludeSmokeDetect')) conds.push(item.numberWarning == 0);
 
     return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
   }
@@ -166,6 +189,11 @@ export class DashboardComponent implements OnInit {
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
     this.onShowAllLoggers = [...filtered];
+
+    this.formGroup.get('sortLoggerType')?.value;
+    this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
+      return Number(a.carNumber) - Number(b.carNumber); // ✅ แปลงเป็นตัวเลข
+    });
     this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
   }
 
@@ -174,26 +202,26 @@ export class DashboardComponent implements OnInit {
   }
 
   // ถ้าเลือก "ทั้งหมด" พร้อมกับตัวอื่น ให้เหลือแค่ "ทั้งหมด"
-  onSelectChange(event: MatSelectChange) {
-    const values = (event.value || []) as FilterKey[];
-    const hadAll = this.wasAllSelected;
-    const hasAllNow = values.includes('all');
+  // onSelectChange(event: MatSelectChange) {
+  //   const values = (event.value || []) as FilterKey[];
+  //   const hadAll = this.wasAllSelected;
+  //   const hasAllNow = values.includes('all');
 
-    if (hasAllNow && values.length > 1) {
-      if (hadAll) {
-        this.filterLogger.setValue(values.filter(v => v !== 'all'), { emitEvent: false });
-      } else {
-        this.filterLogger.setValue(['all'], { emitEvent: false });
-      }
-    }else if(values.length == 0){
-      this.filterLogger.setValue(['all'], { emitEvent: false });
-    }
+  //   if (hasAllNow && values.length > 1) {
+  //     if (hadAll) {
+  //       this.filterLogger.setValue(values.filter(v => v !== 'all'), { emitEvent: false });
+  //     } else {
+  //       this.filterLogger.setValue(['all'], { emitEvent: false });
+  //     }
+  //   }else if(values.length == 0){
+  //     this.filterLogger.setValue(['all'], { emitEvent: false });
+  //   }
 
-    this.wasAllSelected = (this.filterLogger.value ?? values).includes('all');
+  //   this.wasAllSelected = (this.filterLogger.value ?? values).includes('all');
 
-    // อัปเดตผลทุกครั้งหลังเปลี่ยน
-    this.updateView(this.allLoggers);
-  }
+  //   // อัปเดตผลทุกครั้งหลังเปลี่ยน
+  //   this.updateView(this.allLoggers);
+  // }
 
   get allWarning(): LoggerModel[] {
     return this.allLoggers.filter(x => x.numberWarning > 0);
@@ -204,6 +232,21 @@ export class DashboardComponent implements OnInit {
     this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
     this.updateView(this.allLoggers); // 👉 เรียงใหม่ตามสถานะล่าสุด
   }
+
+  onToggleSortCarNumber() {
+    const isSortCarNumber = this.formGroup.get('sortLoggerType')?.value;
+
+    if (isSortCarNumber) {
+      this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
+        return Number(a.carNumber) - Number(b.carNumber); // ✅ แปลงเป็นตัวเลข
+      });
+    } else {
+      this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
+        return Number(b.carNumber) - Number(a.carNumber); // ✅ แปลงเป็นตัวเลข
+      });
+    }
+  }
+
 
   navigateToLoggerDetail() {
     this.router.navigate(['/pages', 'logger']);
