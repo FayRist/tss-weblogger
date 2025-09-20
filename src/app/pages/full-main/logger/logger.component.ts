@@ -20,6 +20,7 @@ import * as L from 'leaflet';
 import { LoggerDataService } from '../../../service/logger-data.service';
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
+import { EventService } from '../../../service/event.service';
 
 
 
@@ -421,6 +422,7 @@ private applyYAxisIntegerLabels() {
   constructor(private router: Router, private route: ActivatedRoute, private cdr: ChangeDetectorRef
     // , private loggerData: LoggerDataService
     , private http: HttpClient
+    , private eventService: EventService
   ) {
     // this.setCurrentPoints(this.buildMock(180));
     this.loadCsvAndDraw('models/mock-data/practice_section.csv');  // เปลี่ยน path ให้ตรงโปรเจกต์
@@ -431,7 +433,20 @@ private applyYAxisIntegerLabels() {
 
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======
   // ---------- ตั้งค่า DEFAULT ----------
+
+  parameterRaceId:any = null;
+  parameterSegment:any = null;
+  parameterClass:any = null;
+  parameterLoggerID:any = null;
+
   ngOnInit() {
+    this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
+    this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
+    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
+    this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? ''; // ใช้ชื่อแปรอื่นแทน class
+
+    this.getDetailLoggerById();
+
     this.applyYAxisIntegerLabels();
     // ----- DEFAULT: เลือกทั้งหมด -----
     const allKeys = Object.keys(this.raceDateList || this.allDataLogger || {});
@@ -473,6 +488,48 @@ private applyYAxisIntegerLabels() {
           this.updateChartsFromSelection(this.selectedRaceKeys);
         }
       });
+  }
+
+  loggerID     = 0;
+  carNumber    = '';
+  firstName    = '';
+  lastName     = '';
+  classType    = '';
+  segmentValue = '';
+  seasonID     = 0;
+  categoryName = '';
+  sessionValue = '';
+
+  getDetailLoggerById(): void {
+    // let payload = {
+    //   race_id  : this.parameterRaceId,
+    //   segment_type  : this.parameterSegment,
+    //   class_type  : this.parameterClass,
+    //   logger_id  : this.parameterLoggerID,
+    // }
+    this.eventService.getDetailLoggerInRace(this.parameterRaceId ,this.parameterSegment ,this.parameterClass ,this.parameterLoggerID).subscribe({
+      next: (raceList) => {
+        // detail คือ LoggerRaceDetailRes (อ็อบเจ็กต์เดียว)
+        // ใช้งานตรง ๆ เช่น:
+        this.loggerID     = raceList.loggerId;
+        this.carNumber    = raceList.carNumber;
+        this.firstName    = raceList.firstName;
+        this.lastName     = raceList.lastName;
+        this.classType    = raceList.classType;
+        this.segmentValue = raceList.segmentValue;
+        this.seasonID     = raceList.seasonId;
+        this.categoryName = raceList.segmentValue;
+        this.sessionValue = raceList.sessionValue;
+
+        // หรือเก็บทั้งอ็อบเจ็กต์
+        // this.raceList = raceList;       // ใช้งานต่อได้เลย
+        // ...อาจอัปเดต UI / กราฟ / แผนที่ที่พี่ต้องการ
+      },
+      error: (err) => {
+        console.error('getDetailLoggerInRace error:', err);
+        // แจ้งเตือน/แสดง error ให้ผู้ใช้
+      }
+    });
   }
 
   // ====== เวอร์ชันใหม่: อ่านจากไฟล์ .txt ======

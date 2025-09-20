@@ -50,6 +50,7 @@ export const APP_CONFIG = {
       UPDATE_LOGGER: '/logger/updateLoger',
       DELETE_LOGGER: '/logger/deleteLoger',
       LIST_LOGGER_FOREXCEL: '/logger/getListLoger',
+      GET_DETAIL_LOGGERS_IN_RACE: '/logger/getDetailLoggerInRace',
 
       // Users (สำหรับอนาคต)
       GET_USERS: '/users/getUsers',

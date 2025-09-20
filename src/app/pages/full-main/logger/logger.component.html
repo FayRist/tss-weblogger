@@ -6,7 +6,7 @@
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Race</mat-label>
-            <input matInput disabled class="text-center" value="Thailand Super Pickup D2">
+            <input matInput disabled class="text-center" value="Test Session">
           </mat-form-field>
         </form>
       </div>
@@ -14,7 +14,7 @@
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>รุ่น</mat-label>
-            <input matInput disabled class="text-center" value="Pickup">
+            <input matInput disabled class="text-center" [value]="segmentValue">
           </mat-form-field>
         </form>
       </div>
@@ -22,7 +22,7 @@
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Session</mat-label>
-            <input matInput disabled class="text-center" value="Race 5">
+            <input matInput disabled class="text-center" [value]="sessionValue">
           </mat-form-field>
         </form>
       </div>
@@ -30,7 +30,7 @@
         <form class="mat-input-form">
           <mat-form-field class="w-100">
             <mat-label>ชื่อนักแข่ง</mat-label>
-            <input matInput disabled class="text-center" value="นายทดสอบ TEST01">
+            <input matInput disabled class="text-center" [value]="firstName +' '+ lastName">
           </mat-form-field>
         </form>
       </div>
@@ -47,7 +47,7 @@
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>หมายเลขรถ</mat-label>
-            <input matInput disabled class="text-center" value="8">
+            <input matInput disabled class="text-center" [value]="carNumber">
           </mat-form-field>
         </form>
       </div>
@@ -55,14 +55,14 @@
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Logger ID</mat-label>
-            <input matInput disabled class="text-center" value="TSS001">
+            <input matInput disabled class="text-center" [value]="'Logger-'+loggerID">
           </mat-form-field>
         </form>
       </div>
       <div class="col-2 pt-2">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
-          <mat-label>Session</mat-label>
+          <mat-label>Status</mat-label>
             <input matInput disabled class="text-center" value="Offline">
           </mat-form-field>
         </form>
@@ -76,7 +76,7 @@
         </form>
       </div>
       <div class="col-4 pt-2">
-        <button type="button" class="btn btn-warning w-100 h-50 text-light">
+        <button type="button" class="btn btn-warning w-100 h-75 text-light">
           Clear Warning
         </button>
       </div>

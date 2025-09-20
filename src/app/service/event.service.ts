@@ -2,10 +2,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, map, Observable } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
-import { eventModel, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
+import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-import { ApiDropDownResponse, ApiEventResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse } from '../model/api-response-model';
+import { ApiDropDownResponse, ApiEventResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerRaceDetailModel } from '../model/api-response-model';
 
 @Injectable({
   providedIn: 'root'
@@ -17,6 +17,31 @@ export class EventService {
   private eventList: eventModel[] = [];
   public eventOption: optionModel[] = [];
   constructor(private http: HttpClient) {  }
+
+  // ------GET Deatil Logger----------
+  // service method
+  getDetailLoggerInRace(parameterRaceId:any, parameterSegment:any, parameterClass:any, parameterLoggerID:any): Observable<LoggerRaceDetailModel> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_DETAIL_LOGGERS_IN_RACE);
+    const payload = {
+      race_id  : parameterRaceId,
+      segment_type  : parameterSegment,
+      class_type  : parameterClass,
+      logger_id  : parameterLoggerID,
+    }
+    return this.http.post<ApiLoggerRaceResponse>(url, payload).pipe(
+      map(({ data }) => ({
+        loggerId: data.LoggerID,
+        carNumber: data.CarNumber,
+        firstName: data.FirstName,
+        lastName: data.LastName,
+        classType: data.ClassType,
+        segmentValue: data.SegmentValue,
+        seasonId: data.SeasonID,
+        categoryName: data.CategoryName,
+        sessionValue: data.SessionValue,
+      }))
+    );
+  }
 
   // --------- Event -------------------------------------------------------
   getEvent(): Observable<eventModel[]> {

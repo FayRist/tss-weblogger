@@ -98,7 +98,13 @@ export class DashboardComponent implements OnInit {
     private cdr: ChangeDetectorRef
   ) {}
 
+  parameterRaceId:any = null;
+  parameterSegment:any = null;
+  parameterClass:any = null;
   ngOnInit() {
+    this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
+    this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
+    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
     this.filterLogger.setValue('all', { emitEvent: true });
     this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
     const qpSub = this.route.queryParamMap.pipe(take(1)).subscribe(qp => {
@@ -247,9 +253,10 @@ private applyFilter(value: FilterKey) {
     }
   }
 
-
-  navigateToLoggerDetail() {
-    this.router.navigate(['/pages', 'logger']);
+  navigateToLoggerDetail(LoggerId :any) {
+    this.router.navigate(['/pages', 'logger'], {
+      queryParams: { raceId: this.parameterRaceId, segment: this.parameterSegment, class: this.parameterClass, loggerId: LoggerId }
+    });
     // this.router.navigate(['logger'], { relativeTo: this.route });
   }
 

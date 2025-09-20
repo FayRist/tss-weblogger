@@ -68,3 +68,40 @@ export interface ApiRaceData {
 }
 
 
+// payload ที่ส่งไป (ตามที่พี่มี)
+export interface LoggerDetailPayload {
+  race_id: number;
+  segment_type: string;
+  class_type: string;
+  logger_id?: number;
+}
+
+// สิ่งที่ BE ส่งกลับมา
+export interface LoggerRaceDetailRes {
+  LoggerID: number;
+  CarNumber: string;
+  FirstName: string;
+  LastName: string;
+  ClassType: string;
+  SegmentValue: string;
+  SeasonID: number;
+  CategoryName: string;
+  SessionValue: string;
+}
+
+export interface ApiLoggerRaceResponse {
+  success: boolean;
+  data: LoggerRaceDetailRes;  // <- อ็อบเจ็กต์เดียว
+}
+
+export interface LoggerRaceDetailModel {
+  loggerId: number;
+  carNumber: string;
+  firstName: string;
+  lastName: string;
+  classType: string;
+  segmentValue: string;
+  seasonId: number;
+  categoryName: string;
+  sessionValue: string;
+}
