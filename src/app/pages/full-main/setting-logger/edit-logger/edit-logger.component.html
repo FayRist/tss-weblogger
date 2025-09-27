@@ -13,11 +13,24 @@
                 </form>
               </div>
 
-              <div class="col-12">
+              <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>หมายเลขรถ </mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="car_number">
+                  </mat-form-field>
+                </form>
+              </div>
+
+              <div class="col-6">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>Class</mat-label>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="classValue">
+                        @for (classS of classList; track classS) {
+                          <mat-option [value]="classS.value">{{classS.name}}</mat-option>
+                        }
+                      </mat-select>
                   </mat-form-field>
                 </form>
               </div>

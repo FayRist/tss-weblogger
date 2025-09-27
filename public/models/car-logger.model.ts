@@ -29,6 +29,6 @@ export interface CarLoggerMeta {
   firstName: string;
   lastName: string;
   createdDate: Date;
-  numberWarning: number;
+  numberLimit: number;
   warningDetector: boolean;
 }

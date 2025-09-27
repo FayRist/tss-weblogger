@@ -283,9 +283,11 @@ export class EventService {
         firstName: api.first_name,
         lastName: api.last_name,
         createdDate: new Date(),
-        numberWarning: 0,
+        numberLimit: 0,
         warningDetector: false,
-        classType  : api.class_type
+        classType  : api.class_type,
+        loggerStatus: 'offline',
+        afrAverage: 15.6,
       })))
     );
   }

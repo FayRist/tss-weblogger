@@ -4,13 +4,130 @@
       <h3>ตั้งค่า Logger</h3>
     </div>
     <div class="col-6 d-flex justify-content-end">
-      <button type="button" class="btn btn-success" (click)="exportFileEx()">Export ไฟล์ Excel</button>
+      <button type="button" class="btn btn-success" (click)="exportFileEx()">Export Format ไฟล์ Excel</button>
       <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')">เพิ่ม Logger</button>
     </div>
   </div>
   <hr style="margin: 0.3rem 0; color: #FFF;" >
 
+    <div style="margin: 20px;" class="">
+      <div class="row">
+        <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
+          mat-table [dataSource]="dataSource" matSort (matSortChange)="announceSortChange($event)">
+
+          <!-- carNumber Column -->
+          <ng-container matColumnDef="carNumber">
+            <th mat-header-cell
+              *matHeaderCellDef mat-sort-header sortActionDescription="Sort by carNumber">&nbsp;&nbsp;
+              NBR.
+            </th>
+            <td class="text-center w-10" mat-cell *matCellDef="let element"> {{element.carNumber}} </td>
+          </ng-container>
+
+          <!-- Status Online / Offline Column -->
+          <ng-container matColumnDef="loggerStatus">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by loggerStatus">&nbsp;&nbsp;
+              Status
+            </th>
+            <td mat-cell *matCellDef="let e" class="text-center">
+              <span
+                class="status-badge"
+                [ngClass]="(e.loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
+                {{ e.loggerStatus | uppercase }}
+              </span>
+            </td>
+          </ng-container>
+
+          <!-- loggerId Column -->
+          <ng-container matColumnDef="loggerId">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by loggerId">&nbsp;&nbsp;
+              Logger
+            </th>
+            <td class="text-center" mat-cell *matCellDef="let element"> TSS{{element.loggerId}} </td>
+          </ng-container>
+
+          <!-- firstName Column -->
+          <ng-container matColumnDef="firstName">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by firstName">
+              Name
+            </th>
+            <td mat-cell *matCellDef="let element" > {{element.firstName}}&nbsp;&nbsp;{{element.lastName}} </td>
+          </ng-container>
+
+          <!-- classType Column -->
+          <ng-container matColumnDef="classType">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by classType">&nbsp;&nbsp;
+              Class
+            </th>
+            <td class="text-center"  mat-cell *matCellDef="let element"> {{element.classType}} </td>
+          </ng-container>
+
+
+          <!-- firstName Column -->
+          <ng-container matColumnDef="afr">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by afrAverage">&nbsp;&nbsp;
+              AFR
+            </th>
+            <td class="text-center" mat-cell *matCellDef="let element"> {{element.afrAverage}} </td>
+          </ng-container>
+
+          <!-- numberLimit Column -->
+          <ng-container matColumnDef="numberLimit">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by numberLimit">&nbsp;&nbsp;
+              Count
+            </th>
+            <td class="text-center"  mat-cell *matCellDef="let element"> {{element.numberLimit}} </td>
+          </ng-container>
+
+
+
+          <ng-container matColumnDef="resetLimit">
+            <th mat-header-cell *matHeaderCellDef class="text-center"> Setting </th>
+
+            <td class="text-center" mat-cell *matCellDef="let element">
+              <div class="row d-flex justify-content-center">
+                <div class="col-12 d-flex justify-content-center">
+                  <!-- <button matButton [matMenuTriggerFor]="menu" type="button" class="btn btn-outline-secondary d-flex" style="margin-left: 10px;">
+                    <mat-icon>settings</mat-icon>
+                  </button>
+                  <mat-menu #menu="matMenu">
+                    <button mat-menu-item (click)="settingLogger('0ms','0ms', element.loggerId)">
+                      <mat-icon>settings</mat-icon>
+                      <span>ตั้งค่า Logger</span>
+                    </button>
+                    <button mat-menu-item (click)="deleteLogger('0ms','0ms', element.loggerId)">
+                      <mat-icon>delete</mat-icon>
+                      <span>ลบ Logger</span>
+                    </button>
+                  </mat-menu> -->
+                  <button type="button" class="btn btn-outline-secondary d-flex"
+                    (click)="settingLogger('0ms','0ms', element.loggerId)" style="margin-left: 10px;">
+                    <mat-icon>settings</mat-icon>
+                  </button>
+
+                  <button type="button" class="btn btn-outline-secondary d-flex"
+                    (click)="deleteLogger('0ms','0ms', element.loggerId)" style="margin-left: 10px;">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+
+                  <!-- <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" >
+                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png"> -->
+                </div>
+              </div>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+        </table>
+        <mat-paginator [pageSizeOptions]="[5,10,20,30]" [pageSize]="10" showFirstLastButtons></mat-paginator>
+
+      </div>
+    </div>
+  <!-- OLD vr. ///////////////////////////////////// -->
+  <!--
   <div class="row">
+
 
   @for (logger of allLoggers; track $index) {
     <div class="col-6 col-sm-4 col-lg-3 mt-3">
@@ -31,11 +148,6 @@
                 <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
               </h3>
             </div>
-            <!-- <div class="col-6 text-center">
-              <h3 style="margin: 0.5rem 0 0 0;">
-                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.lastName">{{logger.lastName}}</span>
-              </h3>
-            </div> -->
           </div>
 
           <hr style="margin: 0.3rem 0;">
@@ -57,16 +169,6 @@
                   <span>ลบ Logger</span>
                 </button>
               </mat-menu>
-                <!-- @if(item.numberWarning > 0){
-                  <div matBadge="4" matBadgeOverlap="false" class="demo-section"  style="width: 27px;">
-                    <img style="border-radius: 0; height: 40px;" src="images/icon/image8.png">
-                  </div>
-                }
-                @else {
-                  <div matBadgeOverlap="false" class="demo-section"  style="width: 33px;">
-                    <img style="border-radius: 0; height: 40px; margin-left: 10px;" src="images/icon/image6.png">
-                  </div>
-                } -->
             </div>
           </div>
 
@@ -76,6 +178,7 @@
   }
 
   </div>
+  -->
 </div>
 
 

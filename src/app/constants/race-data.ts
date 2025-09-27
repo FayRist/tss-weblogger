@@ -22,6 +22,13 @@ export const CLASS_LIST = [
   // { value:'overall', name:'Over All' },
 ];
 
+export const CLASS_SEGMENT_LIST = [
+  { value:'PickupA',       name:'Pickup A' },
+  { value:'PickupB',       name:'Pickup B' },
+  { value:'PickupC',       name:'Pickup C' },
+  // { value:'overall', name:'Over All' },
+];
+
 export const MAPS_LIST = [
   { value:'bsc',  name:'Bangsaen Street Circuit, Thailand' },
   { value:'sic',  name:'Petronas Sepang International Circuit, Malaysia' },

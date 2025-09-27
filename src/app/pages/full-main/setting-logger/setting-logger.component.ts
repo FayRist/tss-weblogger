@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { AfterViewInit, Component, inject, OnInit, ViewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -15,6 +15,11 @@ import { Subscription } from 'rxjs';
 import { ToastrService } from 'ngx-toastr';
 import { parseClassQueryToCombined } from '../../../utility/race-param.util';
 import * as XLSX from 'xlsx';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { MatTableDataSource, MatTableModule } from '@angular/material/table';
+import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
+import { MatSort, MatSortModule, Sort } from '@angular/material/sort';
+import { CommonModule } from '@angular/common';
 
 
 interface ExcelRow {
@@ -33,19 +38,38 @@ export interface DialogLoggerData {
   carNumber: string;
   firstName: string;
   lastName: string;
+  classValue: string;
 }
 
 @Component({
   selector: 'app-setting-logger',
-  imports: [MatCardModule, MatMenuModule, MatSelectModule
-    , MatButtonModule, MatIconModule],
+  imports: [MatCardModule, MatMenuModule, MatSelectModule, MatTableModule, MatSortModule
+    , MatPaginatorModule, CommonModule, MatButtonModule, MatIconModule
+  ],
   templateUrl: './setting-logger.component.html',
   styleUrl: './setting-logger.component.scss'
 })
-export class SettingLoggerComponent implements OnInit {
+export class SettingLoggerComponent implements OnInit, AfterViewInit {
   readonly dialog = inject(MatDialog);
+  private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
   loggerData: LoggerModel[] = [];
+
+  dataSource = new MatTableDataSource<LoggerModel>([]);
+
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
+  @ViewChild(MatSort) sort!: MatSort;
+
+  displayedColumns: string[] = [
+    'carNumber',
+    'loggerStatus',
+    'loggerId',
+    'firstName',
+    'classType',
+    'afr',
+    'numberLimit',
+    'resetLimit'
+  ];
 
   allLoggers: LoggerModel[] = [
     {
@@ -55,9 +79,11 @@ export class SettingLoggerComponent implements OnInit {
       carNumber: "1",
       loggerId: "Client121",
       createdDate: new Date(10 / 9 / 2025),
-      numberWarning: 2,
+      numberLimit: 2,
       classType: 'PickupA',
       warningDetector: false,
+      loggerStatus: 'offline',
+      afrAverage: 15.2,
 
     }, {
       id: 4,
@@ -66,9 +92,12 @@ export class SettingLoggerComponent implements OnInit {
       carNumber: "4",
       loggerId: "Client124",
       createdDate: new Date(10 / 9 / 2025),
-      numberWarning: 0,
+      numberLimit: 0,
       classType: 'PickupA',
       warningDetector: false,
+      loggerStatus: 'offline',
+      afrAverage: 15.2,
+
     },
   ];
 
@@ -98,9 +127,13 @@ export class SettingLoggerComponent implements OnInit {
   settingLogger(enterAnimationDuration: string, exitAnimationDuration: string, loggerId: any): void {
     let arrayData = this.allLoggers.filter(x => x.loggerId == loggerId);
     const dialogRef = this.dialog.open(EditLoggerComponent, {
-      width: '100vw', maxWidth: '350px',
+      width: '100vw', maxWidth: '450px',
       enterAnimationDuration, exitAnimationDuration,
-      data: { id: arrayData[0].id, firstName: arrayData[0].firstName, lastName: arrayData[0].lastName, carNumber: arrayData[0].carNumber, loggerId: arrayData[0].loggerId },
+      data: {
+        id: arrayData[0].id, firstName: arrayData[0].firstName,  lastName: arrayData[0].lastName,
+        carNumber: arrayData[0].carNumber, loggerId: arrayData[0].loggerId,
+        classValue: arrayData[0].classType
+      },
     });
 
     dialogRef.afterClosed().subscribe(result => {
@@ -115,7 +148,7 @@ export class SettingLoggerComponent implements OnInit {
   deleteLogger(enterAnimationDuration: string, exitAnimationDuration: string, loggerId: any): void {
     let arrayData = this.allLoggers.filter(x => x.loggerId == loggerId);
     const dialogRef = this.dialog.open(DeleteLoggerComponent, {
-      width: '100vw', maxWidth: '150px',
+      width: '100vw', maxWidth: '350px',
       enterAnimationDuration, exitAnimationDuration,
       data: { loggerId: arrayData[0].loggerId },
     });
@@ -146,6 +179,8 @@ export class SettingLoggerComponent implements OnInit {
         });
         // this.updateView(this.allLoggers);
         // this.cdr.markForCheck();
+        this.dataSource.data = this.allLoggers;
+
       },
       error: (err) => console.error('Error loading logger list:', err)
     });
@@ -220,7 +255,38 @@ export class SettingLoggerComponent implements OnInit {
 
   }
 
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
 
+    // ✅ กำหนดการเข้าถึงค่าที่จะใช้ sort
+    this.dataSource.sortingDataAccessor = (item, property) => {
 
+      switch (property) {
+        case 'carNumber': return Number(item.carNumber);
+        case 'afr': return Number(item.afrAverage);
+        case 'numberLimit': return Number(item.numberLimit);
+        case 'loggerStatus': return (item.loggerStatus + '').toLowerCase() === 'online' ? 1 : 0;
+        default: return (item as any)[property];
+      }
+    };
+  }
+
+  ngOnDestroy() {
+    this.subscriptions.forEach(s => s.unsubscribe());
+  }
+
+  /** Announce the change in sort state for assistive technology. */
+  announceSortChange(sortState: Sort) {
+    // This example uses English messages. If your application supports
+    // multiple language, you would internationalize these strings.
+    // Furthermore, you can customize the message to add additional
+    // details about the values being sorted.
+    if (sortState.direction) {
+      this._liveAnnouncer.announce(`Sorted ${sortState.direction}ending`);
+    } else {
+      this._liveAnnouncer.announce('Sorting cleared');
+    }
+  }
 }
 

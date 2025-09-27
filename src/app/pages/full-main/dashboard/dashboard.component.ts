@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, ViewChild } from '@angular/core';
 import {MatProgressBarModule} from '@angular/material/progress-bar';
 import {MatCardModule} from '@angular/material/card';
 import {MatChipsModule} from '@angular/material/chips';
@@ -21,22 +21,27 @@ import { ToastrService } from 'ngx-toastr';
 import { merge, startWith, Subscription, take } from 'rxjs';
 import { RACE_SEGMENT } from '../../../constants/race-data';
 import { parseClassQueryToCombined } from '../../../utility/race-param.util';
+import {MatSort, Sort, MatSortModule} from '@angular/material/sort';
+import {MatTableDataSource, MatTableModule} from '@angular/material/table';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
+import { CommonModule } from '@angular/common';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
 @Component({
   selector: 'app-dashboard',
-  imports: [MatCardModule, MatChipsModule, MatProgressBarModule
-    , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule
+  imports: [MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
+    , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule, MatSortModule
     , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule
     , MatSlideToggleModule, MatMenuModule],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, AfterViewInit {
+  private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
-
   allLoggers: LoggerModel[] = [
     {
       id: 1,
@@ -45,9 +50,11 @@ export class DashboardComponent implements OnInit {
       carNumber: "1",
       loggerId: "Client121",
       createdDate: new Date(10/9/2025),
-      numberWarning: 2,
+      numberLimit: 2,
       classType: 'PickupA',
       warningDetector: false,
+      loggerStatus: 'offline',
+      afrAverage: 0,
 
     },{
       id: 4,
@@ -56,9 +63,11 @@ export class DashboardComponent implements OnInit {
       carNumber: "4",
       loggerId: "Client124",
       createdDate: new Date(10/9/2025),
-      numberWarning: 0,
+      numberLimit: 0,
       classType: 'PickupA',
       warningDetector: false,
+      loggerStatus: 'offline',
+      afrAverage: 0,
     },
   ];
   readonly dialog = inject(MatDialog);
@@ -67,6 +76,23 @@ export class DashboardComponent implements OnInit {
 
   sortStatus:string = '';
   showRoutePath: boolean = true;
+
+  displayedColumns: string[] = [
+    'carNumber',
+    'loggerStatus',
+    'loggerId',
+    'firstName',
+    'classType',
+    'afr',
+    'numberLimit',
+    'resetLimit'
+  ];
+
+  dataSource = new MatTableDataSource<LoggerModel>([]);
+
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
+  @ViewChild(MatSort) sort!: MatSort;
+
   filterLogList: any[] = [
     {
       name: 'Logger ทั้งหมด',
@@ -98,9 +124,41 @@ export class DashboardComponent implements OnInit {
     private cdr: ChangeDetectorRef
   ) {}
 
+  updateView(allLoggers: LoggerModel[] = []): void {
+    const filters = this.filterLogger.value ?? ['all'];
+
+    // FILTER
+    let filtered = allLoggers.filter(x => this.matchesFilters(x, filters));
+
+    // SORT
+    const desc = !!this.formGroup.value.sortType; // true = มาก→น้อย
+    filtered.sort((a, b) => {
+      const byWarning = desc ? b.numberLimit - a.numberLimit : a.numberLimit - b.numberLimit;
+      if (byWarning !== 0) return byWarning;
+      const byDetector = Number(b.warningDetector) - Number(a.warningDetector);
+      if (byDetector !== 0) return byDetector;
+      return a.firstName.localeCompare(b.firstName, 'th');
+    });
+
+    // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
+    this.onShowAllLoggers = [...filtered];
+
+    this.formGroup.get('sortLoggerType')?.value;
+    this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
+      return Number(a.carNumber) - Number(b.carNumber); // ✅ แปลงเป็นตัวเลข
+    });
+    this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
+    this.dataSource.data = this.onShowAllLoggers;
+  }
+
+  ngOnDestroy() {
+    this.subscriptions.forEach(s => s.unsubscribe());
+  }
+
   parameterRaceId:any = null;
   parameterSegment:any = null;
   parameterClass:any = null;
+
   ngOnInit() {
     this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
     this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
@@ -145,100 +203,67 @@ export class DashboardComponent implements OnInit {
   }
 
   onSelectChange(event: MatSelectChange) {
-  const value = event.value as FilterKey;
-  this.applyFilter(value);
-}
-
-private applyFilter(value: FilterKey) {
-  switch (value) {
-    case 'all':
-      this.onShowAllLoggers = this.allLoggers;
-      break;
-    case 'allSmokeDetect': // มี warning > 1
-      this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberWarning ?? 0) > 1);
-      break;
-    case 'excludeSmokeDetect': // ไม่มี warning เลย
-      this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberWarning ?? 0) === 0);
-      break;
+    const value = event.value as FilterKey;
+    this.applyFilter(value);
   }
-}
 
-  isAllSelected(): boolean {
-    return this.filterLogger.value.includes('all');
+  private applyFilter(value: FilterKey) {
+    switch (value) {
+      case 'all':
+        this.onShowAllLoggers = this.allLoggers;
+        this.dataSource.data = this.onShowAllLoggers;
+        break;
+      case 'allSmokeDetect': // มี warning > 1
+        this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberLimit ?? 0) > 1);
+        this.dataSource.data = this.onShowAllLoggers;
+        break;
+      case 'excludeSmokeDetect': // ไม่มี warning เลย
+        this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberLimit ?? 0) === 0);
+        this.dataSource.data = this.onShowAllLoggers;
+        break;
+    }
   }
 
   private matchesFilters(item: LoggerModel, filters: FilterKey): boolean {
     if (filters.length === 0 || filters.includes('all')) return true;
 
     const conds: any[] = [];
-    if (filters.includes('allSmokeDetect')) conds.push(item.numberWarning > 0 && !item.warningDetector);
-    if (filters.includes('excludeSmokeDetect')) conds.push(item.numberWarning == 0);
+    if (filters.includes('allSmokeDetect')) conds.push(item.numberLimit > 0 && !item.warningDetector);
+    if (filters.includes('excludeSmokeDetect')) conds.push(item.numberLimit == 0);
 
     return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
   }
 
-  updateView(allLoggers: LoggerModel[] = []): void {
-    const filters = this.filterLogger.value ?? ['all'];
 
-    // FILTER
-    let filtered = allLoggers.filter(x => this.matchesFilters(x, filters));
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
 
-    // SORT
-    const desc = !!this.formGroup.value.sortType; // true = มาก→น้อย
-    filtered.sort((a, b) => {
-      const byWarning = desc ? b.numberWarning - a.numberWarning : a.numberWarning - b.numberWarning;
-      if (byWarning !== 0) return byWarning;
-      const byDetector = Number(b.warningDetector) - Number(a.warningDetector);
-      if (byDetector !== 0) return byDetector;
-      return a.firstName.localeCompare(b.firstName, 'th');
-    });
+    // ✅ กำหนดการเข้าถึงค่าที่จะใช้ sort
+    this.dataSource.sortingDataAccessor = (item, property) => {
 
-    // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
-    this.onShowAllLoggers = [...filtered];
-
-    this.formGroup.get('sortLoggerType')?.value;
-    this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
-      return Number(a.carNumber) - Number(b.carNumber); // ✅ แปลงเป็นตัวเลข
-    });
-    this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
+      switch (property) {
+        case 'carNumber': return Number(item.carNumber);
+        case 'afr': return Number(item.afrAverage);
+        case 'numberLimit': return Number(item.numberLimit);
+        case 'loggerStatus': return (item.loggerStatus + '').toLowerCase() === 'online' ? 1 : 0;
+        default: return (item as any)[property];
+      }
+    };
   }
 
-  ngOnDestroy() {
-    this.subscriptions.forEach(s => s.unsubscribe());
+  /** Announce the change in sort state for assistive technology. */
+  announceSortChange(sortState: Sort) {
+    // This example uses English messages. If your application supports
+    // multiple language, you would internationalize these strings.
+    // Furthermore, you can customize the message to add additional
+    // details about the values being sorted.
+    if (sortState.direction) {
+      this._liveAnnouncer.announce(`Sorted ${sortState.direction}ending`);
+    } else {
+      this._liveAnnouncer.announce('Sorting cleared');
+    }
   }
-
-  // ถ้าเลือก "ทั้งหมด" พร้อมกับตัวอื่น ให้เหลือแค่ "ทั้งหมด"
-  // onSelectChange(event: MatSelectChange) {
-  //   const values = (event.value || []) as FilterKey[];
-  //   const hadAll = this.wasAllSelected;
-  //   const hasAllNow = values.includes('all');
-
-  //   if (hasAllNow && values.length > 1) {
-  //     if (hadAll) {
-  //       this.filterLogger.setValue(values.filter(v => v !== 'all'), { emitEvent: false });
-  //     } else {
-  //       this.filterLogger.setValue(['all'], { emitEvent: false });
-  //     }
-  //   }else if(values.length == 0){
-  //     this.filterLogger.setValue(['all'], { emitEvent: false });
-  //   }
-
-  //   this.wasAllSelected = (this.filterLogger.value ?? values).includes('all');
-
-  //   // อัปเดตผลทุกครั้งหลังเปลี่ยน
-  //   this.updateView(this.allLoggers);
-  // }
-
-  get allWarning(): LoggerModel[] {
-    return this.allLoggers.filter(x => x.numberWarning > 0);
-  }
-
-  onToggleSort(): void {
-    const desc = !!this.formGroup.value.sortType; // true = มาก - น้อย
-    this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
-    this.updateView(this.allLoggers); // 👉 เรียงใหม่ตามสถานะล่าสุด
-  }
-
   onToggleSortCarNumber() {
     const isSortCarNumber = this.formGroup.get('sortLoggerType')?.value;
 
@@ -253,6 +278,10 @@ private applyFilter(value: FilterKey) {
     }
   }
 
+  get allWarning(): LoggerModel[] {
+    return this.allLoggers.filter(x => x.numberLimit > 0);
+  }
+
   navigateToLoggerDetail(LoggerId :any) {
     this.router.navigate(['/pages', 'logger'], {
       queryParams: { raceId: this.parameterRaceId, segment: this.parameterSegment, class: this.parameterClass, loggerId: LoggerId }
@@ -260,9 +289,13 @@ private applyFilter(value: FilterKey) {
     // this.router.navigate(['logger'], { relativeTo: this.route });
   }
 
-  navigateToResetLogger(enterAnimationDuration: string, exitAnimationDuration: string): void {
+  navigateToResetLogger(enterAnimationDuration: string, exitAnimationDuration: string, modeName:string, loggerID:string): void {
       const dialogRef = this.dialog.open(ResetWarningLoggerComponent, {
       enterAnimationDuration, exitAnimationDuration,
+      data: {
+        mode: modeName,
+        loggerId: loggerID
+      }
     });
   }
 }

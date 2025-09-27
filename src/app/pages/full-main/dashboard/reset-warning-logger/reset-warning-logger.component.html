@@ -4,8 +4,14 @@
 
 <mat-dialog-content>
   <h5 class="text-center">
-    ต้องการ Reset ค่า <b style="color: #D88C0C;">Warning</b>
-    ทั้งหมดหรือไม่ ?
+    @if(mode == 'all'){
+      ต้องการ Reset ค่า <b style="color: #D88C0C;">Count Limit</b>
+      ทั้งหมดหรือไม่ ?
+
+    }@else if(mode == 'logger'){
+      ต้องการ Reset ค่า <b style="color: #D88C0C;">Count Limit</b>
+      Logger {{ loggerId }} หรือไม่ ?
+    }
   </h5>
   <div class="row">
     <div class="col-12 d-flex justify-content-center mt-2">

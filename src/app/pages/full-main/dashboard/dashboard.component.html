@@ -19,13 +19,13 @@
           </form>
         </div>
         <div class="col-6 ps-0 pe-0 d-flex  align-items-center">
-          <form class="example-form" [formGroup]="formGroup" ngNativeValidate>
+          <!-- <form class="example-form" [formGroup]="formGroup" ngNativeValidate>
             <mat-slide-toggle formControlName="sortLoggerType" (change)="onToggleSortCarNumber()">ลำดับ Logger</mat-slide-toggle>
           </form>
 
           <form class="example-form ms-3" [formGroup]="formGroup" ngNativeValidate>
             <mat-slide-toggle formControlName="sortType" (change)="onToggleSort()">Warning {{sortStatus}}</mat-slide-toggle>
-          </form>
+          </form> -->
         </div>
         <!-- <div class="offset-3 col-3 ps-0 pe-0 d-flex  align-items-center justify-content-end">
           <button matButton [matMenuTriggerFor]="menu" type="button" class="btn btn-light">
@@ -43,7 +43,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="000"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>
       </button>
       <mat-menu #menu="matMenu">
-        <button mat-menu-item (click)="navigateToResetLogger('0ms','0ms')">Reset Logger ทั้งหมด</button>
+        <button mat-menu-item (click)="navigateToResetLogger('0ms','0ms', 'all', '')">Reset Logger ทั้งหมด</button>
       </mat-menu>
     </div>
   </ng-container>
@@ -87,54 +87,140 @@
 
 <div style="margin: 20px;" class="">
   <div class="row">
+    <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
+      mat-table [dataSource]="dataSource" matSort (matSortChange)="announceSortChange($event)">
 
-  @for (logger of onShowAllLoggers; track logger) {
-    <div class="col-6 col-sm-4 col-lg-3 mt-3" (click)="navigateToLoggerDetail(logger.loggerId)">
-      <mat-card class="logger-card" appearance="outlined" class="logger-card"
-      [class.alert]="logger.warningDetector"
-      [class.warning]="logger.numberWarning <=3 && logger.numberWarning >= 1"
-      >
-        <mat-card-content>
-          <div class="row">
-            <div class="col-12">
-              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">No.{{logger.carNumber}}</span></h3>
-            </div>
-            <div class="col-12 text-center">
-              <h3 style="margin: 0.5rem 0 0 0;">
-                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
-              </h3>
-            </div>
-            <!-- <div class="col-6">
-              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">{{logger.classType}}</span></h3>
-            </div> -->
-            <div class="col-12">
-              <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">Logger-{{logger.loggerId}}</span></h3>
+      <!-- carNumber Column -->
+      <ng-container matColumnDef="carNumber">
+        <th mat-header-cell
+          *matHeaderCellDef mat-sort-header sortActionDescription="Sort by carNumber">&nbsp;&nbsp;
+          NBR.
+        </th>
+        <td class="text-center w-10" mat-cell *matCellDef="let element"> {{element.carNumber}} </td>
+      </ng-container>
+
+      <!-- Status Online / Offline Column -->
+      <ng-container matColumnDef="loggerStatus">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by loggerStatus">&nbsp;&nbsp;
+          Status
+        </th>
+        <td mat-cell *matCellDef="let e" class="text-center">
+          <span
+            class="status-badge"
+            [ngClass]="(e.loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
+            {{ e.loggerStatus | uppercase }}
+          </span>
+        </td>
+      </ng-container>
+
+      <!-- loggerId Column -->
+      <ng-container matColumnDef="loggerId">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by loggerId">&nbsp;&nbsp;
+          Logger
+        </th>
+        <td class="text-center" mat-cell *matCellDef="let element"> TSS{{element.loggerId}} </td>
+      </ng-container>
+
+      <!-- firstName Column -->
+      <ng-container matColumnDef="firstName">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by firstName">
+          Name
+        </th>
+        <td mat-cell *matCellDef="let element" > {{element.firstName}}&nbsp;&nbsp;{{element.lastName}} </td>
+      </ng-container>
+
+      <!-- classType Column -->
+      <ng-container matColumnDef="classType">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by classType">&nbsp;&nbsp;
+          Class
+        </th>
+        <td class="text-center"  mat-cell *matCellDef="let element"> {{element.classType}} </td>
+      </ng-container>
+
+
+      <!-- firstName Column -->
+      <ng-container matColumnDef="afr">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by afrAverage">&nbsp;&nbsp;
+          AFR
+        </th>
+        <td class="text-center" mat-cell *matCellDef="let element"> {{element.afrAverage}} </td>
+      </ng-container>
+
+      <!-- numberLimit Column -->
+      <ng-container matColumnDef="numberLimit">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by numberLimit">&nbsp;&nbsp;
+          Count
+        </th>
+        <td class="text-center"  mat-cell *matCellDef="let element"> {{element.numberLimit}} </td>
+      </ng-container>
+
+
+
+      <ng-container matColumnDef="resetLimit">
+        <th mat-header-cell *matHeaderCellDef class="text-center">  </th>
+
+        <td class="text-center" mat-cell *matCellDef="let element">
+          <div class="row d-flex justify-content-center">
+            <div class="col-12 d-flex justify-content-center">
+              <button type="button" class="btn btn-warning w-50 clear-btn" (click)="navigateToResetLogger('0ms','0ms', 'logger', element.loggerId)">Clear</button>
+              <!-- <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" > -->
+              <!-- <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png"> -->
             </div>
           </div>
-          <hr style="margin: 0.3rem 0;">
-          <div class="row justify-content-center">
-            <div class="col-6 mt-1 pe-0 d-flex justify-content-center">
-              <button type="button" class="btn btn-secondary w-100">
-                Offline
-              </button>
-              @if(logger.numberWarning > 0){
-                <div [matBadge]="logger.numberWarning" matBadgeOverlap="false" class="demo-section"  style="width: 27px;">
-                  <img style="border-radius: 0; height: 40px;" src="images/icon/image8.png">
-                </div>
-              }
-              @else {
-                <div matBadgeOverlap="false" class="demo-section"  style="width: 33px;">
-                  <img style="border-radius: 0; height: 40px; margin-left: 10px;" src="images/icon/image6.png">
-                </div>
-              }
+        </td>
+      </ng-container>
 
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+    <mat-paginator [pageSizeOptions]="[5,10,20,30]" [pageSize]="10" showFirstLastButtons></mat-paginator>
+    <!-- ////////////////////////////////// Old Vr.////////////////////////////////// -->
+    <!--
+    @for (logger of onShowAllLoggers; track logger) {
+      <div class="col-6 col-sm-4 col-lg-3 mt-3" (click)="navigateToLoggerDetail(logger.loggerId)">
+        <mat-card class="logger-card" appearance="outlined" class="logger-card"
+        [class.alert]="logger.warningDetector"
+        [class.warning]="logger.numberLimit <=3 && logger.numberLimit >= 1"
+        >
+          <mat-card-content>
+            <div class="row">
+              <div class="col-12">
+                <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">No.{{logger.carNumber}}</span></h3>
+              </div>
+              <div class="col-12 text-center">
+                <h3 style="margin: 0.5rem 0 0 0;">
+                  <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
+                </h3>
+              </div>
+              <div class="col-12">
+                <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">Logger-{{logger.loggerId}}</span></h3>
+              </div>
             </div>
-          </div>
+            <hr style="margin: 0.3rem 0;">
+            <div class="row justify-content-center">
+              <div class="col-6 mt-1 pe-0 d-flex justify-content-center">
+                <button type="button" class="btn btn-secondary w-100">
+                  Offline
+                </button>
+                @if(logger.numberLimit > 0){
+                  <div [matBadge]="logger.numberLimit" matBadgeOverlap="false" class="demo-section"  style="width: 27px;">
+                    <img style="border-radius: 0; height: 40px;" src="images/icon/image8.png">
+                  </div>
+                }
+                @else {
+                  <div matBadgeOverlap="false" class="demo-section"  style="width: 33px;">
+                    <img style="border-radius: 0; height: 40px; margin-left: 10px;" src="images/icon/image6.png">
+                  </div>
+                }
 
-        </mat-card-content>
-      </mat-card>
-    </div>
-  }
+              </div>
+            </div>
+
+          </mat-card-content>
+        </mat-card>
+      </div>
+    }
+    -->
 
   </div>
 </div>

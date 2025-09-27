@@ -17,10 +17,12 @@ import { DialogLoggerData } from '../setting-logger.component';
 import { ToastrService } from 'ngx-toastr';
 import { EventService } from '../../../../service/event.service';
 import { ExcelRowPayLoad } from '../add-logger/add-logger.component';
+import { CLASS_SEGMENT_LIST } from '../../../../constants/race-data';
+import { MatSelectModule } from '@angular/material/select';
 
 @Component({
   selector: 'app-edit-logger',
-  imports: [MatButtonModule, MatDialogActions, MatDialogClose,
+  imports: [MatButtonModule, MatDialogActions, MatDialogClose, MatSelectModule,
     MatDialogTitle, MatDialogContent, FormsModule, MatFormFieldModule, MatInputModule],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,6 +37,9 @@ export class EditLoggerComponent implements OnInit {
   logger_id = this.data.loggerId;
   firstName = this.data.firstName;
   lastName = this.data.lastName;
+  classValue = this.data.classValue;
+  classList = CLASS_SEGMENT_LIST;
+
 
   constructor(private eventService: EventService, private toastr: ToastrService) {}
 

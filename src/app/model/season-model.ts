@@ -39,10 +39,13 @@ export interface LoggerModel {
   firstName: string;
   lastName: string;
   createdDate: Date;
-  numberWarning: number;
+  numberLimit: number;
   warningDetector: boolean;
   classType: string;
+  loggerStatus: string;
+  afrAverage: number;
 }
+
 
 
 // types
