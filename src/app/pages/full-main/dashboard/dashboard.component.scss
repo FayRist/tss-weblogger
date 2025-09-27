@@ -34,3 +34,11 @@ mat-icon {
   box-shadow: none;              // (ออปชัน) ตัดเงาเพื่อให้เส้นขอบเด่น
   color: #fff;                   // (ออปชัน) ให้ตัวอักษรอ่านง่ายบนพื้นหลังเข้ม
 }
+
+.ellipsis-text {
+  display: block;         /* หรือ inline-block ก็ได้ */
+  white-space: nowrap;    /* ไม่ตัดบรรทัด */
+  overflow: hidden;       /* ซ่อนข้อความเกิน */
+  text-overflow: ellipsis;/* เติม ... */
+  max-width: 100%;        /* ใช้เต็มที่ตาม parent */
+}

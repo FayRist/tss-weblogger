@@ -81,7 +81,9 @@ export class EventComponent implements OnInit {
   }
 
   navigateToRace(eventId: number) {
-    this.router.navigate(['/pages', 'race', eventId]);
+    this.router.navigate(['/pages', 'race'], {
+      queryParams: { eventId }
+    });
   }
 
   openAdd(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any = 0): void {

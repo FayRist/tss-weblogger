@@ -99,16 +99,16 @@
             <div class="col-12">
               <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">No.{{logger.carNumber}}</span></h3>
             </div>
+            <div class="col-12 text-center">
+              <h3 style="margin: 0.5rem 0 0 0;">
+                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
+              </h3>
+            </div>
             <!-- <div class="col-6">
               <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">{{logger.classType}}</span></h3>
             </div> -->
             <div class="col-12">
               <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">Logger-{{logger.loggerId}}</span></h3>
-            </div>
-            <div class="col-12 text-center">
-              <h3 style="margin: 0.5rem 0 0 0;">
-                <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
-              </h3>
             </div>
           </div>
           <hr style="margin: 0.3rem 0;">

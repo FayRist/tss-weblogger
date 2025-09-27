@@ -6,7 +6,19 @@ import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, S
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
 import { ApiDropDownResponse, ApiEventResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerRaceDetailModel } from '../model/api-response-model';
-
+// helper เล็ก ๆ
+const toIntOrDefault = (v: any, d: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : d;
+};
+const toStrDefault = (v: any, d: string) => {
+  const s = String(v ?? d).trim();
+  return s ? s.toLowerCase() : d;
+};
+const toOptionalInt = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
 @Injectable({
   providedIn: 'root'
 })
@@ -19,13 +31,14 @@ export class EventService {
   constructor(private http: HttpClient) {  }
 
   // ------GET Deatil Logger----------
+
   // service method
   getDetailLoggerInRace(parameterRaceId:any, parameterSegment:any, parameterClass:any, parameterLoggerID:any): Observable<LoggerRaceDetailModel> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_DETAIL_LOGGERS_IN_RACE);
     const payload = {
-      race_id  : parameterRaceId,
-      segment_type  : parameterSegment,
-      class_type  : parameterClass,
+      race_id: toIntOrDefault(parameterRaceId ?? 3, 3),         // ถ้าไม่ส่งมา -> 6
+      segment_type: toStrDefault(parameterSegment ?? 'pickup', 'pickup'),
+      class_type: toStrDefault(parameterClass ?? 'a', 'a'),
       logger_id  : parameterLoggerID,
     }
     return this.http.post<ApiLoggerRaceResponse>(url, payload).pipe(
@@ -65,6 +78,42 @@ export class EventService {
   getDropDownEvent(): Observable<optionModel[]> {
     const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.EVENT_DROPDOWN);
       return this.http.get<ApiDropDownResponse>(seasonURL).pipe(
+        map(response => {
+          // Map API data to Match interface
+          this.eventOption = response.data.map((apiData) => ({
+              name: apiData.name,
+              value: apiData.value,
+          }));
+          return this.eventOption;
+        })
+      );
+  }
+
+  getDropDownSegment(eventId: any, raceId: any): Observable<optionModel[]> {
+    const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.EVENT_SEGMENT_DROPDOWN);
+      const payload = {
+        event_id: eventId,
+        race_id: raceId
+      }
+      return this.http.post<ApiDropDownResponse>(seasonURL, payload).pipe(
+        map(response => {
+          // Map API data to Match interface
+          this.eventOption = response.data.map((apiData) => ({
+              name: apiData.name,
+              value: apiData.value,
+          }));
+          return this.eventOption;
+        })
+      );
+  }
+
+  getDropDownSession(eventId: any, raceId:any): Observable<optionModel[]> {
+    const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.EVENT_SESSION_DROPDOWN);
+      const payload = {
+        event_id: eventId,
+        race_id: raceId
+      }
+      return this.http.post<ApiDropDownResponse>(seasonURL, payload).pipe(
         map(response => {
           // Map API data to Match interface
           this.eventOption = response.data.map((apiData) => ({

@@ -31,6 +31,8 @@ export const APP_CONFIG = {
       DELETE_EVENT: '/event/deleteEvent',
       END_EVENT: '/event/endEvent',
       EVENT_DROPDOWN: '/event/dropDownValue',
+      EVENT_SEGMENT_DROPDOWN: '/event/dropDownOptionSegment',
+      EVENT_SESSION_DROPDOWN: '/event/dropDownOptionSession',
 
       // Season
       GET_SEASON: '/seasonal/getSeason',

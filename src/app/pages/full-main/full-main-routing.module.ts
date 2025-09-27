@@ -21,7 +21,7 @@ const routes: Routes = [
     data: { roles: ['admin'] },
     loadComponent: () => import('./event/event.component').then(m => m.EventComponent)
   }, {
-    path: 'race/:eventId',
+    path: 'race',
     canActivate: [roleGuard],
     data: { roles: ['admin'] },
     loadComponent: () => import('./race/race.component').then(m => m.RaceComponent)

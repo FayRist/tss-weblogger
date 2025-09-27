@@ -14,7 +14,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MaterialModule } from '../../../material.module';
 import { EventService } from '../../../service/event.service';
-import { Subscription } from 'rxjs';
+import { distinctUntilChanged, map, Subscription } from 'rxjs';
 import { optionModel, RaceModel } from '../../../model/season-model';
 import { AddEventComponent } from '../add-event/add-event.component';
 import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
@@ -36,6 +36,8 @@ export class RaceComponent implements OnInit {
   allRace: RaceModel[] = [];
   eventRes: optionModel[] = [];
   private subscriptions: Subscription[] = [];
+  private sub!: Subscription;
+
   CurrentEventId: any = null;
   sessionList = SESSION_LIST;
   raceSegment = RACE_SEGMENT;
@@ -45,13 +47,14 @@ export class RaceComponent implements OnInit {
 
   }
   ngOnInit() {
-    this.route.paramMap.subscribe(pm => {
-      const eventId = pm.get('eventId');        // string | null
-      if (eventId) {
-        // เรียก service where ด้วย raceId
-        this.loadRace(eventId);
-        this.CurrentEventId= eventId
-      }
+    this.sub = this.route.queryParamMap
+    .pipe(
+      map((p) => Number(p.get('eventId') ?? 0)),
+      distinctUntilChanged()
+    )
+    .subscribe((eventId) => {
+      this.loadRace(eventId);
+      this.CurrentEventId= eventId
     });
 
     this.allRace = [
@@ -121,7 +124,7 @@ export class RaceComponent implements OnInit {
 
   navigateToDashboard(raceId: number, segmentType: string, classType: string) {
     this.router.navigate(['/pages', 'dashboard'], {
-      queryParams: { raceId, segment: segmentType, class: classType }   // ➜ /pages/dashboard?raceId=10&class=c
+      queryParams: { eventId: this.CurrentEventId, raceId, segment: segmentType, class: classType }   // ➜ /pages/dashboard?raceId=10&class=c
     });
   }
 

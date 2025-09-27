@@ -11,27 +11,35 @@
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
             @if ((isDashboard$  | async) || (isRace$  | async)) {
-                <mat-chip matButton  [matMenuTriggerFor]="Event" style="width: auto;">Event : BANGSAEN</mat-chip>
+                <mat-chip matButton  [matMenuTriggerFor]="Event" style="width: auto;">Event : {{ eventNameSelect }}</mat-chip>
                 <mat-menu #Event="matMenu">
-                  <button mat-menu-item (click)="navigateToListAllSeason()">BANGSAEN</button>
+                  @for (eventMenuBar of eventList; track eventMenuBar) {
+                  <button mat-menu-item (click)="navigateToRace(eventMenuBar.value, eventMenuBar.name)"> {{eventMenuBar.name}} </button>
+                  }
                 </mat-menu>
             }
 
             @if ((isDashboard$  | async)) {
-                <mat-chip matButton [matMenuTriggerFor]="menu" style="width: auto;">รุ่น : PickUp</mat-chip>
+                <mat-chip matButton [matMenuTriggerFor]="menu" style="width: auto;" disabled >รุ่น : {{ SegmentNameSelect }}</mat-chip>
                 <mat-menu #menu="matMenu">
-                  <button mat-menu-item (click)="navigateToRace(6)">PickUp</button>
+                  @for (segmentMenuBar of SegmentList; track segmentMenuBar) {
+                  <button mat-menu-item >{{segmentMenuBar.name}} </button>
+                  }
                   <!-- @for (item of items; track $index) {
                     <button mat-menu-item (click)="navigateToRace(eventList.event_id)">PickUp</button>
                   } -->
                 </mat-menu>
 
-                <mat-chip matButton  [matMenuTriggerFor]="Category" style="width: auto;">Category : Test Session</mat-chip>
+                <mat-chip matButton  [matMenuTriggerFor]="Category" style="width: auto;">Category : {{ SessionNameSelect }}</mat-chip>
                 <mat-menu #Category="matMenu">
-                  <button mat-menu-item (click)="navigateToDashboard()">Test Session</button>
+                  @for (SessionMenuBar of SessionList; track SessionMenuBar) {
+                  <button mat-menu-item (click)="navigateToDashboard(SessionMenuBar.value)"> {{SessionMenuBar.name}} </button>
+                  }
                 </mat-menu>
             }
-                <mat-chip disabled>4 July, 2030 15:31:00</mat-chip>
+                <mat-chip color="primary" disabled>
+                  {{ currentTime | date:'dd MMM, yyyy HH:mm:ss' }}
+                </mat-chip>
 
             </div>
           </mat-chip-set>
@@ -57,7 +65,7 @@
 
       @if ((role$ | async) === 'admin' || (role$ | async) === 'scruitineer') {
       <!-- เห็นได้ทั้ง admin + scruitineer -->
-      <button (click)="drawer.toggle(); navigateToDashboard()" mat-list-item>
+      <button (click)="drawer.toggle(); navigateToDashboard(6)" mat-list-item>
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/logger.png"></div>
           <div class="col-10 pt-1">Dashboard</div>
