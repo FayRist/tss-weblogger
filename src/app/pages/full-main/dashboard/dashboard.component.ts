@@ -224,6 +224,11 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     }
   }
 
+  searchFilter(event: Event) {
+    const filterValue = (event.target as HTMLInputElement).value;
+    this.dataSource.filter = filterValue.trim().toLowerCase();
+  }
+
   private matchesFilters(item: LoggerModel, filters: FilterKey): boolean {
     if (filters.length === 0 || filters.includes('all')) return true;
 

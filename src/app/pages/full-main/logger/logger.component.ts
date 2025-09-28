@@ -155,6 +155,7 @@ function afrToColor(v:number, min:number, max:number){
 export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
 
+  loggerStatus : string = 'online';
   //--- Chart ------
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
   @ViewChild('select') select!: MatSelect;

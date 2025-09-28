@@ -29,21 +29,21 @@ type SessionKey = 'practice' | 'testsession' | 'qualifying' | 'race1' | 'race2' 
 
 interface SessionRow {
   key: SessionKey;
-  label: string;
+  label: String;
   start: Date | null; // 'YYYY-MM-DDTHH:mm'
   end: Date | null;   // 'YYYY-MM-DDTHH:mm'
 }
 
 export interface seasonalPayLoad {
   id: number | null;
-  season_name: string;
+  season_name: String;
 }
 
 export interface eventPayLoad {
   event_id: number | null;
   season_id: number;
-  event_name: string;
-  circuit_name: string;
+  event_name: String;
+  circuit_name: String;
   event_start: Date | null;
   event_end: Date | null;
 }
@@ -62,14 +62,14 @@ export interface eventPayLoad {
   styleUrl: './add-event.component.scss'
 })
 export class AddEventComponent implements OnInit {
-  NameTab: string = "เพิ่ม รายการแข่ง";
+  NameTab: String = "เพิ่ม รายการแข่ง";
 
-  seasonName: string = '';
-  eventName: string = '';
-  raceName: string = '';
+  seasonName: String = '';
+  eventName: String = '';
+  raceName: String = '';
   eventId: number = 0;
   seasonId: number = 0;
-  circuitName: string = '';
+  circuitName: String = '';
 
   dateSessionStart = new FormControl(new Date());
   dateSessionEnd = new FormControl(new Date());
@@ -116,7 +116,7 @@ export class AddEventComponent implements OnInit {
     'practice', 'testsession', 'qualifying', 'race1', 'race2', 'race3', 'race4', 'race5'
   ];
 
-  private labelMap: Record<SessionKey, string> = {
+  private labelMap: Record<SessionKey, String> = {
     practice: 'Practice',
     testsession: 'Test Session',
     qualifying: 'Qualifying',
@@ -197,7 +197,7 @@ export class AddEventComponent implements OnInit {
   }
 
   // แปลง Date -> 'YYYY-MM-DDTHH:mm' (วินาที/มิลลิวินาที = 00)
-  toInput(d: Date | null | undefined): string {
+  toInput(d: Date | null | undefined): String {
     if (!d) return '';
     const x = new Date(d);
     x.setSeconds(0, 0);
@@ -211,7 +211,7 @@ export class AddEventComponent implements OnInit {
   }
 
   // แปลงสตริงจาก input -> Date (ตีความเป็น local time) และ set ss/ms = 0
-  fromInput(value: string): Date | null {
+  fromInput(value: String): Date | null {
     if (!value) return null;
     // ปลอดภัยกับ Safari: แยกส่วนเอง ไม่ใช้ new Date(isoString)
     const [d, t] = value.split('T');
@@ -256,11 +256,11 @@ export class AddEventComponent implements OnInit {
       );
   }
 
-  //   seasonName: string = '';
-  // eventName: string = '';
-  // raceName: string = '';
+  //   seasonName: String = '';
+  // eventName: String = '';
+  // raceName: String = '';
   // eventId: number = 0;
-  // circuitName: string = '';
+  // circuitName: String = '';
   // seasonId: number = 0;
   submitEvent(){
 

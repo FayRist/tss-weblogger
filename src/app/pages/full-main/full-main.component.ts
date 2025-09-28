@@ -1,5 +1,5 @@
 import { Component, inject, OnDestroy, OnInit } from '@angular/core';
-import { Router, NavigationEnd, RouterOutlet, ActivatedRoute } from '@angular/router';
+import { Router, NavigationEnd, RouterOutlet, ActivatedRoute, NavigationExtras } from '@angular/router';
 import { filter, map, startWith } from 'rxjs/operators';
 import { combineLatest, interval, Observable, Subscription } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -13,14 +13,22 @@ import { AsyncPipe, DatePipe } from '@angular/common';
 import { MaterialModule } from '../../material.module';
 import { AuthService, Role } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
-type Option = { value: number | string; name: string };
+
+function insideParen(text: any): string | null {
+  const s = String(text ?? '');               // บังคับเป็น primitive string
+  const m = s.match(/\(([^)]*)\)/);
+  return m ? m[1].trim() : null;
+}
+
+type Option = { value: number | string; name: String };
 
 type UrlParams = {
   eventId: number | null;
   raceId:  number | null;
-  klass:   string | null;
-  segment:    string | null;
+  klass:   String | null;
+  segment:    String | null;
 };
+const KEY = 'dashboard.lastParams';
 
 @Component({
   selector: 'app-full-main',
@@ -34,13 +42,13 @@ type UrlParams = {
 })
 export class FullMainComponent implements OnInit, OnDestroy {
   role$!: Observable<Role | null>;
-  userName$!: Observable<string | null>;
+  userName$!: Observable<String | null>;
 
   currentTime: Date = new Date();
 
-  eventNameSelect:string = '';
-  SessionNameSelect:string = '';
-  SegmentNameSelect:string = '';
+  eventNameSelect:String = '';
+  SessionNameSelect:String = '';
+  SegmentNameSelect:String = '';
 
   logout() {
     this.auth.logout();
@@ -93,6 +101,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
     );
   }
 
+
   ngOnInit(): void {
     this.sub = interval(1000).subscribe(() => {
       this.currentTime = new Date(); // อัพเดททุกวินาที
@@ -122,6 +131,36 @@ export class FullMainComponent implements OnInit, OnDestroy {
     if (this.sub) {
       this.sub.unsubscribe();
     }
+
+
+    // 1) ฟังการเปลี่ยน query params แล้วบันทึกลง localStorage
+    this.route.queryParamMap.subscribe(pm => {
+      const now = this.readParamsFromParamMap(pm);
+      if (this.hasAnyParam(now)) {
+        localStorage.setItem(KEY, JSON.stringify(now));
+      }
+    });
+
+    // 2) ถ้าโหลดมาหน้านี้แล้ว "ไม่มี" params ใน URL -> เติมจาก localStorage
+    const snap = this.route.snapshot.queryParamMap;
+    const current = this.readParamsFromParamMap(snap);
+
+    if (!this.hasAnyParam(current)) {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const last: UrlParams = JSON.parse(raw);
+        const qp = this.toQueryParams(last);
+        if (Object.keys(qp).length) {
+          const extras: NavigationExtras = {
+            queryParams: qp,
+            queryParamsHandling: 'merge',
+            // fragment: this.route.snapshot.fragment // ถ้าต้องการเก็บ hash fragment เพิ่ม
+          };
+          this.router.navigate([], extras);
+        }
+      }
+    }
+
   }
 
     /** สร้าง observable อ่านค่าจาก URL (รองรับทั้ง path params และ query params) */
@@ -136,7 +175,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
     ]).pipe(
       map(([params, query]) => {
         const qp = query; // alias
-        const num = (v: string | null) => (+v! || null);
+        const num = (v: String | null) => (+v! || null);
 
         const eventId = num(params.get('eventId') ?? qp.get('eventId'));
         const raceId  = num(params.get('raceId')  ?? qp.get('raceId'));
@@ -150,16 +189,44 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
 
 
-  navigateToDashboard(eventId:any) { this.router.navigate(['/pages', 'dashboard']); }
+  // navigateToDashboard(race:any) {
+  //   this.router.navigate(['/pages', 'dashboard'], {
+  //     queryParams: { raceID: race}
+  //   });
+  // }
+  navigateToDashboard(race: any) {
+    // ถ้า e.value เป็น string:
+    const selectedSession: string =
+      String(this.SessionList.find(e => String(e.value) === String(race))?.name ?? '');
+
+    // ถ้า e.value เป็น number ให้ใช้:  e => Number(e.value) === Number(race)
+
+    const classSub = insideParen(selectedSession); // string | null
+
+    // ส่งเฉพาะค่าที่มีจริง
+    const qp: any = { raceId: race };
+    if (classSub) {
+      // ใช้ 'klass' ให้สอดคล้องระบบ (หรือเปลี่ยนเป็น 'class' ถ้าทั้งระบบใช้ชื่อนี้)
+      qp.class = classSub;
+      // ถ้าต้องการ 'class' จริง ๆ: qp.class = classSub;
+    }
+
+    this.router.navigate(
+      ['/pages', 'dashboard'],
+      { queryParams: qp, queryParamsHandling: 'merge' }
+    );
+  }
+
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
   navigateToListAllSeason() { this.router.navigate(['/pages', 'event']); }
   navigateToListSettingLogger() { this.router.navigate(['/pages', 'setting-logger']); }
   navigateToLogout() { this.router.navigate(['/login']); }
 
-  navigateToRace(eventId: any, eventName: string) {
+  navigateToRace(eventId: any, eventName: String) {
     this.eventNameSelect = eventName;
     this.router.navigate(['/pages', 'race'], {
-      queryParams: { eventId }
+      queryParams: { eventId },
+      queryParamsHandling: 'merge'     // ✅ คงพารามิเตอร์เดิมทั้งหมดไว้
     });
   }
 
@@ -203,7 +270,8 @@ export class FullMainComponent implements OnInit, OnDestroy {
               (o.name ?? '').toLowerCase() === Text.toLowerCase()
             );
             this.selectedSegment = found ?? undefined;
-            this.SegmentNameSelect = found?.name ?? '';
+            this.SegmentNameSelect = segment ?? '';
+            // this.SegmentNameSelect = found?.name ?? '';
             return;
           }
         } else {
@@ -224,8 +292,8 @@ export class FullMainComponent implements OnInit, OnDestroy {
         // ถ้ามี eventId จาก URL ให้เลือกไว้เลย
         if (eventId != null) {
           this.selectedSession =
-            this.SessionList.find(e => +e.value === +eventId) ?? undefined;
-            this.SessionNameSelect = this.SessionList.find(e => +e.value === +eventId)?.name ?? '';
+            this.SessionList.find(e => +e.value === raceId) ?? undefined;
+            this.SessionNameSelect = this.SessionList.find(e => +e.value === raceId)?.name ?? '';
         } else {
           this.selectedSession = undefined;
           this.SessionNameSelect = '';
@@ -234,5 +302,42 @@ export class FullMainComponent implements OnInit, OnDestroy {
       error: (err) => console.error('Error loading events:', err)
     });
     this.subscriptions.push(s);
+  }
+
+
+
+
+  // ===== helpers =====
+
+  private readParamsFromParamMap(pm: import('@angular/router').ParamMap): UrlParams {
+    // รองรับทั้ง ?klass= และ ?class= (map class -> klass)
+    const klassRaw = pm.get('klass') ?? pm.get('class');
+
+    return {
+      eventId: this.toNum(pm.get('eventId')),
+      raceId:  this.toNum(pm.get('raceId')),
+      klass:   (klassRaw && klassRaw.trim() !== '') ? klassRaw : null,
+      segment: (pm.get('segment') && pm.get('segment')!.trim() !== '') ? pm.get('segment') : null,
+    };
+  }
+
+  private toNum(v: string | null): number | null {
+    if (v == null || v.trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private hasAnyParam(p: UrlParams): boolean {
+    return p.eventId !== null || p.raceId !== null || p.klass !== null || p.segment !== null;
+  }
+
+  /** แปลง UrlParams -> query params object (เฉพาะ key ที่มีค่า) */
+  private toQueryParams(p: UrlParams): Record<string, string> {
+    const qp: Record<string, string> = {};
+    if (p.eventId !== null) qp['eventId'] = String(p.eventId);
+    if (p.raceId  !== null) qp['raceId']  = String(p.raceId);
+    if (p.segment !== null) qp['segment'] = String(p.segment);
+    if (p.klass   !== null) qp['klass']   = String(p.klass);   // ใช้ชื่อ 'klass' เป็นหลัก
+    return qp;
   }
 }

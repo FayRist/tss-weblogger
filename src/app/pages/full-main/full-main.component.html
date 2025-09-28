@@ -11,9 +11,9 @@
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
             @if ((isDashboard$  | async) || (isRace$  | async)) {
-                <mat-chip matButton  [matMenuTriggerFor]="Event" style="width: auto;">Event : {{ eventNameSelect }}</mat-chip>
+                <mat-chip matButton  [matMenuTriggerFor]="Event" [disabled]="isDashboard$" style="width: auto;">Event : {{ eventNameSelect }}</mat-chip>
                 <mat-menu #Event="matMenu">
-                  @for (eventMenuBar of eventList; track eventMenuBar) {
+                  @for (eventMenuBar of eventList; track eventMenuBar.value) {
                   <button mat-menu-item (click)="navigateToRace(eventMenuBar.value, eventMenuBar.name)"> {{eventMenuBar.name}} </button>
                   }
                 </mat-menu>
@@ -22,7 +22,7 @@
             @if ((isDashboard$  | async)) {
                 <mat-chip matButton [matMenuTriggerFor]="menu" style="width: auto;" disabled >รุ่น : {{ SegmentNameSelect }}</mat-chip>
                 <mat-menu #menu="matMenu">
-                  @for (segmentMenuBar of SegmentList; track segmentMenuBar) {
+                  @for (segmentMenuBar of SegmentList; track segmentMenuBar.value) {
                   <button mat-menu-item >{{segmentMenuBar.name}} </button>
                   }
                   <!-- @for (item of items; track $index) {
@@ -32,7 +32,7 @@
 
                 <mat-chip matButton  [matMenuTriggerFor]="Category" style="width: auto;">Category : {{ SessionNameSelect }}</mat-chip>
                 <mat-menu #Category="matMenu">
-                  @for (SessionMenuBar of SessionList; track SessionMenuBar) {
+                  @for (SessionMenuBar of SessionList; track SessionMenuBar.value) {
                   <button mat-menu-item (click)="navigateToDashboard(SessionMenuBar.value)"> {{SessionMenuBar.name}} </button>
                   }
                 </mat-menu>
