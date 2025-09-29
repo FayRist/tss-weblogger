@@ -25,14 +25,21 @@
               <td class="text-center">
                 {{ getCircuitName(eventList.circuit_name) }}
               </td>
-              <td class="text-center" >จบการแข่ง</td>
+              <td class="text-center">{{ statusOf(eventList) }}</td>
               <td class="text-center">
-                <div class="row d-flex justify-content-center">
-                  <div class="col-2 d-flex justify-content-center">
-                    <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
-                    <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.event_id)">
+                  <div class="row d-flex justify-content-center"
+                    [class.pointer-events-none]="statusOf(eventList) === RaceStatus.Finished"
+                    [class.opacity-50]="statusOf(eventList) === RaceStatus.Finished">
+                    <div class="col-2 d-flex justify-content-center">
+                      @if (statusOf(eventList) !== RaceStatus.Finished) {
+                        @if (statusOf(eventList) == RaceStatus.Live) {
+                          <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
+                        }
+                        <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
+                        <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.event_id)">
+                      }
+                    </div>
                   </div>
-                </div>
               </td>
             </tr>
           }

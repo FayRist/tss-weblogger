@@ -23,6 +23,8 @@ import { DateRangePipe } from '../../../utility/date-range.pipe';
 import { TimeRangePipe } from '../../../utility/time-range.pipe';
 import { AuthService } from '../../../core/auth/auth.service';
 import { MatIcon } from '@angular/material/icon';
+import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
+import { TimeService } from '../../../service/time.service';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule,
@@ -43,9 +45,13 @@ export class RaceComponent implements OnInit {
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
 
-  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService, private toastr: ToastrService) {
+  constructor(private router: Router, private route: ActivatedRoute
+    , private eventService: EventService, private toastr: ToastrService
+    , public time: TimeService) {
 
   }
+  RaceStatus = RaceStatus;
+  statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
   ngOnInit() {
     this.sub = this.route.queryParamMap
     .pipe(
@@ -109,18 +115,50 @@ export class RaceComponent implements OnInit {
 
 
   private loadRace(eventId: any): void {
+    // อันดับตามที่ต้องการ
+    const ORDER: Record<string, number> = {
+      'practice': 0,
+      'qualify': 1,
+      'race 1':  2,
+      'race 2':  3,
+    };
+
+    // ปกติ session_value อาจมีตัวพิมพ์/เว้นวรรคต่างกัน หรือรูปแบบย่อ
+    const norm = (v: any) => String(v ?? '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^qualifying|qualification$/, 'qualify')   // normalize
+      .replace(/^r1$|^race1$|^race 1$/, 'race 1')
+      .replace(/^r2$|^race2$|^race 2$/, 'race 2');
+
+    const rank = (r: any) => {
+      const key = norm(r.session_value);
+      return ORDER[key] ?? Number.MAX_SAFE_INTEGER; // อื่นๆ ไปท้ายสุด
+    };
+
+    const startOf = (r: any) => {
+      const t = r?.start_time ?? r?.race_start ?? r?.session_start ?? r?.event_start ?? r?.start;
+      const d = t instanceof Date ? t : (t ? new Date(t) : null);
+      return d ? d.getTime() : Number.MAX_SAFE_INTEGER; // ไม่มีเวลา → ท้ายในกลุ่มเดียวกัน
+    };
+
     const RaceSub = this.eventService.getRace(eventId).subscribe(
       race => {
-        this.allRace = race;
+        this.allRace = [...race].sort((a, b) =>
+          (rank(a) - rank(b)) ||                  // 1) เรียงตาม session_value
+          (startOf(a) - startOf(b)) ||            // 2) ถ้าเท่ากันให้ดูเวลาเริ่ม
+          norm(a.session_value).localeCompare(norm(b.session_value)) // 3) กันชน
+        );
       },
       error => {
-        console.error('Error loading matchList:', error);
-        // Fallback to mock data if API fails
-        // this.matchList = this.eventService.getMatchSync();
+        console.error('Error loading race:', error);
       }
     );
+
     this.subscriptions.push(RaceSub);
   }
+
 
   navigateToDashboard(raceId: number, segmentType: string, classType: string) {
     this.router.navigate(['/pages', 'dashboard'], {

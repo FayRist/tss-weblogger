@@ -47,14 +47,19 @@
               {{ raceData.session_start | timeRange: raceData.session_end }}
             </td>
 
-            <td class="text-center" >จบการแข่ง</td>
-            <td class="text-center w-15">
-              <div class="row d-flex justify-content-center">
-                <div class="col-2">
-                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
-                </div>
-                <div class="col-2">
-                  <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms', raceData.id_list)">
+            <td class="text-center">{{ statusOf(raceData) }}</td>
+            <td class="text-center">
+              <div class="row d-flex justify-content-center"
+                [class.pointer-events-none]="statusOf(raceData) === RaceStatus.Finished"
+                [class.opacity-50]="statusOf(raceData) === RaceStatus.Finished">
+                <div class="col-2 d-flex justify-content-center">
+                  @if (statusOf(raceData) !== RaceStatus.Finished) {
+                    @if (statusOf(raceData) == RaceStatus.Live) {
+                      <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
+                    }
+                    <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
+                    <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms',  raceData.id_list)">
+                  }
                 </div>
               </div>
             </td>

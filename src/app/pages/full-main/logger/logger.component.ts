@@ -426,10 +426,12 @@ private applyYAxisIntegerLabels() {
     , private eventService: EventService
   ) {
     // this.setCurrentPoints(this.buildMock(180));
-    this.loadCsvAndDraw('models/mock-data/practice_section.csv');  // เปลี่ยน path ให้ตรงโปรเจกต์
-    this.loadCsvAndDraw('models/mock-data/qualifying_section.csv');
-    this.loadCsvAndDraw('models/mock-data/race1_section.csv');
+  let parameterClass = this.route.snapshot.queryParamMap.get('class') ?? '';
 
+  // ใช้ string interpolation สร้าง path ใหม่
+  this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}.csv`);
+  this.loadCsvAndDraw(`models/mock-data/qualifying_section_${parameterClass}.csv`);
+  this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
   }
 
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======

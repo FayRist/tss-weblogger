@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, OnInit } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit } from '@angular/core';
 import { Router, NavigationEnd, RouterOutlet, ActivatedRoute, NavigationExtras } from '@angular/router';
 import { filter, map, startWith } from 'rxjs/operators';
 import { combineLatest, interval, Observable, Subscription } from 'rxjs';
@@ -13,6 +13,7 @@ import { AsyncPipe, DatePipe } from '@angular/common';
 import { MaterialModule } from '../../material.module';
 import { AuthService, Role } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
+import { TimeService } from '../../service/time.service';
 
 function insideParen(text: any): string | null {
   const s = String(text ?? '');               // บังคับเป็น primitive string
@@ -44,7 +45,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
   role$!: Observable<Role | null>;
   userName$!: Observable<String | null>;
 
-  currentTime: Date = new Date();
+  // currentTime: Date = new Date();
+  private time = inject(TimeService);
+  currentTime = this.time.now;                        // ใช้ใน template ได้เลย
+  startOfDay = computed(() => new Date(this.time.now().setHours(0,0,0,0)));
 
   eventNameSelect:String = '';
   SessionNameSelect:String = '';
@@ -103,9 +107,9 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
 
   ngOnInit(): void {
-    this.sub = interval(1000).subscribe(() => {
-      this.currentTime = new Date(); // อัพเดททุกวินาที
-    });
+    // this.sub = interval(1000).subscribe(() => {
+    //   this.currentTime = new Date(); // อัพเดททุกวินาที
+    // });
 
     this.role$ = this.auth.user$.pipe(map(u => u?.role ?? null));
     this.userName$ = this.auth.user$.pipe(map(u => u?.username ?? null));

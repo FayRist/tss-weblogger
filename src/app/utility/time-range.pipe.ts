@@ -15,3 +15,10 @@ export class TimeRangePipe implements PipeTransform {
     return `${hhmm(s)} - ${hhmm(e)}`;
   }
 }
+
+export function parseBangkok(s: string | Date | null | undefined): Date | null {
+  if (!s) return null;
+  if (s instanceof Date) return s;
+  // แปลง "2025-05-20 12:00:00" => "2025-05-20T12:00:00+07:00"
+  return new Date(String(s).replace(' ', 'T') + '+07:00');
+}

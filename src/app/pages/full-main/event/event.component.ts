@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -20,6 +20,8 @@ import { AddEventComponent } from '../add-event/add-event.component';
 import { MAPS_LIST } from '../../../constants/race-data';
 import { MatIcon } from '@angular/material/icon';
 import { AuthService } from '../../../core/auth/auth.service';
+import { TimeService } from '../../../service/time.service';
+import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -50,12 +52,15 @@ export class EventComponent implements OnInit {
       }];
   private subscriptions: Subscription[] = [];
 
+  RaceStatus = RaceStatus;           // <-- ให้ template อ้าง enum ได้
 
   constructor(private router: Router, private route: ActivatedRoute,
-      private eventService: EventService, private toastr: ToastrService) {
+      private eventService: EventService, private toastr: ToastrService, public time: TimeService) {
   }
 
 
+
+  statusOf = (e: eventModel) => getRaceStatus(this.time.now(), e.event_start, e.event_end);
   ngOnInit() {
     this.loadEvent();
 
