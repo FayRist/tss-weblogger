@@ -380,6 +380,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }, {
       name: 'Qualifying',
       value: 'qualifying'
+    },
+    {
+      name: 'Race 1',
+      value: 'race1'
+    },
+    {
+      name: 'Race 2',
+      value: 'race2'
     }
   ];
   mapraceDateList: Record<string, MapPoint[]> = {};
@@ -432,6 +440,7 @@ private applyYAxisIntegerLabels() {
   this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}.csv`);
   this.loadCsvAndDraw(`models/mock-data/qualifying_section_${parameterClass}.csv`);
   this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
+  this.loadCsvAndDraw(`models/mock-data/race2_section_${parameterClass}.csv`);
   }
 
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======

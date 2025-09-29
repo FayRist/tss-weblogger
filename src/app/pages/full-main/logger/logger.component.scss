@@ -207,3 +207,38 @@ button[mat-raised-button] {
   background: #6c757d;
   color: #ffffff;
 }
+
+.card-body--flush {
+  padding: 0 !important;
+  margin: 0 !important;
+  // border: none !important;
+}
+
+/* คอลัมน์ที่ต้องการเต็มจริง ๆ */
+// .col-4.p-0, .col-md-8.p-0 {
+//   padding: 0 !important;
+// }
+
+/* กล่องรูป/แผนที่ ให้กินพื้นที่การ์ดทั้งหมด */
+.track-image-container {
+  width: 100%;
+  height: 100%;
+  display: block;      /* กันช่องว่างจาก inline elements */
+  line-height: 0;      /* ตัด white space รอบ SVG */
+  overflow: hidden;    /* กันเกินขอบ */
+}
+
+/* ให้ SVG/รูปยืดเต็มพื้นที่กล่อง */
+.track-image-container svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ถ้าจะคงสัดส่วนคงเดิม ใช้ preserveAspectRatio="xMidYMid meet"
+   แต่ถ้าอยาก “เต็มกล่องจริง ๆ” แบบไม่เหลือขอบ ใช้ "none" (อาจยืด/บี้เล็กน้อย) */
+.track-image-container image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
