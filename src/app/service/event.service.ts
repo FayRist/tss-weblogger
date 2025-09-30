@@ -167,6 +167,19 @@ export class EventService {
     );
   }
 
+  endEvent(eventID: any): Observable<unknown> {
+    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.END_EVENT);
+    return this.http.post(eventUrl, eventID).pipe(
+      map(response => {
+        console.log('Event Delete successfully:', response);
+        return response;
+      }),
+      catchError(error => {
+        console.error('Error Delete Event:', error);
+        throw error;
+      })
+    );
+  }
   // ------------Race-----------------------------
 
   getRace(eventId: any): Observable<RaceModel[]> {
@@ -226,6 +239,20 @@ export class EventService {
 
   deleteRace(eventID: any): Observable<unknown> {
     const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_RACE);
+    return this.http.post(eventUrl, eventID).pipe(
+      map(response => {
+        console.log('Event Delete successfully:', response);
+        return response;
+      }),
+      catchError(error => {
+        console.error('Error Delete Event:', error);
+        throw error;
+      })
+    );
+  }
+
+  endRace(eventID: any): Observable<unknown> {
+    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.END_RACE);
     return this.http.post(eventUrl, eventID).pipe(
       map(response => {
         console.log('Event Delete successfully:', response);
@@ -336,7 +363,38 @@ export class EventService {
       );
     }
 
+    getLoggerByDate(date:any): Observable<unknown> {
+      const addLoggerUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_ALL_LOGGERS_DATE);
+      // Map Racer interface to API request format
+      // const requestData = {
+      //   date: date
+      // };
 
+      const iso =
+        date instanceof Date
+          ? date.toISOString()
+          : typeof date === 'string'
+          ? new Date(date).toISOString()
+          : date?.date instanceof Date
+          ? date.date.toISOString()
+          : new Date(date?.date ?? date).toISOString();
+
+      const requestData = { date: date };
+
+      // ดีบั๊กให้ชัวร์ว่ารูปแบบถูกต้อง
+      console.log('payload:', requestData);
+      return this.http.post(addLoggerUrl, requestData).pipe(
+        map(response => {
+          console.log('Get Logger successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error Get Logger:', error);
+          throw error;
+        })
+      );
+      // return this.http.post<unknown>(url, { key });
+    }
 
 
     getLoggerDataByKey(key: string, date:string): Observable<unknown> {

@@ -55,7 +55,7 @@
                 <div class="col-2 d-flex justify-content-center">
                   @if (statusOf(raceData) !== RaceStatus.Finished) {
                     @if (statusOf(raceData) == RaceStatus.Live) {
-                      <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
+                      <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openRaceEnd('0ms', '0ms', raceData.id_list, getSessionName(raceData.session_value))">
                     }
                     <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
                     <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms',  raceData.id_list)">

@@ -176,6 +176,23 @@ export class EventComponent implements OnInit {
       this.allEvent = this.allEvent.filter(e => e.event_id !== result);
     });
   }
+
+
+  openEnd(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any): void {
+    let arrayData = this.allEvent.filter(x => x.event_id == eventId);
+    const dialogRef = this.dialog.open(DialogAnimationsModalEnd, {
+      width: "100vw",
+      maxWidth: "350px",
+      enterAnimationDuration,
+      exitAnimationDuration,
+      data: {event_id: eventId, event_name: arrayData[0].event_name}
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      console.log('The dialog was closed');
+      this.allEvent = this.allEvent.filter(e => e.event_id !== result);
+    });
+  }
 }
 
 
@@ -336,6 +353,59 @@ export class DialogAnimationsModalDelete {
         error => {
           console.error('Error adding/updating match:', error);
           this.toastr.error('เกิดข้อผิดพลาดในการ ลบ Logger');
+        }
+    );
+  }
+}
+
+
+@Component({
+  selector: 'dialog-animations-example-dialog',
+  templateUrl: './modal-event/end-event.html',
+  styleUrl: './event.component.scss',
+  imports: [MatButtonModule, MatDialogContent, MatDialogClose,
+    MatDialogTitle, MatTabsModule, MatIcon,
+    FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
+    MatDatepickerModule, MatCheckboxModule, MatRadioModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class DialogAnimationsModalEnd {
+
+  eventId: string = ''
+  eventName: string = ''
+
+  readonly dialogRef = inject(MatDialogRef<DialogAnimationsModalDelete>);
+  readonly data:any = inject<eventModel>(MAT_DIALOG_DATA);
+  password: string = '';
+  hide = true;
+  constructor(private eventService: EventService,   private authService: AuthService,private toastr: ToastrService, public time: TimeService) {}
+
+  ngOnInit() {
+    console.log(this.data.event_id);
+    this.eventId = this.data.event_id;
+    this.eventName = this.data.event_name;
+  }
+
+  onEndEvent(): void {
+    if (!this.authService.validatePassword(this.password)) {
+        this.toastr.error('รหัสผ่านไม่ถูกต้อง');
+      return;
+    }
+    const payload = {
+      event_id : this.eventId,
+      event_name : this.eventName,
+      current_Time : this.time.now()
+    }
+
+    this.eventService.endEvent(payload).subscribe(
+        response => {
+          console.log('Event จบลงแล้ว:', response);
+          this.toastr.success(`Event ${this.eventName} จบลงแล้ว`);
+          this.dialogRef.close(this.eventId);
+        },
+        error => {
+          console.error('Error Event:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการ จบ Event');
         }
     );
   }

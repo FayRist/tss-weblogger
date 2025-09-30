@@ -43,6 +43,7 @@ export const APP_CONFIG = {
       // Race
       GET_RACE: '/race/getRace',
       ADD_RACE: '/race/addRace',
+      END_RACE: '/race/endRace',
       UPDATE_RACE: '/race/updateRace',
       DELETE_RACE: '/racerace/deleteRace',
 
@@ -53,6 +54,7 @@ export const APP_CONFIG = {
       DELETE_LOGGER: '/logger/deleteLoger',
       LIST_LOGGER_FOREXCEL: '/logger/getListLoger',
       GET_DETAIL_LOGGERS_IN_RACE: '/logger/getDetailLoggerInRace',
+      GET_ALL_LOGGERS_DATE: '/logger/getLoggerDate',
 
       // Users (สำหรับอนาคต)
       GET_USERS: '/users/getUsers',

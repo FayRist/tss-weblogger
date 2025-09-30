@@ -33,7 +33,7 @@
                     <div class="col-2 d-flex justify-content-center">
                       @if (statusOf(eventList) !== RaceStatus.Finished) {
                         @if (statusOf(eventList) == RaceStatus.Live) {
-                          <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
+                          <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openEnd('0ms', '0ms', eventList.event_id)">
                         }
                         <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
                         <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.event_id)">

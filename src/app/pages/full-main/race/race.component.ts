@@ -238,6 +238,22 @@ export class RaceComponent implements OnInit {
       this.allRace = this.allRace.filter(e => e.id_list !== result);
     });
   }
+
+
+  openRaceEnd(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number, category_name: string): void {
+    const dialogRef = this.dialog.open(DialogAnimationsRaceModalEnd, {
+      width: "100vw",
+      maxWidth: "350px",
+      enterAnimationDuration,
+      exitAnimationDuration,
+      data: {race_id: raceId, raceName: category_name}
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      // console.log('The dialog was closed');
+      this.allRace = this.allRace.filter(e => e.id_list !== result);
+    });
+  }
 }
 
 
@@ -409,3 +425,57 @@ export class DialogAnimationsRaceModalDelete {
   }
 }
 
+
+
+@Component({
+  selector: 'dialog-animations-race-dialog',
+  templateUrl: './modal-race/end-race.html',
+  styleUrl: './race.component.scss',
+  imports: [MatButtonModule, MatDialogContent, MatDialogClose,
+    MatDialogTitle, MatTabsModule, MatIcon,
+    FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
+    MatDatepickerModule, MatCheckboxModule, MatRadioModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class DialogAnimationsRaceModalEnd {
+  raceMatchId: number = 0;
+  raceName: String = '';
+
+  readonly dialogRef = inject(MatDialogRef<DialogAnimationsRaceModalDelete>);
+    readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
+
+  constructor(private eventService: EventService,  private authService: AuthService,private toastr: ToastrService, public time: TimeService) {}
+  password: string = '';
+  hide = true;
+
+  ngOnInit() {
+    console.log(this.data.race_id);
+    this.raceMatchId = this.data.race_id;
+    this.raceName = this.data.raceName;
+  }
+
+  onEnd(): void {
+
+    // if (!this.authService.validatePassword(this.password)) {
+    //   this.toastr.error('รหัสผ่านไม่ถูกต้อง');
+    //   return;
+    // }
+    const payload = {
+      raceMatchId: this.raceMatchId,
+      raceName: this.raceName,
+      current_Time : this.time.now()
+    }
+
+    this.eventService.endRace(payload).subscribe(
+        response => {
+          console.log('Event added/updated successfully:', response);
+          this.toastr.success(`${this.raceName} จบการแข่งขันแล้ว`);
+          this.dialogRef.close(this.raceMatchId);
+        },
+        error => {
+          console.error('Error adding/updating match:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการ ลบ Logger');
+        }
+    );
+  }
+}

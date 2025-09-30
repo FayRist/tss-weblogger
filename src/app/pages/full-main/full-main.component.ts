@@ -14,6 +14,7 @@ import { MaterialModule } from '../../material.module';
 import { AuthService, Role } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
 import { TimeService } from '../../service/time.service';
+import { ToastrService } from 'ngx-toastr';
 
 function insideParen(text: any): string | null {
   const s = String(text ?? '');               // บังคับเป็น primitive string
@@ -85,7 +86,8 @@ export class FullMainComponent implements OnInit, OnDestroy {
   constructor(private router: Router
     , private auth: AuthService
     , private route: ActivatedRoute
-    , private eventService: EventService) {
+    , private eventService: EventService
+    , private toastr: ToastrService) {
     this.isDashboard$ = this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
@@ -116,14 +118,30 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
     this.urlParams$ = this.buildUrlParams$();
     const sub = this.urlParams$.subscribe(({ eventId, raceId, klass, segment }) => {
-      if(eventId){
-        this.selectedEventId = eventId;
-        this.loadDropDownEvent(eventId ?? undefined);
-      }
 
-      if(eventId && raceId){
-        this.loadDropDownOptionSession(eventId ?? undefined, klass ?? undefined, segment ?? undefined, raceId);
-        this.loadDropDownOptionSegment(eventId ?? undefined, klass ?? undefined, segment ?? undefined, raceId);
+      if(!eventId && !raceId && !klass && !segment ){
+        // ส่งเป็น UTC เสมอ
+        this.eventService.getLoggerByDate(this.currentTime()).subscribe(
+            response => {
+              console.log('Get Logger by Date:', response);
+              // this.toastr.success(`ลบ Logger ${this.logger_id} สำเร็จ`);
+              // this.dialogRef.close('success');
+            },
+            error => {
+              console.error('Error adding/updating match:', error);
+              this.toastr.error('เกิดข้อผิดพลาดในการ Get Logger');
+            }
+        );
+      }else{
+        if(eventId){
+          this.selectedEventId = eventId;
+          this.loadDropDownEvent(eventId ?? undefined);
+        }
+
+        if(eventId && raceId){
+          this.loadDropDownOptionSession(eventId ?? undefined, klass ?? undefined, segment ?? undefined, raceId);
+          this.loadDropDownOptionSegment(eventId ?? undefined, klass ?? undefined, segment ?? undefined, raceId);
+        }
       }
 
     });
