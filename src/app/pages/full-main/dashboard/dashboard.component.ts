@@ -298,7 +298,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   }
 
   navigateToResetLogger(enterAnimationDuration: string, exitAnimationDuration: string, modeName:string, loggerID:string): void {
-      const dialogRef = this.dialog.open(ResetWarningLoggerComponent, {
+    const dialogRef = this.dialog.open(ResetWarningLoggerComponent, {
       enterAnimationDuration, exitAnimationDuration,
       data: {
         mode: modeName,
@@ -306,5 +306,55 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         raceId: this.parameterRaceId
       }
     });
+
+    dialogRef.afterClosed().subscribe(result => {
+      // console.log('The dialog was closed');
+      if(result == 'success'){
+        this.toastr.success('Reset ทั้งหมด เรียบร้อย')
+        this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
+        this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
+        this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
+        this.filterLogger.setValue('all', { emitEvent: true });
+        this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
+        const qpSub = this.route.queryParamMap.pipe(take(1)).subscribe(qp => {
+          // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
+          const classMulti = qp.getAll('class');
+          const classSingle = qp.get('class');
+          const segmentQP = qp.get('segment') || undefined; // เผื่อส่งมาด้วย
+
+          const { classTypes } = parseClassQueryToCombined(
+            classMulti.length ? classMulti : classSingle,
+            segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
+          );
+
+          // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
+          const sub = this.eventService
+            .getLoggersWithAfr({ classTypes, raceId: this.parameterRaceId }) // <-- ใส่ raceId ตรงนี้
+            .subscribe({
+            next: (loggerRes) => {
+              this.allLoggers = loggerRes ?? [];
+              this.updateView(this.allLoggers);
+              this.cdr.markForCheck();
+            },
+            error: (err) => console.error('Error loading logger list:', err)
+          });
+          this.subscriptions.push(sub);
+
+          // reactive UI เดิม
+          const reactSub = merge(
+            this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
+            this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
+          ).subscribe(() => {
+            this.updateView(this.allLoggers);
+            this.cdr.markForCheck();
+          });
+          this.subscriptions.push(reactSub);
+
+          this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
+        });
+        this.subscriptions.push(qpSub);
+      }
+    });
   }
+
 }

@@ -120,7 +120,7 @@
           <span
             class="status-badge"
             [ngClass]="(e.status + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
-            {{ e.status | uppercase }}
+            {{ (((e.status ?? '').toString().trim()) || 'OFFLINE') | uppercase }}
           </span>
         </td>
       </ng-container>

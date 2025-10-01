@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -21,6 +21,9 @@ import { LoggerDataService } from '../../../service/logger-data.service';
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { EventService } from '../../../service/event.service';
+import { ResetWarningLoggerComponent } from '../dashboard/reset-warning-logger/reset-warning-logger.component';
+import { MatDialog } from '@angular/material/dialog';
+import { ToastrService } from 'ngx-toastr';
 
 
 
@@ -154,7 +157,7 @@ function afrToColor(v:number, min:number, max:number){
 })
 export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
-
+  readonly dialog = inject(MatDialog);
   loggerStatus : string = 'offline';
 
   afr: number = 0;
@@ -423,6 +426,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   loggerKey: any[] = [];
 
   constructor(private router: Router, private route: ActivatedRoute, private cdr: ChangeDetectorRef
+    , private toastr: ToastrService
     // , private loggerData: LoggerDataService
     , private http: HttpClient
     , private eventService: EventService
@@ -1186,5 +1190,23 @@ private updateMapFromSelection(keys: string[]) {
   }
 
 
+  navigateToResetLogger(enterAnimationDuration: string, exitAnimationDuration: string, modeName:string): void {
 
+    const dialogRef = this.dialog.open(ResetWarningLoggerComponent, {
+      enterAnimationDuration, exitAnimationDuration,
+      data: {
+        mode: modeName,
+        loggerId: this.parameterLoggerID,
+        raceId: this.parameterRaceId
+      }
+    });
+
+    // dialogRef.afterClosed().subscribe(result => {
+    //   // console.log('The dialog was closed');
+    //   if(result == 'success'){
+    //     // this.toastr.success('Reset ทั้งหมด เรียบร้อย')
+    //     // this.afrAverage
+    //   }
+    // });
+  }
 }

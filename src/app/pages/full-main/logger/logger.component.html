@@ -82,13 +82,13 @@
           <span
               class="status-badge"
               [ngClass]="(loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
-              {{ loggerStatus | uppercase }}
+              {{ (((loggerStatus ?? '').toString().trim()) || 'OFFLINE') | uppercase }}
           </span>
         </div>
       </div>
 
       <div class="col-2 pt-2">
-        <button type="button" class="btn btn-warning w-100 h-75 text-light">
+        <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
           Clear Count
         </button>
       </div>
