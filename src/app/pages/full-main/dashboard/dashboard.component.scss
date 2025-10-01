@@ -62,7 +62,7 @@ th.mat-sort-header-sorted {
 :host ::ng-deep .mat-column-classType .mat-sort-header-container,
 :host ::ng-deep .mat-column-firstName .mat-sort-header-container,
 :host ::ng-deep .mat-column-afr .mat-sort-header-container,
-:host ::ng-deep .mat-column-numberLimit .mat-sort-header-container,
+:host ::ng-deep .mat-column-countDetect .mat-sort-header-container,
 // :host ::ng-deep .mat-column-resetLimit .mat-sort-header-container,
 :host ::ng-deep .mat-column-loggerId .mat-sort-header-container {
   font-size: 18px;
@@ -95,7 +95,7 @@ td.mat-mdc-cell{
 .mat-column-loggerStatus,
 .mat-column-classType,
 .mat-column-afr,
-.mat-column-numberLimit {
+.mat-column-countDetect {
   width: 10%;
   border-right: 1px solid #343a40;
 }

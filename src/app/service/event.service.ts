@@ -5,7 +5,7 @@ import { APP_CONFIG, getApiUrl } from '../app.config';
 import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-import { ApiDropDownResponse, ApiEventResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerRaceDetailModel } from '../model/api-response-model';
+import { ApiDropDownResponse, ApiEventResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 // helper เล็ก ๆ
 const toIntOrDefault = (v: any, d: number) => {
   const n = Number(v);
@@ -33,14 +33,20 @@ export class EventService {
   // ------GET Deatil Logger----------
 
   // service method
-  getDetailLoggerInRace(parameterRaceId:any, parameterSegment:any, parameterClass:any, parameterLoggerID:any): Observable<LoggerRaceDetailModel> {
+  getDetailLoggerInRace(
+    parameterRaceId: any,
+    parameterSegment: any,
+    parameterClass: any,
+    parameterLoggerID: any
+  ): Observable<LoggerRaceDetailModel> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_DETAIL_LOGGERS_IN_RACE);
     const payload = {
-      race_id: toIntOrDefault(parameterRaceId ?? 3, 3),         // ถ้าไม่ส่งมา -> 6
+      race_id: toIntOrDefault(parameterRaceId ?? 3, 3),
       segment_type: toStrDefault(parameterSegment ?? 'pickup', 'pickup'),
       class_type: toStrDefault(parameterClass ?? 'a', 'a'),
-      logger_id  : parameterLoggerID,
-    }
+      logger_id: parameterLoggerID,
+    };
+
     return this.http.post<ApiLoggerRaceResponse>(url, payload).pipe(
       map(({ data }) => ({
         loggerId: data.LoggerID,
@@ -50,11 +56,18 @@ export class EventService {
         classType: data.ClassType,
         segmentValue: data.SegmentValue,
         seasonId: data.SeasonID,
-        categoryName: data.CategoryName,
+        categoryName: data.CategoryName,       // <- เดิมคุณเผลอใส่ segmentValue
         sessionValue: data.SessionValue,
+
+        // ป้องกัน null/undefined → ให้เป็น number/string เสมอ
+        countDetect: Number(data.countDetect ?? 0),
+        afr: Number(data.afr ?? 0),
+        afrAverage: Number(data.afrAverage ?? 0),
+        status: String(data.status ?? ''),
       }))
     );
   }
+
 
   // --------- Event -------------------------------------------------------
   getEvent(): Observable<eventModel[]> {
@@ -319,6 +332,52 @@ export class EventService {
     );
   }
 
+  
+getLoggersWithAfr(params: { classTypes?: string[]; raceId?: number; limit?: number; offset?: number }) {
+  const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
+  let httpParams = new HttpParams();
+
+  // class_type=...&class_type=...
+  if (params.classTypes?.length) {
+    params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct));
+  }
+
+  // race_id=...
+  if (params.raceId !== undefined && params.raceId !== null) {
+    httpParams = httpParams.set('race_id', String(params.raceId));
+  }
+
+  if (params.limit)  httpParams = httpParams.set('limit',  String(params.limit));
+  if (params.offset) httpParams = httpParams.set('offset', String(params.offset));
+
+  return this.http.get<ApiLoggerAFRResponse>(url, { params: httpParams }).pipe(
+    map((response) => {
+      const rows = response.data ?? [];
+      const items: LoggerItem[] = rows.map((api: ApiLoggerAFR) => ({
+        id: api.id,
+        idList: api.id_list ?? '',
+        loggerId: api.logger_id,
+        carNumber: api.car_number,
+        firstName: api.first_name,
+        lastName: api.last_name,
+        createdDate: api.created_date ? new Date(api.created_date) : new Date(), // fallback
+        classType: api.class_type,
+
+        // ค่าจาก countdetect_afr (อาจเป็น null)
+        countDetect: api.count_detect ?? 0,
+        afr: api.afr ?? null,
+        afrAverage: api.afr_average ?? null,
+        status: api.status ?? null,
+
+        // ของเดิม
+        numberLimit: 0,
+        warningDetector: false,
+        loggerStatus: 'offline',
+      }));
+      return items;
+    })
+  );
+}
 
 
     addAllNewLogger(addLoggers: ExcelRowPayLoad[]): Observable<unknown> {
@@ -417,5 +476,20 @@ export class EventService {
       );
       // return this.http.post<unknown>(url, { key });
     }
+
+    resetLoggerById(loggerID: any): Observable<unknown> {
+      const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.RESET_LOGGER);
+      return this.http.post(loggersUrl, loggerID).pipe(
+        map(response => {
+          console.log('Loggers Delete successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error Delete loggers:', error);
+          throw error;
+        })
+      );
+    }
+
 }
 

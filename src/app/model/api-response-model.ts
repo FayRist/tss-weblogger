@@ -87,6 +87,12 @@ export interface LoggerRaceDetailRes {
   SeasonID: number;
   CategoryName: string;
   SessionValue: string;
+
+  // ฟิลด์ใหม่จาก countdetect_afr (อาจเป็น null)
+  countDetect?: number | null;
+  afr?: number | null;
+  afrAverage?: number | null;
+  status?: string | null;
 }
 
 export interface ApiLoggerRaceResponse {
@@ -104,4 +110,60 @@ export interface LoggerRaceDetailModel {
   seasonId: number;
   categoryName: string;
   sessionValue: string;
+
+  // ฟิลด์ใหม่ (ทำให้เป็น number/string เสมอเพื่อตัดปัญหา strictNullChecks)
+  countDetect: number;      // default 0
+  afr: number;              // default 0
+  afrAverage: number;       // default 0
+  status: string;           // default ''
+}
+
+
+
+// api-shapes.ts
+export interface ApiLoggerAFR {
+  id: number;             // lr.id
+  id_list: string;        // r.id_list
+  logger_id: number;      // lr.logger_id
+  car_number: string;     // lr.car_number
+  first_name: string;
+  last_name: string;
+  created_date: string;   // ISO string จาก DB
+  class_type: string;
+
+  // จาก countdetect_afr (อาจเป็น null)
+  count_detect?: number | null;
+  afr?: number | null;
+  afr_average?: number | null;
+  status?: string | null;
+}
+
+export interface ApiLoggerAFRResponse {
+  success: boolean;
+  race_id?: number;
+  count: number;
+  data: ApiLoggerAFR[];
+}
+
+// model ที่หน้าบ้านใช้งาน
+export interface LoggerItem {
+  id: number;
+  idList: string;
+  loggerId: number;
+  carNumber: string;
+  firstName: string;
+  lastName: string;
+  createdDate: Date;
+  classType: string;
+
+  // metrics จาก AFR (optional)
+  countDetect: number;   
+  afr?: number | null;
+  afrAverage?: number | null;
+  status?: string | null;
+
+  // ของเดิมที่คุณมี
+  numberLimit: number;
+  warningDetector: boolean;
+  loggerStatus: 'online' | 'offline';
 }

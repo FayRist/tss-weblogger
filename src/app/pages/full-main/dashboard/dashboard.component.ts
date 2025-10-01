@@ -26,6 +26,7 @@ import {MatTableDataSource, MatTableModule} from '@angular/material/table';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { CommonModule } from '@angular/common';
+import { LoggerItem } from '../../../model/api-response-model';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
@@ -42,36 +43,36 @@ type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 export class DashboardComponent implements OnInit, AfterViewInit {
   private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
-  allLoggers: LoggerModel[] = [
-    {
-      id: 1,
-      firstName: "ทดสอบ1",
-      lastName: "Test01",
-      carNumber: "1",
-      loggerId: "Client121",
-      createdDate: new Date(10/9/2025),
-      numberLimit: 2,
-      classType: 'PickupA',
-      warningDetector: false,
-      loggerStatus: 'offline',
-      afrAverage: 0,
+  allLoggers: LoggerItem[] = [
+    // {
+    //   id: 1,
+    //   firstName: "ทดสอบ1",
+    //   lastName: "Test01",
+    //   carNumber: "1",
+    //   loggerId: "Client121",
+    //   createdDate: new Date(10/9/2025),
+    //   numberLimit: 2,
+    //   classType: 'PickupA',
+    //   warningDetector: false,
+    //   loggerStatus: 'offline',
+    //   afrAverage: 0,
 
-    },{
-      id: 4,
-      firstName: "ทดสอบ4",
-      lastName: "Test04",
-      carNumber: "4",
-      loggerId: "Client124",
-      createdDate: new Date(10/9/2025),
-      numberLimit: 0,
-      classType: 'PickupA',
-      warningDetector: false,
-      loggerStatus: 'offline',
-      afrAverage: 0,
-    },
+    // },{
+    //   id: 4,
+    //   firstName: "ทดสอบ4",
+    //   lastName: "Test04",
+    //   carNumber: "4",
+    //   loggerId: "Client124",
+    //   createdDate: new Date(10/9/2025),
+    //   numberLimit: 0,
+    //   classType: 'PickupA',
+    //   warningDetector: false,
+    //   loggerStatus: 'offline',
+    //   afrAverage: 0,
+    // },
   ];
   readonly dialog = inject(MatDialog);
-  onShowAllLoggers: LoggerModel[] = []
+  onShowAllLoggers: LoggerItem[] = []
 
 
   sortStatus:string = '';
@@ -84,11 +85,11 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     'firstName',
     'classType',
     'afr',
-    'numberLimit',
+    'countDetect',
     'resetLimit'
   ];
 
-  dataSource = new MatTableDataSource<LoggerModel>([]);
+  dataSource = new MatTableDataSource<LoggerItem>([]);
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
@@ -124,7 +125,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     private cdr: ChangeDetectorRef
   ) {}
 
-  updateView(allLoggers: LoggerModel[] = []): void {
+  updateView(allLoggers: LoggerItem[] = []): void {
     const filters = this.filterLogger.value ?? ['all'];
 
     // FILTER
@@ -133,7 +134,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     // SORT
     const desc = !!this.formGroup.value.sortType; // true = มาก→น้อย
     filtered.sort((a, b) => {
-      const byWarning = desc ? b.numberLimit - a.numberLimit : a.numberLimit - b.numberLimit;
+      const byWarning = desc ? b.countDetect - a.countDetect : a.countDetect - b.countDetect;
       if (byWarning !== 0) return byWarning;
       const byDetector = Number(b.warningDetector) - Number(a.warningDetector);
       if (byDetector !== 0) return byDetector;
@@ -177,7 +178,9 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       );
 
       // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
-      const sub = this.eventService.getLogger({ classTypes }).subscribe({
+      const sub = this.eventService
+        .getLoggersWithAfr({ classTypes, raceId: this.parameterRaceId }) // <-- ใส่ raceId ตรงนี้
+        .subscribe({
         next: (loggerRes) => {
           this.allLoggers = loggerRes ?? [];
           this.updateView(this.allLoggers);
@@ -214,11 +217,11 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         this.dataSource.data = this.onShowAllLoggers;
         break;
       case 'allSmokeDetect': // มี warning > 1
-        this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberLimit ?? 0) > 1);
+        this.onShowAllLoggers = this.allLoggers.filter(l => (l.countDetect ?? 0) > 1);
         this.dataSource.data = this.onShowAllLoggers;
         break;
       case 'excludeSmokeDetect': // ไม่มี warning เลย
-        this.onShowAllLoggers = this.allLoggers.filter(l => (l.numberLimit ?? 0) === 0);
+        this.onShowAllLoggers = this.allLoggers.filter(l => (l.countDetect ?? 0) === 0);
         this.dataSource.data = this.onShowAllLoggers;
         break;
     }
@@ -229,12 +232,12 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.dataSource.filter = filterValue.trim().toLowerCase();
   }
 
-  private matchesFilters(item: LoggerModel, filters: FilterKey): boolean {
+  private matchesFilters(item: LoggerItem, filters: FilterKey): boolean {
     if (filters.length === 0 || filters.includes('all')) return true;
 
     const conds: any[] = [];
-    if (filters.includes('allSmokeDetect')) conds.push(item.numberLimit > 0 && !item.warningDetector);
-    if (filters.includes('excludeSmokeDetect')) conds.push(item.numberLimit == 0);
+    if (filters.includes('allSmokeDetect')) conds.push((item.countDetect ?? 0) > 0 && !item.warningDetector);
+    if (filters.includes('excludeSmokeDetect')) conds.push(item.countDetect == 0);
 
     return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
   }
@@ -250,7 +253,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       switch (property) {
         case 'carNumber': return Number(item.carNumber);
         case 'afr': return Number(item.afrAverage);
-        case 'numberLimit': return Number(item.numberLimit);
+        case 'countDetect': return Number(item.countDetect);
         case 'loggerStatus': return (item.loggerStatus + '').toLowerCase() === 'online' ? 1 : 0;
         default: return (item as any)[property];
       }
@@ -283,8 +286,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     }
   }
 
-  get allWarning(): LoggerModel[] {
-    return this.allLoggers.filter(x => x.numberLimit > 0);
+  get allWarning(): LoggerItem[] {
+    return this.allLoggers.filter(x => (x.countDetect ?? 0) > 0);
   }
 
   navigateToLoggerDetail(LoggerId :any) {
@@ -299,7 +302,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       enterAnimationDuration, exitAnimationDuration,
       data: {
         mode: modeName,
-        loggerId: loggerID
+        loggerId: loggerID,
+        raceId: this.parameterRaceId
       }
     });
   }

@@ -155,7 +155,12 @@ function afrToColor(v:number, min:number, max:number){
 export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
 
-  loggerStatus : string = 'online';
+  loggerStatus : string = 'offline';
+
+  afr: number = 0;
+  countDetect: number = 0;
+  afrAverage: number = 0;
+
   //--- Chart ------
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
   @ViewChild('select') select!: MatSelect;
@@ -394,36 +399,25 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ////////////////////////
 
 
-private readonly intLabel = (val: number) =>
-  Number.isFinite(val) ? Math.round(val).toString() : '';
+  private readonly intLabel = (val: number) =>
+    Number.isFinite(val) ? Math.round(val).toString() : '';
 
-private applyYAxisIntegerLabels() {
-  this.detailOpts = {
-    ...this.detailOpts,
-    yaxis: {
-      ...(this.detailOpts?.yaxis ?? {}),
-      labels: { formatter: this.intLabel }
-    }
-  };
-  this.brushOpts = {
-    ...this.brushOpts,
-    yaxis: {
-      ...(this.brushOpts?.yaxis ?? {}),
-      labels: { formatter: this.intLabel }
-    }
-  };
-}
-
-
-
-
-
-
-
-
-
-
-
+  private applyYAxisIntegerLabels() {
+    this.detailOpts = {
+      ...this.detailOpts,
+      yaxis: {
+        ...(this.detailOpts?.yaxis ?? {}),
+        labels: { formatter: this.intLabel }
+      }
+    };
+    this.brushOpts = {
+      ...this.brushOpts,
+      yaxis: {
+        ...(this.brushOpts?.yaxis ?? {}),
+        labels: { formatter: this.intLabel }
+      }
+    };
+  }
 
   allDataLogger: Record<string, MapPoint[]> = {};
   loggerKey: any[] = [];
@@ -519,29 +513,29 @@ private applyYAxisIntegerLabels() {
     //   class_type  : this.parameterClass,
     //   logger_id  : this.parameterLoggerID,
     // }
-    this.eventService.getDetailLoggerInRace(this.parameterRaceId ,this.parameterSegment ,this.parameterClass ,this.parameterLoggerID).subscribe({
-      next: (raceList) => {
-        // detail คือ LoggerRaceDetailRes (อ็อบเจ็กต์เดียว)
-        // ใช้งานตรง ๆ เช่น:
-        this.loggerID     = raceList.loggerId;
-        this.carNumber    = raceList.carNumber;
-        this.firstName    = raceList.firstName;
-        this.lastName     = raceList.lastName;
-        this.classType    = raceList.classType;
-        this.segmentValue = raceList.segmentValue;
-        this.seasonID     = raceList.seasonId;
-        this.categoryName = raceList.segmentValue;
-        this.sessionValue = raceList.sessionValue;
+    this.eventService
+      .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID)
+      .subscribe({
+        next: (detail) => {
+          this.loggerID     = detail.loggerId;
+          this.carNumber    = detail.carNumber;
+          this.firstName    = detail.firstName;
+          this.lastName     = detail.lastName;
+          this.classType    = detail.classType;
+          this.segmentValue = detail.segmentValue;
+          this.seasonID     = detail.seasonId;
+          this.categoryName = detail.categoryName;   // <- fixed
+          this.sessionValue = detail.sessionValue;
 
-        // หรือเก็บทั้งอ็อบเจ็กต์
-        // this.raceList = raceList;       // ใช้งานต่อได้เลย
-        // ...อาจอัปเดต UI / กราฟ / แผนที่ที่พี่ต้องการ
-      },
-      error: (err) => {
-        console.error('getDetailLoggerInRace error:', err);
-        // แจ้งเตือน/แสดง error ให้ผู้ใช้
-      }
-    });
+          // ใหม่
+          this.countDetect  = detail.countDetect;
+          this.afr          = detail.afr;
+          this.afrAverage   = detail.afrAverage;
+          this.loggerStatus       = detail.status;
+        },
+        error: (err) => console.error('getDetailLoggerInRace error:', err),
+      });
+
   }
 
   // ====== เวอร์ชันใหม่: อ่านจากไฟล์ .txt ======

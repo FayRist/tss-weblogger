@@ -108,7 +108,7 @@
           *matHeaderCellDef mat-sort-header sortActionDescription="Sort by carNumber">&nbsp;&nbsp;
           NBR.
         </th>
-        <td class="text-center w-10" mat-cell *matCellDef="let element"> {{element.carNumber}} </td>
+        <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)" > {{element.carNumber}} </td>
       </ng-container>
 
       <!-- Status Online / Offline Column -->
@@ -119,8 +119,8 @@
         <td mat-cell *matCellDef="let e" class="text-center">
           <span
             class="status-badge"
-            [ngClass]="(e.loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
-            {{ e.loggerStatus | uppercase }}
+            [ngClass]="(e.status + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
+            {{ e.status | uppercase }}
           </span>
         </td>
       </ng-container>
@@ -130,7 +130,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by loggerId">&nbsp;&nbsp;
           Logger
         </th>
-        <td class="text-center" mat-cell *matCellDef="let element"> TSS{{element.loggerId}} </td>
+        <td class="text-center"  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > TSS{{element.loggerId}} </td>
       </ng-container>
 
       <!-- firstName Column -->
@@ -138,7 +138,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by firstName">
           Name
         </th>
-        <td mat-cell *matCellDef="let element" > {{element.firstName}}&nbsp;&nbsp;{{element.lastName}} </td>
+        <td  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"   > {{element.firstName}}&nbsp;&nbsp;{{element.lastName}} </td>
       </ng-container>
 
       <!-- classType Column -->
@@ -146,7 +146,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by classType">&nbsp;&nbsp;
           Class
         </th>
-        <td class="text-center"  mat-cell *matCellDef="let element"> {{element.classType}} </td>
+        <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.classType}} </td>
       </ng-container>
 
 
@@ -155,15 +155,15 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by afrAverage">&nbsp;&nbsp;
           AFR
         </th>
-        <td class="text-center" mat-cell *matCellDef="let element"> {{element.afrAverage}} </td>
+        <td class="text-center"  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.afrAverage || 0| number:'1.1-1'}} </td>
       </ng-container>
 
       <!-- numberLimit Column -->
-      <ng-container matColumnDef="numberLimit">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by numberLimit">&nbsp;&nbsp;
+      <ng-container matColumnDef="countDetect">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by countDetect">&nbsp;&nbsp;
           Count
         </th>
-        <td class="text-center"  mat-cell *matCellDef="let element"> {{element.numberLimit}} </td>
+        <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.countDetect || 0}} </td>
       </ng-container>
 
 
@@ -171,7 +171,7 @@
       <ng-container matColumnDef="resetLimit">
         <th mat-header-cell *matHeaderCellDef class="text-center">  </th>
 
-        <td class="text-center" mat-cell *matCellDef="let element">
+        <td class="text-center"  mat-cell *matCellDef="let element">
           <div class="row d-flex justify-content-center">
             <div class="col-12 d-flex justify-content-center">
               <button type="button" class="btn btn-warning w-50 clear-btn" (click)="navigateToResetLogger('0ms','0ms', 'logger', element.loggerId)">Clear</button>
@@ -183,7 +183,7 @@
       </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <tr mat-row *matRowDef="let row; columns: displayedColumns;" (click)="navigateToLoggerDetail(row.loggerId)" ></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;" ></tr>
     </table>
     <mat-paginator [pageSizeOptions]="[5,10,20,30]" [pageSize]="10" showFirstLastButtons></mat-paginator>
     <!-- ////////////////////////////////// Old Vr.////////////////////////////////// -->
