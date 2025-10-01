@@ -6,6 +6,7 @@ import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, S
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
 import { ApiDropDownResponse, ApiEventResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
+import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 // helper เล็ก ๆ
 const toIntOrDefault = (v: any, d: number) => {
   const n = Number(v);
@@ -326,13 +327,39 @@ export class EventService {
         numberLimit: 0,
         warningDetector: false,
         classType  : api.class_type,
+        teamName  : api.team_name,
         loggerStatus: 'offline',
         afrAverage: 15.6,
       })))
     );
   }
 
-  
+  getLoggerSetting(params: { classTypes?: string[] }) {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_SETTING_LOGGERS);
+    let httpParams = new HttpParams();
+
+    if (params.classTypes?.length) {
+      params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct)); // class_type=pickupa&class_type=pickupb
+    }
+
+    return this.http.get<ApiLoggerResponse>(url, { params: httpParams }).pipe(
+      map(response => response.data.map(api => ({
+        id: api.id,
+        loggerId: api.logger_id,
+        carNumber: api.car_number,
+        firstName: api.first_name,
+        lastName: api.last_name,
+        createdDate: new Date(),
+        numberLimit: 0,
+        warningDetector: false,
+        classType  : api.class_type,
+        teamName  : api.team_name,
+        loggerStatus: 'offline',
+        afrAverage: 15.6,
+      })))
+    );
+  }
+
 getLoggersWithAfr(params: { classTypes?: string[]; raceId?: number; limit?: number; offset?: number }) {
   const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
   let httpParams = new HttpParams();
@@ -422,38 +449,61 @@ getLoggersWithAfr(params: { classTypes?: string[]; raceId?: number; limit?: numb
       );
     }
 
-    getLoggerByDate(date:any): Observable<unknown> {
-      const addLoggerUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_ALL_LOGGERS_DATE);
-      // Map Racer interface to API request format
-      // const requestData = {
-      //   date: date
-      // };
+    getLoggerByDate(
+      date: Date | string | { date: Date | string },
+      opts?: { limit?: number; offset?: number }
+    ): Observable<{ items: LoggerByDateItem[]; count: number; limit: number; offset: number }> {
+      const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_ALL_LOGGERS_DATE);
 
+      // สร้าง ISO 8601 ให้ชัวร์ ไม่ว่าผู้ใช้จะส่งรูปแบบไหนมา
+      const raw =
+        typeof date === 'object' && 'date' in date ? (date as any).date : date;
       const iso =
-        date instanceof Date
-          ? date.toISOString()
-          : typeof date === 'string'
-          ? new Date(date).toISOString()
-          : date?.date instanceof Date
-          ? date.date.toISOString()
-          : new Date(date?.date ?? date).toISOString();
+        raw instanceof Date
+          ? raw.toISOString()
+          : new Date(raw ?? new Date()).toISOString();
 
-      const requestData = { date: date };
+      const payload = { date: iso };
 
-      // ดีบั๊กให้ชัวร์ว่ารูปแบบถูกต้อง
-      console.log('payload:', requestData);
-      return this.http.post(addLoggerUrl, requestData).pipe(
-        map(response => {
-          console.log('Get Logger successfully:', response);
-          return response;
+      // เพิ่ม query params สำหรับ pagination
+      let params = new HttpParams();
+      if (opts?.limit != null)  params = params.set('limit',  String(opts.limit));
+      if (opts?.offset != null) params = params.set('offset', String(opts.offset));
+
+      return this.http.post<ApiGetLoggerDateResponse>(url, payload, { params }).pipe(
+        map((res) => {
+          const items: LoggerByDateItem[] = (res.data ?? []).map((r) => ({
+            id: r.ID,
+            loggerId: r.LoggerID,
+            carNumber: r.CarNumber,
+            firstName: r.FirstName,
+            lastName: r.LastName,
+            createdDate: r.CreatedDate ? new Date(r.CreatedDate) : new Date(),
+            classType: r.ClassType,
+            teamName: r.TeamName,
+
+            eventId: r.EventID,
+            eventName: r.EventName,
+            sessionValue: r.SessionValue,
+            idList: r.IDList,
+            segmentValue: r.SegmentValue,
+            classValue: r.ClassValue,
+          }));
+
+          return {
+            items,
+            count: res.count ?? items.length,
+            limit: res.limit ?? opts?.limit ?? 50,
+            offset: res.offset ?? opts?.offset ?? 0,
+          };
         }),
-        catchError(error => {
-          console.error('Error Get Logger:', error);
+        catchError((error) => {
+          console.error('Error Get Logger by date:', error);
           throw error;
         })
       );
-      // return this.http.post<unknown>(url, { key });
     }
+
 
 
     getLoggerDataByKey(key: string, date:string): Observable<unknown> {

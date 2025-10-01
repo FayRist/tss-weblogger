@@ -49,6 +49,7 @@ export const APP_CONFIG = {
 
       // Loggers/Racers
       GET_LOGGERS: '/logger/get-logger',
+      GET_SETTING_LOGGERS: '/logger/get-setting-logger',
       ADD_LOGGER: '/logger/add-allnew-logger',
       UPDATE_LOGGER: '/logger/updateLoger',
       DELETE_LOGGER: '/logger/deleteLoger',

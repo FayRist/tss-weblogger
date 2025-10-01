@@ -14,6 +14,7 @@ export interface ApiLoggerData {
   first_name: string;
   last_name: string;
   class_type: string;
+  team_name: string;
 }
 
 export interface ApiEventResponse {
@@ -157,7 +158,7 @@ export interface LoggerItem {
   classType: string;
 
   // metrics จาก AFR (optional)
-  countDetect: number;   
+  countDetect: number;
   afr?: number | null;
   afrAverage?: number | null;
   status?: string | null;

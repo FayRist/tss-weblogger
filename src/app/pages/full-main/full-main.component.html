@@ -65,7 +65,7 @@
 
       @if ((role$ | async) === 'admin' || (role$ | async) === 'scruitineer') {
       <!-- เห็นได้ทั้ง admin + scruitineer -->
-      <button (click)="drawer.toggle(); navigateToDashboard(6)" mat-list-item>
+      <button (click)="drawer.toggle(); navigateToDashboard(0)" mat-list-item>
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/logger.png"></div>
           <div class="col-10 pt-1">Dashboard</div>

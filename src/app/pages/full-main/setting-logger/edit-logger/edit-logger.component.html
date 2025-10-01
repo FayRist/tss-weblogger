@@ -16,7 +16,7 @@
               <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
-                  <mat-label>หมายเลขรถ </mat-label>
+                  <mat-label>NBR. </mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="car_number">
                   </mat-form-field>
                 </form>
@@ -38,7 +38,7 @@
               <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
-                  <mat-label>ชื่อ</mat-label>
+                  <mat-label>First Name</mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="firstName">
                   </mat-form-field>
                 </form>
@@ -46,8 +46,17 @@
               <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
-                  <mat-label>นามสกุล</mat-label>
+                  <mat-label>Last Name</mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="lastName">
+                  </mat-form-field>
+                </form>
+              </div>
+
+              <div class="col-12">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>Team Name</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="teamName">
                   </mat-form-field>
                 </form>
               </div>

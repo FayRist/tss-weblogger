@@ -20,6 +20,7 @@ interface ExcelRow {
   firstname: string;
   lastname: string;
   class: string;
+  team: string;
 }
 export interface ExcelRowPayLoad {
   logger: string;      // <- จากไฟล์
@@ -108,7 +109,7 @@ export class AddLoggerComponent implements OnInit {
           firstname:  ['name', 'firstname'],              // ไฟล์ใช้ "Name"
           lastname:   ['surname', 'lastname'],            // ไฟล์ใช้ "Surname"
           class:      ['class', 'classtype', 'category'], // ไฟล์ใช้ "Class"
-          team:       ['team'],                           // optional
+          team:       ['team', 'team_name'],                           // optional
         };
 
         // map: headerเดิม -> canonical
@@ -152,7 +153,7 @@ export class AddLoggerComponent implements OnInit {
             firstname: (getByCanon(row, 'firstname') ?? '').toString().trim(),
             lastname: (getByCanon(row, 'lastname') ?? '').toString().trim(),
             class: (getByCanon(row, 'class') ?? '').toString().trim(),
-            // team: (getByCanon(row, 'team') ?? '').toString().trim(), // ถ้าอยากเก็บทีมด้วย ให้เติมใน interface ด้วย
+            team: (getByCanon(row, 'team') ?? '').toString().trim(), // ถ้าอยากเก็บทีมด้วย ให้เติมใน interface ด้วย
           };
 
           const empty = !rec.logger && !rec.nbr && !rec.firstname && !rec.lastname && !rec.class;
@@ -187,6 +188,7 @@ export class AddLoggerComponent implements OnInit {
       last_name: String(r.lastname ?? '').trim(),
       creat_date: String(r.lastname ?? '').trim(),
       class_type: String(r.class ?? '').trim(),
+      team_name: String(r.team ?? '').trim(),
     }));
 
 
@@ -202,7 +204,7 @@ export class AddLoggerComponent implements OnInit {
         },
         error => {
           console.error('Error adding/updating match:', error);
-           this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข match');
+           this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Logger');
         }
       );
   }

@@ -51,6 +51,7 @@ export interface DialogLoggerData {
   firstName: string;
   lastName: string;
   classValue: string;
+  teamName: string;
 }
 
 @Component({
@@ -78,8 +79,9 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
     'loggerId',
     'firstName',
     'classType',
-    'afr',
-    'numberLimit',
+    // 'afr',
+    // 'numberLimit',
+    'teamName',
     'resetLimit'
   ];
 
@@ -96,6 +98,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       warningDetector: false,
       loggerStatus: 'offline',
       afrAverage: 15.2,
+      teamName: 'Teammmmm TEST',
 
     }, {
       id: 4,
@@ -109,6 +112,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       warningDetector: false,
       loggerStatus: 'offline',
       afrAverage: 15.2,
+      teamName: 'Teammmmm TEST2',
 
     },
   ];
@@ -150,7 +154,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       data: {
         id: arrayData[0].id, firstName: arrayData[0].firstName,  lastName: arrayData[0].lastName,
         carNumber: arrayData[0].carNumber, loggerId: arrayData[0].loggerId,
-        classValue: arrayData[0].classType
+        classValue: arrayData[0].classType, teamName: arrayData[0].teamName
       },
     });
 
@@ -189,7 +193,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
     );
 
     // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
-    const sub = this.eventService.getLogger({ classTypes }).subscribe({
+    const sub = this.eventService.getLoggerSetting({ classTypes }).subscribe({
       next: (loggerRes) => {
         this.allLoggers = loggerRes ?? [];
         this.allLoggers = [...this.allLoggers].sort((a, b) => {
@@ -215,33 +219,34 @@ exportLoggerEx(): void {
   const wb = XLSX.utils.book_new();
 
   // header ของชีต Logger
-  const loggerHeader = [['Number', 'Name', 'Surname', 'Team', 'Class', 'logger']];
+  const loggerHeader = [[
+    'Number',
+    'Name',
+    'Surname',
+    'Team',
+    'Class',
+    'Logger'
+  ]];
 
-  // ดึงจาก dataSource ของตาราง (ปรับ map ให้ตรง field จริงของคุณ)
-  const rows = (this.dataSource?.data ?? []).map(l => ([
-    l.carNumber ?? '',
-    l.firstName ?? '',
-    l.lastName ?? '',
-    '',        // ถ้าไม่มี team ให้คงค่าว่าง
-    // (l.team ?? ''),        // ถ้าไม่มี team ให้คงค่าว่าง
-    l.classType ?? '',
-    l.loggerId ?? ''       // ถ้าจะ prefix เช่น TSS: `TSS${l.loggerId}`
-  ]));
+  // สร้าง worksheet มีแค่ header
+  const ws = XLSX.utils.aoa_to_sheet(loggerHeader);
 
-  const ws = XLSX.utils.aoa_to_sheet([...loggerHeader, ...rows]);
+  // set ความกว้าง column ตามเหมาะสม
   ws['!cols'] = [
-    { wch: 8 },  // Number
-    { wch: 18 }, // Name
-    { wch: 18 }, // Surname
+    { wch: 10 }, // Number
+    { wch: 20 }, // Name
+    { wch: 20 }, // Surname
     { wch: 20 }, // Team
     { wch: 12 }, // Class
-    { wch: 12 }, // logger
+    { wch: 12 }, // Logger
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Logger');
-  const fileName = `Logger_${new Date().toISOString().slice(0,10)}.xlsx`;
+
+  const fileName = `Logger_Template_${new Date().toISOString().slice(0,10)}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }
+
 
 /** ===========================
  *  ปุ่ม: Export เฉพาะชีต Event

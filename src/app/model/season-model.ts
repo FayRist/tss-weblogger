@@ -38,6 +38,7 @@ export interface LoggerModel {
   carNumber: string;
   firstName: string;
   lastName: string;
+  teamName: string;
   createdDate: Date;
   numberLimit: number;
   warningDetector: boolean;

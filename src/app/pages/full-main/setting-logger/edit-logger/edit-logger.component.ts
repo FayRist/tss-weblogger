@@ -38,6 +38,7 @@ export class EditLoggerComponent implements OnInit {
   firstName = this.data.firstName;
   lastName = this.data.lastName;
   classValue = this.data.classValue;
+  teamName = this.data.teamName;
   classList = CLASS_SEGMENT_LIST;
 
 
@@ -54,6 +55,8 @@ export class EditLoggerComponent implements OnInit {
       car_number: this.car_number,
       first_name: this.firstName,
       last_name: this.lastName,
+      class_type: this.classValue,
+      team_name: this.teamName,
       creat_date: new Date()
     }
 

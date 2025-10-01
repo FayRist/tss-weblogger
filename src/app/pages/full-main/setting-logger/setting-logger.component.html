@@ -6,7 +6,7 @@
     <div class="col-6 d-flex justify-content-end">
       <button type="button" class="btn btn-success" (click)="exportLoggerEx()">Export Format Logger Excel</button>
       <!-- <button type="button" class="btn ms-2 btn-success" (click)="exportEventEx()"> Export Format Event Excel</button> -->
-      <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')">เพิ่ม Logger</button>
+      <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')">Import Format Logger Excel</button>
     </div>
   </div>
   <hr style="margin: 0.3rem 0; color: #FFF;" >
@@ -65,21 +65,28 @@
 
 
           <!-- firstName Column -->
-          <ng-container matColumnDef="afr">
+          <!-- <ng-container matColumnDef="afr">
             <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by afrAverage">&nbsp;&nbsp;
               AFR
             </th>
             <td class="text-center" mat-cell *matCellDef="let element"> {{element.afrAverage}} </td>
-          </ng-container>
+          </ng-container> -->
 
           <!-- numberLimit Column -->
-          <ng-container matColumnDef="numberLimit">
+          <!-- <ng-container matColumnDef="numberLimit">
             <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by numberLimit">&nbsp;&nbsp;
               Count
             </th>
             <td class="text-center"  mat-cell *matCellDef="let element"> {{element.numberLimit}} </td>
-          </ng-container>
+          </ng-container> -->
 
+          <!-- numberLimit Column -->
+          <ng-container matColumnDef="teamName">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by teamName">&nbsp;&nbsp;
+              Team Name
+            </th>
+            <td class="text-center"  mat-cell *matCellDef="let element"> {{ element.teamName }} </td>
+          </ng-container>
 
 
           <ng-container matColumnDef="resetLimit">
