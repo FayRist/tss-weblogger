@@ -82,7 +82,7 @@
           <span
               class="status-badge"
               [ngClass]="(loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
-              {{ (((loggerStatus ?? '').toString().trim()) || 'OFFLINE') | uppercase }}
+              {{ loggerStatus | uppercase }}
           </span>
         </div>
       </div>
