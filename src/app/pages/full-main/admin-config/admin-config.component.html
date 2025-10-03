@@ -1,0 +1,49 @@
+<div style="margin: 20px;" class="">
+  <div class="row">
+    <div class="col-6">
+      <h3>Admin Config</h3>
+    </div>
+    <!-- <div class="col-6 d-flex justify-content-end">
+      <button type="button" class="btn btn-success" >Export Format Logger Excel</button>
+      <button type="button" class="btn ms-2 btn-secondary" >Import Format Logger Excel</button>
+    </div> -->
+  </div>
+  <hr style="margin: 0.3rem 0; color: #FFF;" >
+
+  <div class="row mt-3">
+    <div class="col-3">
+      <form class="mat-input-form">
+        <mat-form-field class="w-100">
+        <mat-label>Form Code</mat-label>
+          <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="configName">
+        </mat-form-field>
+      </form>
+    </div>
+    <div class="col-3">
+      <form class="mat-input-form">
+        <mat-form-field class="w-100">
+        <mat-label>ชื่อ Config</mat-label>
+          <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="configName">
+        </mat-form-field>
+      </form>
+    </div>
+    <div class="col-3">
+      <form class="mat-input-form">
+        <mat-form-field class="w-100">
+        <mat-label>Value</mat-label>
+          <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="configName">
+        </mat-form-field>
+      </form>
+    </div>
+    <div class="col-3">
+      <form class="mat-input-form">
+        <mat-form-field class="w-100">
+        <mat-label>Description Config</mat-label>
+          <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="configName">
+        </mat-form-field>
+      </form>
+    </div>
+  </div>
+  <!-- <div class="row">
+  </div> -->
+</div>

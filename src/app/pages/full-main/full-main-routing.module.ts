@@ -43,6 +43,11 @@ const routes: Routes = [
     canActivate: [roleGuard],
     data: { roles: ['admin'] },
     loadComponent: () => import('./setting-logger/setting-logger.component').then(m => m.SettingLoggerComponent)
+  }, {
+    path: 'admin-config',
+    canActivate: [roleGuard],
+    data: { roles: ['admin'] },
+    loadComponent: () => import('./admin-config/admin-config.component').then(m => m.AdminConfigComponent)
   },
 ];
 

@@ -15,6 +15,7 @@ import { AuthService, Role } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
 import { TimeService } from '../../service/time.service';
 import { ToastrService } from 'ngx-toastr';
+import { ConfigAfrModalComponent } from './config-afr-modal/config-afr-modal.component';
 
 function insideParen(text: any): string | null {
   const s = String(text ?? '');               // บังคับเป็น primitive string
@@ -290,6 +291,21 @@ export class FullMainComponent implements OnInit, OnDestroy {
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
   navigateToListAllSeason() { this.router.navigate(['/pages', 'event']); }
   navigateToListSettingLogger() { this.router.navigate(['/pages', 'setting-logger']); }
+  navigateToListConfigAFR(enterAnimationDuration: string, exitAnimationDuration: string) {
+    // this.router.navigate(['/pages', 'setting-config-afr']);
+    const dialogRef = this.dialog.open(ConfigAfrModalComponent, {
+      width: "100vw",
+      maxWidth: "450px",
+      enterAnimationDuration,
+      exitAnimationDuration,
+      // data: {
+      //   mode: modeName,
+      //   loggerId: this.parameterLoggerID,
+      //   raceId: this.parameterRaceId
+      // }
+    });
+
+  }
   navigateToLogout() { this.router.navigate(['/login']); }
 
   navigateToRace(eventId: any, eventName: String) {
