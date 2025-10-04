@@ -168,3 +168,22 @@ export interface LoggerItem {
   warningDetector: boolean;
   loggerStatus: 'online' | 'offline';
 }
+
+
+export interface ApiConfigResponse {
+  count: number;
+  data: ApiConfigData[];
+  success: boolean;
+}
+
+export interface ApiConfigData {
+  id_list: number;
+  event_id: number;
+  season_id: number;
+  category_name: string;
+  class_value: string;
+  segment_value: string;
+  session_value: string;
+  session_start: Date;
+  session_end: Date;
+}

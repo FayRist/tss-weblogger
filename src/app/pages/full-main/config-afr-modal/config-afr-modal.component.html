@@ -1,0 +1,45 @@
+<h1 mat-dialog-title class="text-center">
+  ตั้งค่า Config AFR
+</h1>
+
+<mat-dialog-content>
+        <div class="card card-bg-transparen">
+          <div class="card-body">
+            <div class="row">
+              <div class="col-12">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>Count Max</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="countMax">
+                  </mat-form-field>
+                </form>
+              </div>
+              <div class="col-12">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>AFR Limit</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="afrLimit">
+                  </mat-form-field>
+                </form>
+              </div>
+
+              <!-- <div class="col-4">
+                <mat-card class="zone zone-picker">
+                    <mat-form-field>
+                        <input matInput [ngxMatColorPicker]="picker" [formControl]="colorCtr">
+                        <ngx-mat-color-toggle matSuffix [for]="picker"></ngx-mat-color-toggle>
+                        <ngx-mat-color-picker #picker [touchUi]="touchUi" [color]="color"></ngx-mat-color-picker>
+                    </mat-form-field>
+                </mat-card>
+              </div> -->
+
+            </div>
+          </div>
+        </div>
+</mat-dialog-content>
+
+<mat-dialog-actions class="d-flex justify-content-center mt-2">
+  <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
+  <button type="button" class="btn btn-success ms-2"   matButton cdkFocusInitial (click)="submitUpdateConfig()">ยืนยัน</button>
+</mat-dialog-actions>
+

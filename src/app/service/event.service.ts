@@ -5,7 +5,7 @@ import { APP_CONFIG, getApiUrl } from '../app.config';
 import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-import { ApiDropDownResponse, ApiEventResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
+import { ApiConfigResponse, ApiDropDownResponse, ApiEventResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 // helper เล็ก ๆ
 const toIntOrDefault = (v: any, d: number) => {
@@ -278,7 +278,40 @@ export class EventService {
       })
     );
   }
-// --------- Season -------------------------------
+  // --------- Config -------------------------------
+  getConfigAdmin(formCode: any): Observable<unknown> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_CONFIG);
+    let params = new HttpParams();
+    if (formCode != null) {
+      params = params.set('form_code', formCode.toString());
+    }
+
+    return this.http.get<ApiConfigResponse>(url, { params }).pipe(
+      map(response => {
+        console.log('Event Delete successfully:', response);
+        return response?.data;
+      }),
+      catchError(error => {
+        console.error('Error Delete Event:', error);
+        throw error;
+      })
+    );
+  }
+
+  updateConfig(configList: any[]): Observable<unknown> {
+    const updateConfigUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_CONFIG);
+    return this.http.post(updateConfigUrl, configList).pipe(
+      map(response => {
+        console.log('UPDATE CONFIG  successfully:', response);
+        return response;
+      }),
+      catchError(error => {
+        console.error('Error UPDATE CONFIG:', error);
+        throw error;
+      })
+    );
+  }
+
   getSeason(): Observable<SeasonalModel[]> {
     const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_SEASON);
       return this.http.get<ApiSeasonResponse>(seasonURL).pipe(
@@ -360,51 +393,51 @@ export class EventService {
     );
   }
 
-getLoggersWithAfr(params: { classTypes?: string[]; raceId?: number; limit?: number; offset?: number }) {
-  const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
-  let httpParams = new HttpParams();
+  getLoggersWithAfr(params: { classTypes?: string[]; raceId?: number; limit?: number; offset?: number }) {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
+    let httpParams = new HttpParams();
 
-  // class_type=...&class_type=...
-  if (params.classTypes?.length) {
-    params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct));
+    // class_type=...&class_type=...
+    if (params.classTypes?.length) {
+      params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct));
+    }
+
+    // race_id=...
+    if (params.raceId !== undefined && params.raceId !== null) {
+      httpParams = httpParams.set('race_id', String(params.raceId));
+    }
+
+    if (params.limit)  httpParams = httpParams.set('limit',  String(params.limit));
+    if (params.offset) httpParams = httpParams.set('offset', String(params.offset));
+
+    return this.http.get<ApiLoggerAFRResponse>(url, { params: httpParams }).pipe(
+      map((response) => {
+        const rows = response.data ?? [];
+        const items: LoggerItem[] = rows.map((api: ApiLoggerAFR) => ({
+          id: api.id,
+          idList: api.id_list ?? '',
+          loggerId: api.logger_id,
+          carNumber: api.car_number,
+          firstName: api.first_name,
+          lastName: api.last_name,
+          createdDate: api.created_date ? new Date(api.created_date) : new Date(), // fallback
+          classType: api.class_type,
+
+          // ค่าจาก countdetect_afr (อาจเป็น null)
+          countDetect: api.count_detect ?? 0,
+          afr: api.afr ?? null,
+          afrAverage: api.afr_average ?? null,
+          status: api.status ?? null,
+
+          // ของเดิม
+          numberLimit: 0,
+          warningDetector: false,
+          loggerStatus: 'offline',
+        }));
+        return items;
+      })
+    );
   }
-
-  // race_id=...
-  if (params.raceId !== undefined && params.raceId !== null) {
-    httpParams = httpParams.set('race_id', String(params.raceId));
-  }
-
-  if (params.limit)  httpParams = httpParams.set('limit',  String(params.limit));
-  if (params.offset) httpParams = httpParams.set('offset', String(params.offset));
-
-  return this.http.get<ApiLoggerAFRResponse>(url, { params: httpParams }).pipe(
-    map((response) => {
-      const rows = response.data ?? [];
-      const items: LoggerItem[] = rows.map((api: ApiLoggerAFR) => ({
-        id: api.id,
-        idList: api.id_list ?? '',
-        loggerId: api.logger_id,
-        carNumber: api.car_number,
-        firstName: api.first_name,
-        lastName: api.last_name,
-        createdDate: api.created_date ? new Date(api.created_date) : new Date(), // fallback
-        classType: api.class_type,
-
-        // ค่าจาก countdetect_afr (อาจเป็น null)
-        countDetect: api.count_detect ?? 0,
-        afr: api.afr ?? null,
-        afrAverage: api.afr_average ?? null,
-        status: api.status ?? null,
-
-        // ของเดิม
-        numberLimit: 0,
-        warningDetector: false,
-        loggerStatus: 'offline',
-      }));
-      return items;
-    })
-  );
-}
 
 
     addAllNewLogger(addLoggers: ExcelRowPayLoad[]): Observable<unknown> {

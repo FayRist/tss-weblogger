@@ -24,6 +24,10 @@ export const APP_CONFIG = {
     URL_SOCKET_SERVER: 'ws://43.228.85.167:7001',
 
     ENDPOINTS: {
+      // Config
+      GET_CONFIG: '/configWeb/getAllConfig',
+      UPDATE_CONFIG: '/configWeb/updateConfig',
+
       // Event
       GET_EVENT: '/event/getEvent',
       ADD_EVENT: '/event/addEvent',

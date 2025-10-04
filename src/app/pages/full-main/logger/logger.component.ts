@@ -178,13 +178,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private isSyncingChart = false;
   private isSyncingRace  = false;
 
-  private arraysEqual(a?: any[], b?: any[]) {
-    if (a === b) return true;
-    if (!a || !b) return false;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-    return true;
-  }
+  // private arraysEqual(a?: any[], b?: any[]) {
+  //   if (a === b) return true;
+  //   if (!a || !b) return false;
+  //   if (a.length !== b.length) return false;
+  //   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  //   return true;
+  // }
 
   pointMap: PointDef[] = [
     { idMap: 'bric', lat: 14.9635357, lon: 103.085812, zoom: 16 },
@@ -254,9 +254,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     speed: 'speed'
   };
   //--- Chart ------
-  filterRace = new FormControl<string[]>([]);
-  selectedRaceKeys: string[] = [];
-
+  filterRace = new FormControl<string>('');
+  selectedRaceKey: string = '';
 
   //--- Race ------
   @ViewChild('raceMap') raceMapRef!: ElementRef<HTMLDivElement>;
@@ -459,44 +458,38 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.applyYAxisIntegerLabels();
     // ----- DEFAULT: เลือกทั้งหมด -----
-    const allKeys = Object.keys(this.raceDateList || this.allDataLogger || {});
+    const allKeys = Object.keys(this.allDataLogger || {}); // ใช้ this.allDataLogger แหล่งเดียวจะแม่นยำกว่า
     if (allKeys.length) {
+      const defaultKey = allKeys.includes('practice') ? 'practice' : allKeys[0];
+
       this.isSyncingRace = true;
-      this.filterRace.setValue(allKeys, { emitEvent: false });
+      this.filterRace.setValue(defaultKey, { emitEvent: false });
       this.isSyncingRace = false;
 
-      this.selectedRaceKeys = allKeys.slice();
-      this.recomputeColors(this.selectedRaceKeys);
-      this.updateMapFromSelection(this.selectedRaceKeys);
-      this.updateChartsFromSelection(this.selectedRaceKeys); // ✅ กราฟอัปเดตจาก filterRace
+      this.selectedRaceKey = defaultKey;
+
+      const selectionAsArray = [defaultKey];
+      this.recomputeColors(selectionAsArray);
+      this.updateMapFromSelection(selectionAsArray);
+      this.updateChartsFromSelection(selectionAsArray);
     }
 
     // ----- WORKFLOW หลัก (ตัวเดียว) -----
     this.filterRace.valueChanges
       .pipe(
-        startWith(this.filterRace.value ?? []),
-        map(v => (v ?? []) as string[]),
-        distinctUntilChanged((a,b)=> this.arraysEqual(a,b))
+        startWith(this.filterRace.value ?? ''),
+        distinctUntilChanged()
       )
-      .subscribe(values => {
-        if (this.isSyncingRace) return;
-
-        let next = values;
-        if (next.includes('all')) {
-          const all = Object.keys(this.raceDateList || this.allDataLogger || {});
-          this.isSyncingRace = true;
-          this.filterRace.setValue(all, { emitEvent: false }); // กันยิงซ้ำ
-          this.isSyncingRace = false;
-          next = all;
+      .subscribe(selectedValue => {
+        if (this.isSyncingRace || !selectedValue) {
+          return;
         }
+        this.selectedRaceKey = selectedValue;
+        const selectionAsArray = [this.selectedRaceKey];
 
-        if (!this.arraysEqual(this.selectedRaceKeys, next)) {
-          this.selectedRaceKeys = next.slice();
-          this.recomputeColors(this.selectedRaceKeys);
-          // อัปเดตทั้งสองอย่างพร้อมกัน
-          this.updateMapFromSelection(this.selectedRaceKeys);
-          this.updateChartsFromSelection(this.selectedRaceKeys);
-        }
+        this.recomputeColors(selectionAsArray);
+        this.updateMapFromSelection(selectionAsArray);
+        this.updateChartsFromSelection(selectionAsArray);
       });
   }
 
@@ -594,13 +587,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const defaultKey = keys.includes('practice') ? 'practice' : keys[0];
 
     this.isSyncingRace = true;
-    this.filterRace.setValue([defaultKey], { emitEvent: false });
+    this.filterRace.setValue(defaultKey, { emitEvent: false }); // <-- ไม่ต้องมี []
     this.isSyncingRace = false;
 
-    this.selectedRaceKeys = [defaultKey];
-    this.recomputeColors?.(this.selectedRaceKeys);      // ถ้ามีระบบสี
-    this.updateMapFromSelection(this.selectedRaceKeys); // วาดแผนที่
-    this.updateChartsFromSelection?.(this.selectedRaceKeys); // อัปเดตกราฟ (AFR)
+    this.selectedRaceKey = defaultKey; // <-- ใช้ตัวแปรใหม่
+    const selectionAsArray = [this.selectedRaceKey];
+
+    this.recomputeColors?.(selectionAsArray);      // ถ้ามีระบบสี
+    this.updateMapFromSelection(selectionAsArray); // วาดแผนที่
+    this.updateChartsFromSelection?.(selectionAsArray); // อัปเดตกราฟ (AFR)
     // this.refreshDetail?.();
     // this.refreshBrush?.();
 
@@ -761,23 +756,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // === เมื่อผู้ใช้เลือกเส้น (จาก mat-select multiple ของคุณ) ===
   // เรียกตอน select เปลี่ยน (รับเป็น string[] ตรง ๆ)
-  onMultiSelectRaceChange(values: string[]) {
-    if (this.isSyncingRace) return;
+  // onMultiSelectRaceChange(values: string[]) {
+  //   if (this.isSyncingRace) return;
 
-    let next: string[] = values ?? [];
+  //   let next: string[] = values ?? [];
 
-    // กรณีเลือก "all" -> แทนที่ด้วยทุก key
-    if (next.includes('all')) {
-      next = Object.keys(this.allDataLogger);
+  //   // กรณีเลือก "all" -> แทนที่ด้วยทุก key
+  //   if (next.includes('all')) {
+  //     next = Object.keys(this.allDataLogger);
 
-      this.isSyncingRace = true;
-      this.filterRace.setValue(next, { emitEvent: false }); // << สำคัญ
-      this.isSyncingRace = false;
-    }
+  //     this.isSyncingRace = true;
+  //     this.filterRace.setValue(next, { emitEvent: false }); // << สำคัญ
+  //     this.isSyncingRace = false;
+  //   }
 
-    this.selectedRaceKeys = next;
-    this.updateMapFromSelection(next);
-  }
+  //   this.selectedRaceKeys = next;
+  //   this.updateMapFromSelection(next);
+  // }
 
   private updateChartsFromSelection(keys: string[]) {
 

@@ -26,7 +26,7 @@ import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 @Component({
   selector: 'app-admin-config',
-  imports: [DateRangePipe, MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
+  imports: [MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
     , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule, MatSortModule
     , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule
     , MatSlideToggleModule, MatMenuModule],
