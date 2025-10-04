@@ -13,7 +13,7 @@ import { delay, distinctUntilChanged, map, of, startWith, Subscription } from 'r
 import {
   ApexAxisChartSeries, ApexChart, ApexXAxis, ApexYAxis, ApexStroke, ApexDataLabels,
   ApexFill, ApexMarkers, ApexGrid, ApexLegend, ApexTooltip, ApexTheme,
-  NgxApexchartsModule,
+  NgxApexchartsModule, ApexAnnotations,
   ChartComponent
 } from 'ngx-apexcharts';
 import * as L from 'leaflet';
@@ -164,6 +164,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   countDetect: number = 0;
   afrAverage: number = 0;
 
+  // private currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
+  // ลบ private ออก (การไม่ระบุ access modifier จะถือว่าเป็น public โดยอัตโนมัติ)
+  currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
+
+  // ตัวแปรสำหรับควบคุมการแสดงผลของจุดและ tooltip บนแผนที่
+  hoverPoint = {
+    visible: false,
+    x: 0,
+    y: 0,
+    afr: 0
+  };
+
   //--- Chart ------
   @ViewChild('selectButton', { read: ElementRef }) selectButtonEl!: ElementRef<HTMLElement>;
   @ViewChild('select') select!: MatSelect;
@@ -280,6 +292,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     chart: ApexChart;
     xaxis: ApexXAxis;
     yaxis: ApexYAxis | ApexYAxis[];
+    annotations: ApexAnnotations;
     stroke: ApexStroke;
     dataLabels: ApexDataLabels;
     markers: ApexMarkers;
@@ -297,7 +310,34 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         height: 300,
         background: 'transparent',
         foreColor: PAL.text,
-        toolbar: { show: true }
+        toolbar: { show: true },
+        events: {
+          mouseMove: (event, chartContext, config) => {
+            const dataPointIndex = config.dataPointIndex;
+            const seriesIndex = config.seriesIndex;
+
+            if (dataPointIndex > -1 && seriesIndex > -1) {
+              const series = config.globals.initialSeries[seriesIndex];
+              const pointOnChart = series.data[dataPointIndex];
+              const timestamp = pointOnChart.x;
+              const closestMapPoint = this.currentMapPoints.reduce((prev, curr) =>
+                Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
+              );
+
+              if (closestMapPoint) {
+                this.hoverPoint = {
+                  visible: true,
+                  x: closestMapPoint.x,
+                  y: closestMapPoint.y,
+                  afr: closestMapPoint.afr
+                };
+              }
+            }
+          },
+          mouseLeave: () => {
+            this.hoverPoint.visible = false;
+          }
+        }
       },
       xaxis: {
         type: 'datetime',
@@ -313,7 +353,28 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         }
       },
-      stroke: { curve: 'smooth', width: [2, 2, 3, 2], dashArray: [0, 0, 6, 0] }, // warning = เส้นประ
+      stroke: {
+        curve: 'smooth', width: [2, 2, 3, 2], dashArray: [0, 0, 6, 0]
+      }, // warning = เส้นประ
+      annotations: {
+        yaxis: [
+          {
+            y: 15,
+            borderColor: '#dc3545',
+            strokeDashArray: 2,
+            label: {
+              borderColor: '#dc3545',
+              style: {
+                color: '#fff',
+                background: '#dc3545',
+              },
+              text: 'AFR Limit',
+              position: 'right',
+              offsetX: 5,
+            }
+          }
+        ]
+      },
       dataLabels: { enabled: false },
       markers: { size: 0 },
       colors: PAL.series,
@@ -869,8 +930,17 @@ private updateMapFromSelection(keys: string[]) {
     const pts = arr.map((r, i) => {
       const x = ((r.lon - minLon) / spanLon) * SVG_W;
       const y = SVG_H - ((r.lat - minLat) / spanLat) * SVG_H;
-      return { i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue };
+      const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
+
+      return { ts, i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue }; // <--- ✅ เพิ่ม ts ตรงนี้
     });
+
+    this.currentMapPoints = pts.map(p => ({
+      ts: p.ts,
+      x: p.x,
+      y: p.y,
+      afr: p.afr ?? 0
+    }));
 
     // สตริง polyline (เผื่อยังใช้วาดแบบสีเดียว)
     outPoints[k] = pts.map(p => `${p.x},${p.y}`).join(' ');
@@ -969,6 +1039,22 @@ private updateMapFromSelection(keys: string[]) {
       colors: colorArr.length ? colorArr : [PAL.series[1]],
       stroke: { ...this.brushOpts.stroke, width: widthArr, dashArray: dashArr }
     };
+  }
+
+
+  // Method นี้จะถูกเรียกเมื่อเมาส์เข้าสู่พื้นที่ของจุดบนแผนที่
+  onMapPointEnter(point: { x: number; y: number; afr: number }) {
+    this.hoverPoint = {
+      visible: true,
+      x: point.x,
+      y: point.y,
+      afr: point.afr
+    };
+  }
+
+  // Method นี้จะถูกเรียกเมื่อเมาส์ออกจากพื้นที่ของจุดบนแผนที่
+  onMapPointLeave() {
+    this.hoverPoint.visible = false;
   }
 
   // ---- Mock data (แทน service จริง) ----

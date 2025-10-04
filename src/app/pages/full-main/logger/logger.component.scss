@@ -176,6 +176,18 @@ button[mat-raised-button] {
   }
 }
 
+.map-tooltip {
+  position: absolute;
+  transform: translate(15px, 15px); /* ขยับเล็กน้อยให้ไม่บังจุด */
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 14px;
+  pointer-events: none; /* ทำให้เมาส์คลิกทะลุได้ */
+  white-space: nowrap;
+  z-index: 1000;
+}
 
 .mat-mdc-option {
   min-height: 55px !important;
