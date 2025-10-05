@@ -7,6 +7,7 @@ import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/ad
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
 import { ApiConfigResponse, ApiDropDownResponse, ApiEventResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
+import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
 // helper เล็ก ๆ
 const toIntOrDefault = (v: any, d: number) => {
   const n = Number(v);
@@ -83,6 +84,7 @@ export class EventService {
               circuit_name: apiData.circuit_name,
               event_start: new Date(apiData.event_start),
               event_end: new Date(apiData.event_end),
+              active: apiData.active
           }));
           return this.eventList;
         })
@@ -139,7 +141,7 @@ export class EventService {
       );
   }
 
-  addNewEvent(addEvent: eventPayLoad): Observable<unknown> {
+  addNewEvent(addEvent: any): Observable<unknown> {
     const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_EVENT);
     return this.http.post(eventUrl, addEvent).pipe(
       map(response => {
@@ -167,9 +169,9 @@ export class EventService {
       );
     }
 
-  deleteEvent(eventID: any): Observable<unknown> {
-    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_EVENT);
-    return this.http.post(eventUrl, eventID).pipe(
+  deleteEvent(configID: any): Observable<unknown> {
+    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_CONFIG);
+    return this.http.post(eventUrl, configID).pipe(
       map(response => {
         console.log('Event Delete successfully:', response);
         return response;
@@ -217,6 +219,7 @@ export class EventService {
               session_value: apiData.session_value,
               session_start: apiData.session_start,
               session_end: apiData.session_end,
+              active: apiData.active,
           }));
           return this.raceList;
         })
@@ -293,6 +296,20 @@ export class EventService {
       }),
       catchError(error => {
         console.error('Error Delete Event:', error);
+        throw error;
+      })
+    );
+  }
+
+  addNewConfig(configList: any): Observable<unknown> {
+    const addConfigUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_CONFIG);
+    return this.http.post(addConfigUrl, configList).pipe(
+      map(response => {
+        console.log('Config added successfully:', response);
+        return response;
+      }),
+      catchError(error => {
+        console.error('Error adding Config:', error);
         throw error;
       })
     );

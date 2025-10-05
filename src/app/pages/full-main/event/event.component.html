@@ -8,7 +8,7 @@
             <th class="text-center w-25">Event</th>
             <th class="text-center w-15">วันที่จัดการแข่ง</th>
             <th class="text-center ">สนาม</th>
-            <th class="text-center w-10">สถานะการแข่ง</th>
+            <th class="text-center w-10">สถานะ</th>
             <th class="text-center">
               <button type="button" class="btn btn-secondary w-50" (click)="openAdd('0ms', '0ms')">เพิ่ม Event</button>
             </th>
@@ -25,11 +25,24 @@
               <td class="text-center">
                 {{ getCircuitName(eventList.circuit_name) }}
               </td>
-              <td class="text-center">{{ statusOf(eventList) }}</td>
+              <td class="text-center">
+                <div class="row d-flex justify-content-center">
+                  @if (eventList.active == 1) {
+                    <div class="col-12">
+                          <button type="button" class="btn btn-info w-100 p-0"> active </button>
+                    </div>
+                  }@else {
+                    <div class="col-12">
+                          <button type="button" class="btn btn-secondary w-100 p-0" disabled> inactive </button>
+                    </div>
+                  }
+                </div>
+              </td>
               <td class="text-center">
                   <div class="row d-flex justify-content-center"
                     [class.pointer-events-none]="statusOf(eventList) === RaceStatus.Finished"
                     [class.opacity-50]="statusOf(eventList) === RaceStatus.Finished">
+
                     @if (statusOf(eventList) == RaceStatus.Live) {
                       <div class="col-4">
                           <button type="button" class="btn btn-danger w-100 p-0" (click)="openEnd('0ms', '0ms', eventList.event_id)">จบ event</button>

@@ -11,7 +11,7 @@ import { MatRadioModule } from '@angular/material/radio';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTabsModule } from '@angular/material/tabs';
 import { ActivatedRoute, Router } from '@angular/router';
-import { eventModel } from '../../../model/season-model';
+import { eventModel, optionModel } from '../../../model/season-model';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
@@ -39,7 +39,7 @@ interface SessionRow {
   styleUrl: './event.component.scss'
 })
 export class EventComponent implements OnInit {
-  mapsList = MAPS_LIST;
+  mapsList: optionModel[] = MAPS_LIST;
 
   readonly dialog = inject(MatDialog);
   allEvent: eventModel[] = [{
@@ -49,6 +49,7 @@ export class EventComponent implements OnInit {
         circuit_name: 'bsc',
         event_start: new Date('6/9/2024 15:10:00'),
         event_end: new Date('6/10/2024 15:30:00'),
+        active: 0
       }];
   private subscriptions: Subscription[] = [];
 
@@ -63,6 +64,20 @@ export class EventComponent implements OnInit {
   statusOf = (e: eventModel) => getRaceStatus(this.time.now(), e.event_start, e.event_end);
   ngOnInit() {
     this.loadEvent();
+
+    const form_code = `map_list`
+    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
+        (config: any) => {
+            this.mapsList = config.map((item: any) => ({
+                name: item.config_name,
+                value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
+            }));
+        },
+        error => {
+            console.error('Error loading matchList:', error);
+        }
+    );
+    this.subscriptions.push(MatchSub);
 
   }
 
@@ -209,7 +224,8 @@ export class EventComponent implements OnInit {
 })
 
 export class DialogAnimationsModalEdit implements OnInit {
-  mapsList = MAPS_LIST;
+  mapsList: optionModel[] = MAPS_LIST;
+
 
   eventName: string = '';
   eventId: number = 0;
@@ -218,6 +234,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   dateSessionStart = new FormControl(new Date());
   dateSessionEnd = new FormControl(new Date());
   typeModal: string = 'เพิ่ม';
+  private subscriptions: Subscription[] = [];
 
   seasonList: any[] = [
     {
@@ -269,6 +286,20 @@ export class DialogAnimationsModalEdit implements OnInit {
   }
 
   ngOnInit() {
+    const form_code = `map_list`
+    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
+        (config: any) => {
+            this.mapsList = config.map((item: any) => ({
+                name: item.config_name,
+                value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
+            }));
+        },
+        error => {
+            console.error('Error loading matchList:', error);
+        }
+    );
+    this.subscriptions.push(MatchSub);
+
     if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
       console.log(this.data.event_data[0]);
       this.eventId = this.data.event_data[0].event_id;

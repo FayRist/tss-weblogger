@@ -30,6 +30,7 @@ export interface ApiEventData {
   circuit_name: string;
   event_start: Date;
   event_end: Date;
+  active: number;
 }
 export interface ApiDropDownResponse {
   count: number;
@@ -66,6 +67,7 @@ export interface ApiRaceData {
   session_value: string;
   session_start: Date;
   session_end: Date;
+  active: number;
 }
 
 
@@ -177,13 +179,11 @@ export interface ApiConfigResponse {
 }
 
 export interface ApiConfigData {
-  id_list: number;
-  event_id: number;
-  season_id: number;
-  category_name: string;
-  class_value: string;
-  segment_value: string;
-  session_value: string;
-  session_start: Date;
-  session_end: Date;
+  id: number;
+  form_code: string;
+  config_name: string;
+  value?: string;
+  description?: string;
+  update_by?: string;
+  update_date?: string | Date;
 }

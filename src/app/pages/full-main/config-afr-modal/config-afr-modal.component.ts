@@ -82,7 +82,6 @@ export class ConfigAfrModalComponent  implements OnInit {
         this.configAFR = config;
         this.afrLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value;
         this.countMax = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value;
-        debugger
       },
       error => {
         console.error('Error loading matchList:', error);

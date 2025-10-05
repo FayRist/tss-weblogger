@@ -1,0 +1,90 @@
+.card-bg-transparen {
+  --bs-bg-opacity: 1;
+  background-color: transparent !important;
+}
+
+table {
+  width: 100%;
+}
+
+th.mat-sort-header-sorted {
+  color: black;
+}
+
+.mat-mdc-table .mat-mdc-header-cell {
+  align-content: center !important;
+  background: #212529 !important;
+}
+
+:host ::ng-deep .mat-column-form_code .mat-sort-header-container,
+:host ::ng-deep .mat-column-config_name .mat-sort-header-container,
+:host ::ng-deep .mat-column-value .mat-sort-header-container,
+:host ::ng-deep .mat-column-setting .mat-sort-header-container,
+:host ::ng-deep .mat-column-description .mat-sort-header-container {
+  font-size: 18px;
+  width: 100%;
+  justify-content: center;
+}
+
+td.mat-mdc-cell{
+  font-size: 18px;
+}
+
+
+
+.mat-column-carNumber {
+  width: 7%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-setting {
+  width: 15%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-firstName {
+  padding: 15px;
+  width: 20%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-loggerStatus,
+.mat-column-classType,
+.mat-column-afr,
+.mat-column-countDetect {
+  width: 10%;
+  border-right: 1px solid #343a40;
+}
+
+/* ให้ container ของ header อยู่กลาง (ถ้าต้องการ) */
+:host ::ng-deep th.mat-header-cell .mat-sort-header-container {
+  width: 100%;
+  justify-content: center;
+}
+
+/* จัดกลางทั้งคอลัมน์ Status */
+:host ::ng-deep .mat-column-loggerStatus {
+  text-align: center;
+}
+
+/* ป้ายสถานะ */
+:host ::ng-deep .status-badge {
+  display: inline-block;
+  min-width: 88px;     /* ให้กว้างพออ่านง่าย */
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+
+/* ให้ container ของ header อยู่กลาง (ถ้าต้องการ) */
+:host ::ng-deep th.mat-header-cell .mat-sort-header-container {
+  width: 100%;
+  justify-content: center;
+}
+
+/* จัดกลางทั้งคอลัมน์ Status */
+:host ::ng-deep .mat-column-loggerStatus {
+  text-align: center;
+}

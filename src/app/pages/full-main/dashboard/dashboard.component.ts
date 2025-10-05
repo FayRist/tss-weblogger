@@ -57,6 +57,8 @@ function toDate(v: unknown): Date {
 export class DashboardComponent implements OnInit, AfterViewInit {
   private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
+
+
   allLoggers: LoggerItem[] = [
     // {
     //   id: 1,
@@ -153,7 +155,6 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         this.configAFR = [];
         this.configAFR = config;
         this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
-        debugger
       },
       error => {
         console.error('Error loading matchList:', error);
@@ -300,7 +301,6 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
 
-    // ✅ กำหนดการเข้าถึงค่าที่จะใช้ sort
     this.dataSource.sortingDataAccessor = (item, property) => {
 
       switch (property) {

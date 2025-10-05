@@ -80,7 +80,7 @@ export class AddEventComponent implements OnInit {
   sessionList = SESSION_LIST;
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
-  mapsList = MAPS_LIST;
+  mapsList: optionModel[] = MAPS_LIST;
 
   eventList: optionModel[] = [
     {
@@ -165,7 +165,23 @@ export class AddEventComponent implements OnInit {
       }
     );
     this.subscriptions.push(eventData);
+
+    const form_code = `map_list`
+    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
+        (config: any) => {
+            this.mapsList = config.map((item: any) => ({
+                name: item.config_name,
+                value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
+            }));
+        },
+        error => {
+            console.error('Error loading matchList:', error);
+        }
+    );
+    this.subscriptions.push(MatchSub);
   }
+
+
 
   changeName(event: any) {
     this.NameTab = this.labels[event.index];

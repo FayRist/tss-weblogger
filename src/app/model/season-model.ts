@@ -14,6 +14,7 @@ export interface RaceModel {
   session_value: string;
   session_start: Date | null;
   session_end: Date | null;
+  active: number
 }
 export interface eventModel {
   event_id: number;
@@ -22,6 +23,7 @@ export interface eventModel {
   circuit_name: string;
   event_start: Date;
   event_end: Date;
+  active: number;
 }
 
 export interface optionModel {

@@ -26,7 +26,9 @@ export const APP_CONFIG = {
     ENDPOINTS: {
       // Config
       GET_CONFIG: '/configWeb/getAllConfig',
+      ADD_CONFIG: '/configWeb/addConfig',
       UPDATE_CONFIG: '/configWeb/updateConfig',
+      DELETE_CONFIG: '/configWeb/deleteConfig',
 
       // Event
       GET_EVENT: '/event/getEvent',

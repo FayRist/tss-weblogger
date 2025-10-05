@@ -74,6 +74,7 @@ export class RaceComponent implements OnInit {
         class_value: 'c',
         session_start: new Date('6/9/2024 15:10:00'),
         session_end: new Date('6/9/2024 15:30:00'),
+        active: 1,
       }
     ];
     this.loadDropDownEvent();
