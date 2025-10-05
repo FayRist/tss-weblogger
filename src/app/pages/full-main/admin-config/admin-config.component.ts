@@ -64,7 +64,7 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
   displayedColumns: string[] = [
     // 'form_code',
     'config_name',
-    'value',
+    // 'value',
     'description',
     'setting',
   ];
