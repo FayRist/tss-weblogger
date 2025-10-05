@@ -120,6 +120,17 @@
                       }
                     </g>
 
+                    @if (hoverPoint.visible) {
+                      <circle
+                        [attr.cx]="hoverPoint.x"
+                        [attr.cy]="hoverPoint.y"
+                        r="7"
+                        fill="none"
+                        stroke="#FFFFFF"
+                        stroke-width="3"
+                        style="pointer-events: none;"
+                      />
+                    }
                     <g class="interactive-points">
                       @for (p of currentMapPoints; track p.ts) {
                         <circle

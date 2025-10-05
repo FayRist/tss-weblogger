@@ -354,10 +354,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             const left = this.hoverPoint.x * this.scaleX;
             const top = this.hoverPoint.y * this.scaleY;
             this.tooltipStyle = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
+            this.cdr.detectChanges();
           },
           mouseLeave: () => {
             this.hoverPoint.visible = false;
             this.tooltipStyle.visibility = 'hidden';
+            this.cdr.detectChanges();
           }
         }
       },
@@ -523,6 +525,76 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
     this.loadCsvAndDraw(`models/mock-data/race2_section_${parameterClass}.csv`);
   }
+
+  downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
+    if (threshold >= data.length || threshold === 0) {
+      return data; // ไม่ต้องลดทอน
+    }
+
+    // แปลงข้อมูลเป็น [number, number][] ชั่วคราวเพื่อใช้กับอัลกอริทึม
+    const dataAsArray: [number, number][] = data.map(p => [p.x, p.y]);
+
+    const sampled: [number, number][] = [];
+    let sampledIndex = 0;
+
+    const every = (dataAsArray.length - 2) / (threshold - 2);
+    let a = 0;
+    let maxAreaPoint: [number, number] | undefined;
+    let maxArea: number;
+    let area: number;
+    let nextA = 0;
+
+    sampled[sampledIndex++] = dataAsArray[a]; // เลือกจุดแรกเสมอ
+
+    for (let i = 0; i < threshold - 2; i++) {
+      let avgX = 0;
+      let avgY = 0;
+      let avgRangeStart = Math.floor((i + 1) * every) + 1;
+      let avgRangeEnd = Math.floor((i + 2) * every) + 1;
+      avgRangeEnd = avgRangeEnd < dataAsArray.length ? avgRangeEnd : dataAsArray.length;
+
+      const avgRangeLength = avgRangeEnd - avgRangeStart;
+
+      for (; avgRangeStart < avgRangeEnd; avgRangeStart++) {
+        avgX += dataAsArray[avgRangeStart][0];
+        avgY += dataAsArray[avgRangeStart][1];
+      }
+      avgX /= avgRangeLength;
+      avgY /= avgRangeLength;
+
+      const rangeOffs = Math.floor(i * every) + 1;
+      const rangeTo = Math.floor((i + 1) * every) + 1;
+
+      const pointAX = dataAsArray[a][0];
+      const pointAY = dataAsArray[a][1];
+
+      maxArea = -1;
+
+      for (let j = rangeOffs; j < rangeTo; j++) {
+        area = Math.abs(
+          (pointAX - avgX) * (dataAsArray[j][1] - pointAY) -
+          (pointAX - dataAsArray[j][0]) * (avgY - pointAY)
+        ) * 0.5;
+        if (area > maxArea) {
+          maxArea = area;
+          maxAreaPoint = dataAsArray[j];
+          nextA = j;
+        }
+      }
+
+      if (maxAreaPoint) {
+        sampled[sampledIndex++] = maxAreaPoint;
+      }
+      a = nextA;
+    }
+
+    sampled[sampledIndex++] = dataAsArray[dataAsArray.length - 1]; // เลือกจุดสุดท้ายเสมอ
+
+    // แปลงข้อมูลกลับเป็น { x, y }[]
+    return sampled.map(p => ({ x: p[0], y: p[1] }));
+  }
+
+
 
   async loadAndApplyConfig() {
     const form_code = `max_count, limit_afr`
@@ -901,30 +973,38 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // }
 
   private updateChartsFromSelection(keys: string[]) {
-
     const mkSeries = (k: string) => {
       const data = (this.allDataLogger[k] || []);
-      // เลือกแกน X: ใช้ time ถ้ามี ไม่งั้นใช้ index
       const seriesData = data.map((p, idx) => {
-        const x = (p.time ?? idx);
-        const y = Number.isFinite(p.afrValue as number) ? (p.afrValue  as number)
+        const xValue = p.time && typeof p.time === 'string' && !isNaN(Date.parse(p.time))
+          ? new Date(p.time).getTime()
+          : (p.ts !== 0 ? p.ts : idx);
+
+        const yValue = Number.isFinite(p.afrValue as number) ? (p.afrValue as number)
                 : Number.isFinite(p.velocity as number) ? (p.velocity as number)
                 : null;
-        return y == null ? null : { x, y };
+        return yValue == null ? null : { x: xValue, y: yValue };
       }).filter(Boolean) as {x: any; y: number}[];
 
       return { name: k, data: seriesData };
     };
 
-    const series = keys.map(mkSeries);
+    const fullSeries = keys.map(mkSeries);
+    const displayThreshold = 50000; // จำนวนจุดสูงสุดที่ต้องการแสดงผล
+    const downsampledSeries = fullSeries.map((seriesItem: any) => {
+      const downsampledData = this.downsample(seriesItem.data, displayThreshold);
+      console.log(`Race '${seriesItem.name}' original points: ${seriesItem.data.length}, Downsampled to: ${downsampledData.length}`);
+      return { name: seriesItem.name, data: downsampledData };
+    });
 
     this.detailOpts = {
       ...this.detailOpts,
-      series
+      series: downsampledSeries
     };
+
     this.brushOpts = {
       ...this.brushOpts,
-      series
+      series: fullSeries
     };
   }
 
