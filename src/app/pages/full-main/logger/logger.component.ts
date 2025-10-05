@@ -290,6 +290,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.chartPointsByDate[dateKey] = Array.isArray(pts) ? pts : [];
   }
 
+  afrLimit: number = 0;
+  countMax: number = 0;
+
+  configAFR: any;
+
+
   private map!: L.Map;
   private baseLayers!: Record<string, L.TileLayer>;
   private trackLine?: L.Polyline;
@@ -399,7 +405,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       tooltip: { theme: 'dark', fillSeriesColor: false },
       legend: { show: true, position: 'bottom', labels: { colors: PAL.textMuted } },
       theme: { mode: 'dark' }
-    };
+  };
 
 
   svgPoints = '';
@@ -507,14 +513,57 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     , private http: HttpClient
     , private eventService: EventService
   ) {
+    this.loadAndApplyConfig();
     // this.setCurrentPoints(this.buildMock(180));
-  let parameterClass = this.route.snapshot.queryParamMap.get('class') ?? '';
+    let parameterClass = this.route.snapshot.queryParamMap.get('class') ?? '';
 
-  // ใช้ string interpolation สร้าง path ใหม่
-  this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}.csv`);
-  this.loadCsvAndDraw(`models/mock-data/qualifying_section_${parameterClass}.csv`);
-  this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
-  this.loadCsvAndDraw(`models/mock-data/race2_section_${parameterClass}.csv`);
+    // ใช้ string interpolation สร้าง path ใหม่
+    this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}.csv`);
+    this.loadCsvAndDraw(`models/mock-data/qualifying_section_${parameterClass}.csv`);
+    this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
+    this.loadCsvAndDraw(`models/mock-data/race2_section_${parameterClass}.csv`);
+  }
+
+  async loadAndApplyConfig() {
+    const form_code = `max_count, limit_afr`
+    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
+      config => {
+        this.configAFR = [];
+        this.configAFR = config;
+        this.afrLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value);
+        this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
+
+        this.detailOpts = {
+          ...this.detailOpts,
+          annotations: {
+            yaxis: [
+              {
+                // กำหนดค่าทั้งหมดที่ต้องการสำหรับเส้นแนวนอน
+                y: this.afrLimit, // ใช้ค่าใหม่จาก config
+                borderColor: '#dc3545',
+                strokeDashArray: 2,
+                label: {
+                  borderColor: '#dc3545',
+                  style: {
+                    color: '#fff',
+                    background: '#dc3545',
+                  },
+                  text: `AFR Limit: ${this.afrLimit.toFixed(1)}`, // อัปเดตข้อความ (แนะนำ .toFixed)
+                  position: 'right',
+                  offsetX: 5,
+                }
+              }
+            ]
+          }
+        };
+      },
+      error => {
+        console.error('Error loading matchList:', error);
+        // Fallback to mock data if API fails
+        // this.matchList = this.eventService.getMatchSync();
+      }
+    );
+    this.subscriptions.push(MatchSub);
   }
 
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======
@@ -1035,7 +1084,28 @@ private updateMapFromSelection(keys: string[]) {
       ...this.detailOpts,
       series,
       colors: colorArr.length ? colorArr : PAL.series.slice(0, series.length),
-      stroke: { ...this.detailOpts.stroke, curve: 'smooth', width: widthArr, dashArray: dashArr }
+      stroke: { ...this.detailOpts.stroke, curve: 'smooth', width: widthArr, dashArray: dashArr },
+
+      annotations: {
+        yaxis: [
+          {
+            // กำหนดค่าทั้งหมดที่ต้องการสำหรับเส้นแนวนอน
+            y: this.afrLimit, // ใช้ค่าใหม่จาก config
+            borderColor: '#dc3545',
+            strokeDashArray: 2,
+            label: {
+              borderColor: '#dc3545',
+              style: {
+                color: '#fff',
+                background: '#dc3545',
+              },
+              text: `AFR Limit: ${this.afrLimit.toFixed(1)}`, // อัปเดตข้อความ (แนะนำ .toFixed)
+              position: 'right',
+              offsetX: 5,
+            }
+          }
+        ]
+      }
     };
   }
 

@@ -161,3 +161,11 @@ td.mat-mdc-cell{
   font-weight: 700;
   line-height: 1.4;
 }
+
+.text-danger {
+  color: #EF4444;
+  font-weight: bold;
+  border: 2px solid #EF4444; /* ✅ เพิ่มบรรทัดนี้ */
+  border-radius: 4px;       /* (แนะนำ) ทำให้ขอบมนสวยงาม */
+
+}

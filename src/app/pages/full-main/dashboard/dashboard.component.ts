@@ -87,7 +87,9 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   ];
   readonly dialog = inject(MatDialog);
   onShowAllLoggers: LoggerItem[] = []
+  countMax: number = 0;
 
+  configAFR: any;
 
   sortStatus:string = '';
   showRoutePath: boolean = true;
@@ -140,8 +142,27 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     private toastr: ToastrService,
     private fb: FormBuilder,
     private cdr: ChangeDetectorRef
-  ) {}
+  ) {
+    this.loadAndApplyConfig();
+  }
 
+  async loadAndApplyConfig() {
+    const form_code = `max_count, limit_afr`
+    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
+      config => {
+        this.configAFR = [];
+        this.configAFR = config;
+        this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
+        debugger
+      },
+      error => {
+        console.error('Error loading matchList:', error);
+        // Fallback to mock data if API fails
+        // this.matchList = this.eventService.getMatchSync();
+      }
+    );
+    this.subscriptions.push(MatchSub);
+  }
   updateView(allLoggers: LoggerItem[] = []): void {
     const filters = this.filterLogger.value ?? ['all'];
 
