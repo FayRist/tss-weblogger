@@ -62,7 +62,7 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
   readonly dialog = inject(MatDialog);
 
   displayedColumns: string[] = [
-    'form_code',
+    // 'form_code',
     'config_name',
     'value',
     'description',
@@ -70,7 +70,7 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
   ];
 
   async loadAndApplyConfig() {
-    const form_code = ``
+    const form_code = `map_list`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
         this.configAFR = [];

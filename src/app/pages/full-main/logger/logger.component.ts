@@ -928,114 +928,155 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
   }
 
-private updateMapFromSelection(keys: string[]) {
-  if (!keys?.length) {
-    this.svgPointsByKey = {};
-    this.startPointByKey = {};
-    this.endPointByKey = {};
-    this.segmentsByKey = {};
-    this.hasRouteData = false;
-    return;
+
+  getAfrColor(afr: any ): string {
+    const lowerBound = 11.5; // ค่า AFR ต่ำสุดที่จะให้เป็นสีเขียว
+    const upperBound = this.afrLimit; // ค่า AFR สูงสุดที่จะเป็นสีแดง
+
+    if (afr >= upperBound) {
+      return '#FF0000'; // สีแดง
+    }
+    if (afr <= lowerBound) {
+      return '#00FF00'; // สีเขียว
+    }
+
+    // คำนวณสัดส่วนของค่า afr ในช่วง lowerBound ถึง upperBound
+    const ratio = (afr - lowerBound) / (upperBound - lowerBound);
+
+    let red, green;
+
+    if (ratio < 0.5) {
+      // จากเขียวไปเหลือง (Green -> Yellow)
+      red = Math.round(255 * (ratio * 2));
+      green = 255;
+    } else {
+      // จากเหลืองไปแดง (Yellow -> Red)
+      red = 255;
+      green = Math.round(255 * (1 - (ratio - 0.5) * 2));
+    }
+
+    const blue = 0;
+
+    // แปลงค่าสี RGB เป็น Hex string
+    const toHex = (c: number) => ('0' + c.toString(16)).slice(-2);
+    return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
   }
 
-  // รวมจุดทั้งหมด (ต้องมี lat/lon และอาจมี afrValue)
-  type Raw = { key:string; lat:number; lon:number; afrValue?:number };
-  const perKey: Record<string, Raw[]> = {};
-  const all: Raw[] = [];
+  private updateMapFromSelection(keys: string[]) {
+    if (!keys?.length) {
+      this.svgPointsByKey = {};
+      this.startPointByKey = {};
+      this.endPointByKey = {};
+      this.segmentsByKey = {};
+      this.hasRouteData = false;
+      return;
+    }
 
-  for (const k of keys) {
-    const src = this.allDataLogger?.[k] || this.mapraceDateList?.[k] || [];
-    const arr: Raw[] = [];
-    for (const p of src) {
-      const lat = parseFloat(p.lat);    // ปรับตามโครงสร้างจริงของคุณ
-      const lon = parseFloat(p.lon);
-      const afr = p.afrValue != null ? Number(p.afrValue) : NaN;
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        const item: Raw = { key:k, lat, lon };
-        if (Number.isFinite(afr)) item.afrValue = afr;
-        arr.push(item); all.push(item);
+    // รวมจุดทั้งหมด (ต้องมี lat/lon และอาจมี afrValue)
+    type Raw = { key:string; lat:number; lon:number; afrValue?:number };
+    const perKey: Record<string, Raw[]> = {};
+    const all: Raw[] = [];
+
+    for (const k of keys) {
+      const src = this.allDataLogger?.[k] || this.mapraceDateList?.[k] || [];
+      const arr: Raw[] = [];
+      for (const p of src) {
+        const lat = parseFloat(p.lat);    // ปรับตามโครงสร้างจริงของคุณ
+        const lon = parseFloat(p.lon);
+        const afr = p.afrValue != null ? Number(p.afrValue) : NaN;
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          const item: Raw = { key:k, lat, lon };
+          if (Number.isFinite(afr)) item.afrValue = afr;
+          arr.push(item); all.push(item);
+        }
       }
+      perKey[k] = arr;
     }
-    perKey[k] = arr;
-  }
-  if (all.length < 2) {
-    this.svgPointsByKey = {};
-    this.startPointByKey = {};
-    this.endPointByKey = {};
-    this.segmentsByKey = {};
-    this.hasRouteData = false;
-    return;
-  }
-
-  // ---- bounds สำหรับ normalize (เหมือนเดิม)
-  const lats = all.map(p => p.lat);
-  const lons = all.map(p => p.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const spanLat = Math.max(1e-9, maxLat - minLat);
-  const spanLon = Math.max(1e-9, maxLon - minLon);
-  const SVG_W = 800, SVG_H = 600;
-
-  // ---- ช่วง AFR (ถ้าไม่มีค่าเลย ใช้ค่า default)
-  const afrVals = all.map(p => p.afrValue).filter((v): v is number => Number.isFinite(v));
-  const afrMin = afrVals.length ? Math.min(...afrVals) : AFR_DEFAULT_MIN;
-  const afrMax = afrVals.length ? Math.max(...afrVals) : AFR_DEFAULT_MAX;
-
-  // ---- ค่าที่ต้องส่งออก
-  const outPoints: Record<string, string> = {};
-  const start: Record<string, {x:number;y:number;lat:number;long:number}> = {};
-  const end:   Record<string, {x:number;y:number;lat:number;long:number}> = {};
-  const segs:  Record<string, Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string; afr:number;  }>> = {};
-
-  for (const k of keys) {
-    const arr = perKey[k];
-    if (!arr.length) continue;
-
-    // map เป็นพิกัด SVG
-    const pts = arr.map((r, i) => {
-      const x = ((r.lon - minLon) / spanLon) * SVG_W;
-      const y = SVG_H - ((r.lat - minLat) / spanLat) * SVG_H;
-      const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
-
-      return { ts, i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue }; // <--- ✅ เพิ่ม ts ตรงนี้
-    });
-
-    this.currentMapPoints = pts.map(p => ({
-      ts: p.ts,
-      x: p.x,
-      y: p.y,
-      afr: p.afr ?? 0
-    }));
-
-    // สตริง polyline (เผื่อยังใช้วาดแบบสีเดียว)
-    outPoints[k] = pts.map(p => `${p.x},${p.y}`).join(' ');
-    start[k] = { x: pts[0].x, y: pts[0].y, lat: pts[0].lat, long: pts[0].long };
-    end[k]   = { x: pts[pts.length-1].x, y: pts[pts.length-1].y, lat: pts[pts.length-1].lat, long: pts[pts.length-1].long };
-
-    // ---- แตกเป็น segment พร้อมสีจากค่า AFR (ใช้ค่าเฉลี่ยของคู่จุด)
-    const step = Math.max(1, Math.ceil(pts.length / 20000)); // กันหนัก: สูงสุด ~20k segment ต่อ key
-    const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string , afr:number; }> = [];
-    for (let i = 0; i < pts.length - step; i += step) {
-      const a = pts[i], b = pts[i + step];
-      const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
-      const afrB = Number.isFinite(b.afr!) ? b.afr! : undefined;
-      const afr  = afrA!=null && afrB!=null ? (afrA + afrB)/2
-                   : afrA!=null ? afrA
-                   : afrB!=null ? afrB
-                   : (afrMin + afrMax)/2; // ถ้าไม่มี ใช้กลางช่วง
-      const color = afrToColor(afr, afrMin, afrMax);
-
-      s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y, c: color ,afr});
+    if (all.length < 2) {
+      this.svgPointsByKey = {};
+      this.startPointByKey = {};
+      this.endPointByKey = {};
+      this.segmentsByKey = {};
+      this.hasRouteData = false;
+      return;
     }
-    segs[k] = s;
-  }
 
-  this.svgPointsByKey = outPoints;
-  this.startPointByKey = start;
-  this.endPointByKey = end;
-  this.segmentsByKey = segs;
-  this.hasRouteData = true;
-}
+    // ---- bounds สำหรับ normalize (เหมือนเดิม)
+    const lats = all.map(p => p.lat);
+    const lons = all.map(p => p.lon);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    const spanLat = Math.max(1e-9, maxLat - minLat);
+    const spanLon = Math.max(1e-9, maxLon - minLon);
+    const SVG_W = 800, SVG_H = 600;
+
+    // ---- ช่วง AFR (ถ้าไม่มีค่าเลย ใช้ค่า default)
+    const afrVals = all.map(p => p.afrValue).filter((v): v is number => Number.isFinite(v));
+    const afrMin = afrVals.length ? Math.min(...afrVals) : AFR_DEFAULT_MIN;
+    const afrMax = afrVals.length ? Math.max(...afrVals) : AFR_DEFAULT_MAX;
+
+    // ---- ค่าที่ต้องส่งออก
+    const outPoints: Record<string, string> = {};
+    const start: Record<string, {x:number;y:number;lat:number;long:number}> = {};
+    const end:   Record<string, {x:number;y:number;lat:number;long:number}> = {};
+    const segs:  Record<string, Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string; afr:number;  }>> = {};
+
+    for (const k of keys) {
+      const arr = perKey[k];
+      if (!arr.length) continue;
+
+      // map เป็นพิกัด SVG
+      const pts = arr.map((r, i) => {
+        const x = ((r.lon - minLon) / spanLon) * SVG_W;
+        const y = SVG_H - ((r.lat - minLat) / spanLat) * SVG_H;
+        const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
+
+        return { ts, i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue };
+      });
+
+      this.currentMapPoints = pts.map(p => ({
+        ts: p.ts,
+        x: p.x,
+        y: p.y,
+        afr: p.afr ?? 0
+      }));
+
+      // สตริง polyline (เผื่อยังใช้วาดแบบสีเดียว)
+      outPoints[k] = pts.map(p => `${p.x},${p.y}`).join(' ');
+      start[k] = { x: pts[0].x, y: pts[0].y, lat: pts[0].lat, long: pts[0].long };
+      end[k]   = { x: pts[pts.length-1].x, y: pts[pts.length-1].y, lat: pts[pts.length-1].lat, long: pts[pts.length-1].long };
+
+      // ---- แตกเป็น segment พร้อมสีจากค่า AFR (ใช้ค่าเฉลี่ยของคู่จุด)
+      const step = Math.max(1, Math.ceil(pts.length / 20000)); // กันหนัก: สูงสุด ~20k segment ต่อ key
+      const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string , afr:number; }> = [];
+      for (let i = 0; i < pts.length - step; i += step) {
+        const a = pts[i], b = pts[i + step];
+
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+
+        const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
+        const afrB = Number.isFinite(b.afr!) ? b.afr! : undefined;
+        const afr  = afrA!=null && afrB!=null ? (afrA + afrB)/2
+                    : afrA!=null ? afrA
+                    : afrB!=null ? afrB
+                    : (afrMin + afrMax)/2; // ถ้าไม่มี ใช้กลางช่วง
+        // const color = afrToColor(afr, afrMin, afrMax);
+
+        s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y
+          // , c: color
+          , c: this.getAfrColor(p1.afr)
+          ,afr});
+      }
+      segs[k] = s;
+    }
+
+    this.svgPointsByKey = outPoints;
+    this.startPointByKey = start;
+    this.endPointByKey = end;
+    this.segmentsByKey = segs;
+    this.hasRouteData = true;
+  }
 
 
 
