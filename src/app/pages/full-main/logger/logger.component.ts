@@ -190,6 +190,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private isSyncingChart = false;
   private isSyncingRace  = false;
 
+  @ViewChild('mapSvg') mapSvgEl!: ElementRef<SVGElement>;
+
+  private scaleX = 1;
+  private scaleY = 1;
+
+  tooltipStyle = {
+    left: '0px',
+    top: '0px',
+    visibility: 'hidden' as 'hidden' | 'visible'
+  };
+
+
   // private arraysEqual(a?: any[], b?: any[]) {
   //   if (a === b) return true;
   //   if (!a || !b) return false;
@@ -333,9 +345,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                 };
               }
             }
+            const left = this.hoverPoint.x * this.scaleX;
+            const top = this.hoverPoint.y * this.scaleY;
+            this.tooltipStyle = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
           },
           mouseLeave: () => {
             this.hoverPoint.visible = false;
+            this.tooltipStyle.visibility = 'hidden';
           }
         }
       },
@@ -1044,17 +1060,18 @@ private updateMapFromSelection(keys: string[]) {
 
   // Method นี้จะถูกเรียกเมื่อเมาส์เข้าสู่พื้นที่ของจุดบนแผนที่
   onMapPointEnter(point: { x: number; y: number; afr: number }) {
-    this.hoverPoint = {
-      visible: true,
-      x: point.x,
-      y: point.y,
-      afr: point.afr
-    };
+    this.hoverPoint = { visible: true, x: point.x, y: point.y, afr: point.afr };
+
+    // คำนวณตำแหน่ง Tooltip ใหม่
+    const left = this.hoverPoint.x * this.scaleX;
+    const top = this.hoverPoint.y * this.scaleY;
+    this.tooltipStyle = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
   }
 
   // Method นี้จะถูกเรียกเมื่อเมาส์ออกจากพื้นที่ของจุดบนแผนที่
   onMapPointLeave() {
     this.hoverPoint.visible = false;
+    this.tooltipStyle.visibility = 'hidden';
   }
 
   // ---- Mock data (แทน service จริง) ----
@@ -1078,22 +1095,36 @@ private updateMapFromSelection(keys: string[]) {
   //   return out;
   // }
 
+  private calculateSvgScale() {
+    const svg = this.mapSvgEl?.nativeElement;
+    if (!svg) return;
+
+    const rect = svg.getBoundingClientRect();
+    const viewBox = (svg as SVGSVGElement).viewBox.baseVal;
+    if (viewBox.width > 0 && viewBox.height > 0) {
+      this.scaleX = rect.width / viewBox.width;
+      this.scaleY = rect.height / viewBox.height;
+    }
+  }
+
+
   private ro?: ResizeObserver;
   ngAfterViewInit(): void {
     // this.initMap();
     // this.generateSVGPoints(this.allDataLogger[this.loggerKey[0]]);
 
-    // 2.1 ถ้า parent เปลี่ยนขนาด ให้ redraw อัตโนมัติ
     // this.ro = new ResizeObserver(() => this.map?.invalidateSize());
     // this.ro.observe(this.raceMapRef.nativeElement);
 
-    // 2.2 กันเคส init ตอน layout ยังจัดไม่เสร็จ
     setTimeout(() => this.map?.invalidateSize(true), 0);
-    // DEMO: แปลงข้อมูลตัวอย่าง → วางลงแผนที่
-    // TODO: เปลี่ยนเป็นข้อมูลจริงจาก service
-    const sample: RawRow[] = []; // ใส่ข้อมูลจริงของคุณที่มี lat/long ปกติ
+    const sample: RawRow[] = [];
     // const points = this.transformRows(sample);
     // this.setMapPoints(points);
+
+    setTimeout(() => this.calculateSvgScale(), 0);
+
+    const ro = new ResizeObserver(() => this.calculateSvgScale());
+    ro.observe(this.mapSvgEl.nativeElement);
   }
 
   ngOnDestroy(): void {
