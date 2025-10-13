@@ -76,24 +76,7 @@ const SERIES_COLORS: Record<ChartKey, string> = {
 
 
 //-----MapRace--------------###############################################
-type FilterKey = 'practice' | 'qualifying' | 'race1';
 type XY = { x: number; y: number };
-// type RawRow = {
-//   gps_time: string;  // ISO
-//   lat: number;       // latitude in degrees
-//   long: number;      // longitude in degrees
-//   velocity?: number;
-//   heading?: number;
-//   // เพิ่มฟิลด์ได้ตามจริง เช่น afr: number
-// };
-
-// type MapPoint = {
-//   ts: number;
-//   lat: number;
-//   lon: number;
-//   afr?: number;
-//   warning?: boolean; // ถ้าคำนวณไว้แล้วก็ใส่มาได้
-// };
 
 const AFR_LIMIT = 13.5; // เกณฑ์เตือนตัวอย่าง (ปรับได้)
 const COLORS = {
@@ -113,6 +96,7 @@ type RawRow = {
   velocity?: number | string;
   gps_time?: string;
 };
+
 
 type ChartPoint = { x: number; y: number; meta?: any };
 const MAX_STORE_POINTS = 10_000; // เก็บสูงสุดต่อไฟล์
@@ -157,16 +141,26 @@ function afrToColor(v:number, min:number, max:number){
 })
 export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
+  currentMapPoints: Array<{ x:number; y:number; ts:number; afr:number }> = [];
   readonly dialog = inject(MatDialog);
   loggerStatus : string = 'offline';
 
   afr: number = 0;
   countDetect: number = 0;
   afrAverage: number = 0;
+  raceLab: MapPoint[][] = [];         // ผลลัพธ์รอบ
+  startLatLongPoint?: { lat: number; lon: number }; // ตัวกลางเก็บจุด start
+  lapCount?: number= 0;
+
+  readonly START_RADIUS_M = 10;          // ±10m
+  readonly START_RADIUS_UNITS = 15;     // สำหรับพิกัดที่ไม่ใช่ lat/lon (โมเดล/พิกัดภายใน)
+  readonly MIN_LAP_GAP_MS = 5000;        // กันนับซ้ำภายใน 5s (ปรับได้)
+  activeKey: string | null = null;  // เช่น 'race1'
+  lapStats: Array<{ lap: number; start: number; end: number; durationMs: number; count: number }> = [];
+
 
   // private currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
   // ลบ private ออก (การไม่ระบุ access modifier จะถือว่าเป็น public โดยอัตโนมัติ)
-  currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
 
   // ตัวแปรสำหรับควบคุมการแสดงผลของจุดและ tooltip บนแผนที่
   hoverPoint = {
@@ -183,11 +177,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   chartsReady = false;
 
   // เก็บ path/lastPoint แยก โดยไม่ไปแตะ type ของ allLogger
-  private pathsByLoggerId: Record<string, MapPoint[]> = {};
-  private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
+  // private pathsByLoggerId: Record<string, MapPoint[]> = {};
+  // private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
 
   // ====== เพิ่มฟิลด์/ยูทิล ======
-  private isSyncingChart = false;
+  // private isSyncingChart = false;
   private isSyncingRace  = false;
 
   @ViewChild('mapSvg') mapSvgEl!: ElementRef<SVGElement>;
@@ -268,6 +262,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   showRoutePath: boolean = true;
   private subscriptions: Subscription[] = [];
 
+  // ปรับรัศมีนับรอบ (หน่วยเดียวกับข้อมูล CSV: เมตรจำลอง)
+  lapRadiusUnits: number = this.START_RADIUS_UNITS;
+  setLapRadiusUnits(units: number) {
+    const u = Number(units);
+    this.lapRadiusUnits = Number.isFinite(u) && u > 0 ? u : this.START_RADIUS_UNITS;
+  }
+
 
   allLogger: CarLogger[] = [];
 
@@ -335,20 +336,24 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             const seriesIndex = config.seriesIndex;
 
             if (dataPointIndex > -1 && seriesIndex > -1) {
-              const series = config.globals.initialSeries[seriesIndex];
-              const pointOnChart = series.data[dataPointIndex];
-              const timestamp = pointOnChart.x;
-              const closestMapPoint = this.currentMapPoints.reduce((prev, curr) =>
-                Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
-              );
+              const w: any = (chartContext as any)?.w ?? (config as any)?.w;
+              const seriesCfg = w?.config?.series?.[seriesIndex];
+              const seriesData = Array.isArray(seriesCfg?.data) ? seriesCfg.data : undefined;
+              const pointOnChart: any = seriesData ? seriesData[dataPointIndex] : undefined;
+              if (pointOnChart && (pointOnChart.x != null || pointOnChart.t != null || pointOnChart.time != null)) {
+                const timestamp = pointOnChart.x ?? pointOnChart.t ?? pointOnChart.time;
+                const closestMapPoint = (this.currentMapPoints?.length ? this.currentMapPoints : []).reduce((prev, curr) =>
+                  Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
+                , this.currentMapPoints?.[0] ?? { ts: timestamp, x: 0, y: 0, afr: 0 });
 
-              if (closestMapPoint) {
-                this.hoverPoint = {
-                  visible: true,
-                  x: closestMapPoint.x,
-                  y: closestMapPoint.y,
-                  afr: closestMapPoint.afr
-                };
+                if (closestMapPoint) {
+                  this.hoverPoint = {
+                    visible: true,
+                    x: closestMapPoint.x,
+                    y: closestMapPoint.y,
+                    afr: closestMapPoint.afr
+                  };
+                }
               }
             }
             const left = this.hoverPoint.x * this.scaleX;
@@ -427,7 +432,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }> = [];
 
   hasRouteData = false;
-
   // ===== กราฟล่าง (Brush/Navigator) =====
   brushOpts: {
     series: ApexAxisChartSeries;
@@ -485,6 +489,201 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   mapraceDateList: Record<string, MapPoint[]> = {};
   // ////////////////////////
 
+  // ---- Utils ----
+  private num(v: any): number | null {
+    if (v == null) return null;
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : null;
+  }
+  private getLatLon(p: MapPoint): { lat: number; lon: number } | null {
+    const lat = this.num(p.lat);
+    const lon = this.num(p.lon);
+    return (lat != null && lon != null) ? { lat, lon } : null;
+  }
+  private toMillis(ts: number): number {
+    // ถ้า ts เป็นวินาที ให้คูณ 1000 (เดาตามขนาด)
+    return ts < 2_000_000_000 ? ts * 1000 : ts;
+  }
+  // Haversine (meter)
+  private haversineMeters(a: {lat:number; lon:number}, b: {lat:number; lon:number}): number {
+    const R = 6371000;
+    const rad = (d: number) => d * Math.PI / 180;
+    const dLat = rad(b.lat - a.lat);
+    const dLon = rad(b.lon - a.lon);
+    const la1 = rad(a.lat), la2 = rad(b.lat);
+    const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  // ใช้ Haversine ถ้าพิกัดดูเหมือน lat/lon จริง ไม่เช่นนั้นใช้ระยะเชิงเส้น (Cartesian)
+  private isLatLon(p: {lat:number; lon:number}): boolean {
+    return Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180;
+  }
+  private distanceMetersOrUnits(a: {lat:number; lon:number}, b: {lat:number; lon:number}): number {
+    if (this.isLatLon(a) && this.isLatLon(b)) {
+      return this.haversineMeters(a, b);
+    }
+    const dx = b.lon - a.lon;
+    const dy = b.lat - a.lat;
+    return Math.hypot(dx, dy);
+  }
+
+  // ---- ตั้งจุดสตาร์ท ----
+  setstartLatLongPoint(latDeg: any, lonDeg: any) {
+    const lat = this.num(latDeg);
+    const lon = this.num(lonDeg);
+    if (lat == null || lon == null) return;
+    this.startLatLongPoint = { lat, lon };
+  }
+
+  // ---- แบ่งรอบจาก "หนึ่งชุด" (Array) ----
+  private splitIntoLapsArray(points: MapPoint[]): MapPoint[][] {
+    if (!points?.length) return [];
+
+    if (!this.startLatLongPoint) {
+      // ยังไม่ตั้ง start → ใช้พิกัดจุดแรกที่ valid
+      for (const p of points) {
+        const ll = this.getLatLon(p);
+        if (ll) { this.startLatLongPoint = ll; break; }
+      }
+      if (!this.startLatLongPoint) return [points.slice()]; // ไม่มี lat/lon เลย
+    }
+
+    // เรียงตามเวลา
+    const data = points.slice().sort((a, b) => this.toMillis(a.ts) - this.toMillis(b.ts));
+
+    let laps: MapPoint[][] = [];
+    let current: MapPoint[] = [];
+
+    let insidePrev = false;
+    let lastCrossMs = -Infinity;
+
+    // ใช้รัศมีคงที่ 10 หน่วยสำหรับ non-lat/lon (และ 10 เมตรสำหรับ lat/lon)
+    const startLL = this.startLatLongPoint!;
+    const useHaversine = this.isLatLon(startLL);
+    const dynamicRadius = this.lapRadiusUnits;
+
+    for (const pt of data) {
+      current.push(pt);
+
+      const ll = this.getLatLon(pt);
+      if (!ll) continue;
+
+      const dist = this.distanceMetersOrUnits(ll, startLL);
+      const radius = useHaversine ? this.START_RADIUS_M : dynamicRadius;
+      const inside = dist <= radius;
+
+      // นอก → ใน และห่างจากครั้งก่อน ≥ MIN_LAP_GAP_MS
+      if (!insidePrev && inside) {
+        const nowMs = this.toMillis(pt.ts);
+        if (nowMs - lastCrossMs >= this.MIN_LAP_GAP_MS) {
+          if (current.length > 1) {
+            // ปิดรอบก่อนหน้า (ไม่รวมจุดปัจจุบัน เพื่อให้จุดนี้เริ่มรอบใหม่)
+            const done = current.slice(0, -1);
+            if (done.length) laps.push(done);
+          }
+          // เปิดรอบใหม่เริ่มที่จุดปัจจุบัน
+          current = [pt];
+          lastCrossMs = nowMs;
+        }
+      }
+      insidePrev = inside;
+    }
+
+    // เก็บรอบสุดท้าย
+    if (current.length) laps.push(current);
+    return laps;
+  }
+
+  // ---- อินพุตได้ทั้ง Array และ Record<string, MapPoint[]> ----
+  splitIntoLapsInput(input: MapPoint[] | Record<string, MapPoint[]>) {
+    if (Array.isArray(input)) {
+      const laps = this.splitIntoLapsArray(input);
+      this.raceLab = laps;
+      return laps;
+    } else {
+      const result: Record<string, MapPoint[][]> = {};
+      for (const [key, arr] of Object.entries(input)) {
+        result[key] = this.splitIntoLapsArray(arr);
+      }
+      // ถ้าต้องการใช้งานเฉพาะ key ปัจจุบัน ให้เลือกมาใส่ raceLab เอง เช่น:
+      // this.raceLab = result[this.activeKey] ?? [];
+      // เก็บทั้งหมดไว้ด้วยถ้าอยาก:
+      // this.raceLabByKey = result;
+      return result;
+    }
+  }
+
+  recomputeLaps() {
+    if (!this.allDataLogger) return;
+
+    if (this.activeKey && this.allDataLogger[this.activeKey]) {
+      // แบ่งเฉพาะ race เดียว (แนะนำ)
+      this.raceLab = this.splitIntoLapsArray(this.allDataLogger[this.activeKey]);
+    } else {
+      // ถ้าต้องการคำนวณทุก key (นานกว่า)
+      const byKey = this.splitIntoLapsInput(this.allDataLogger) as Record<string, MapPoint[][]>;
+      this.raceLab = this.activeKey ? (byKey[this.activeKey] ?? []) : (byKey[Object.keys(byKey)[0]] ?? []);
+    }
+
+    // ถ้ามีส่วนอื่นต้องอาศัย lap (เช่นอัปเดตกาาฟ/สรุป) ก็เรียกต่อที่นี่
+    // this.updateChartByLaps();
+  }
+
+  onRaceChange(key: string) {
+    this.selectedRaceKey = key;
+    // this.ensureStartPointForKey(key);
+    this.recomputeLapsForKey(key);
+
+    const sel = [key];
+    this.updateMapFromSelection?.(sel);
+    this.updateChartsFromSelection?.(sel);
+  }
+
+
+  // ====== ตั้ง start ด้วยการคลิกบน SVG (ถ้าคุณใช้วิธีนี้) ======
+  startPx?: { x:number; y:number };
+
+  private svgClientToLocal(evt: MouseEvent): {x:number;y:number} {
+    const svg = (evt.currentTarget || evt.target) as SVGSVGElement;
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    const local = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: local.x, y: local.y };
+  }
+  private findNearestMapPoint(px: {x:number;y:number}) {
+    if (!this.currentMapPoints?.length) return null;
+    let best = null, bestD2 = Number.POSITIVE_INFINITY;
+    for (const p of this.currentMapPoints) {
+      const dx = p.x - px.x, dy = p.y - px.y, d2 = dx*dx + dy*dy;
+      if (d2 < bestD2) { bestD2 = d2; best = p; }
+    }
+    return best;
+  }
+  onSetStartByClick(evt: MouseEvent) {
+    const local = this.svgClientToLocal(evt);
+    const nearest = this.findNearestMapPoint(local);
+    if (!nearest) return;
+
+    this.startPx = { x: nearest.x, y: nearest.y };
+
+    // ถ้ามี mapping จาก currentMapPoints → MapPoint จริง เพื่อดึง lat/lon ให้ทำที่นี่
+    // ในตัวอย่างนี้ สมมติคุณสามารถหา lat/lon ของจุดใกล้สุดได้จาก selectedRaceKey
+    const arr = this.allDataLogger?.[this.selectedRaceKey ?? ''] ?? [];
+    // หา MapPoint ที่เวลาใกล้กับ nearest.ts
+    let best: MapPoint | null = null, bestDt = Number.POSITIVE_INFINITY;
+    for (const p of arr) {
+      const dt = Math.abs(this.toMillis(p.ts) - nearest.ts);
+      if (dt < bestDt) { bestDt = dt; best = p; }
+    }
+    if (best) {
+      const ll = this.getLatLon(best);
+      if (ll) {
+        this.setStartPoint(ll.lat, ll.lon);
+        if (this.selectedRaceKey) this.recomputeLapsForKey(this.selectedRaceKey);
+      }
+    }
+  }
 
   private readonly intLabel = (val: number) =>
     Number.isFinite(val) ? Math.round(val).toString() : '';
@@ -515,12 +714,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     , private http: HttpClient
     , private eventService: EventService
   ) {
+    // Mock start point for lap counting
+    // this.setStartPoint(798.479,-6054.195);
+    this.setstartLatLongPoint(798.451662,-6054.358584);
     this.loadAndApplyConfig();
     // this.setCurrentPoints(this.buildMock(180));
     let parameterClass = this.route.snapshot.queryParamMap.get('class') ?? '';
 
     // ใช้ string interpolation สร้าง path ใหม่
-    this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}.csv`);
+    this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}_test.csv`);
     this.loadCsvAndDraw(`models/mock-data/qualifying_section_${parameterClass}.csv`);
     this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
     this.loadCsvAndDraw(`models/mock-data/race2_section_${parameterClass}.csv`);
@@ -659,7 +861,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const allKeys = Object.keys(this.allDataLogger || {}); // ใช้ this.allDataLogger แหล่งเดียวจะแม่นยำกว่า
     if (allKeys.length) {
       const defaultKey = allKeys.includes('practice') ? 'practice' : allKeys[0];
-
       this.isSyncingRace = true;
       this.filterRace.setValue(defaultKey, { emitEvent: false });
       this.isSyncingRace = false;
@@ -667,6 +868,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.selectedRaceKey = defaultKey;
 
       const selectionAsArray = [defaultKey];
+      this.onRaceChange(defaultKey)
       this.recomputeColors(selectionAsArray);
       this.updateMapFromSelection(selectionAsArray);
       this.updateChartsFromSelection(selectionAsArray);
@@ -719,7 +921,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.classType    = detail.classType;
           this.segmentValue = detail.segmentValue;
           this.seasonID     = detail.seasonId;
-          this.categoryName = detail.categoryName;   // <- fixed
+          this.categoryName = detail.categoryName;
           this.sessionValue = detail.sessionValue;
 
           // ใหม่
@@ -762,13 +964,217 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-
-  // ดึงชื่อ key จากชื่อไฟล์ เช่น practice_section.csv -> practice
   private extractKeyFromFilename(filename: string): string {
-    // ตัดนามสกุลออกก่อน
     const base = filename.replace(/\.[^/.]+$/, '');
-    // ใช้เฉพาะส่วนหน้าสุดก่อน "_" เช่น "practice_section" -> "practice"
     return base.split('_')[0].toLowerCase();
+  }
+
+  setStartPoint(latDeg: any, lonDeg: any) {
+    const lat = this.num(latDeg);
+    const lon = this.num(lonDeg);
+    if (lat == null || lon == null) return;
+    this.startLatLongPoint = { lat, lon };
+  }
+
+  private ensureStartPointForKey(key: string) {
+    if (this.startLatLongPoint) return;
+    const arr = this.allDataLogger?.[key] ?? [];
+    for (const p of arr) {
+      const ll = this.getLatLon(p);
+      if (ll) { this.setStartPoint(ll.lat, ll.lon); break; }
+    }
+  }
+
+  // สีต่อ lap (ปรับได้)
+  private lapColors = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b'];
+
+  private projectToXY(p: MapPoint): { x: number; y: number } | null {
+    const rawX = (p as any).x;
+    const rawY = (p as any).y;
+
+    const x = typeof rawX === 'number' ? rawX : (rawX != null ? Number(rawX) : null);
+    const y = typeof rawY === 'number' ? rawY : (rawY != null ? Number(rawY) : null);
+
+    if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) {
+      return null;
+    }
+
+    return { x, y };
+  }
+
+
+  private buildMapFromLaps(laps: MapPoint[][], key: string) {
+    const all = laps.flat().map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
+    if (!all.length) {
+      this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: [] };
+      this.currentMapPoints = [];
+      return;
+    }
+    const minLat = Math.min(...all.map(v => v.lat));
+    const maxLat = Math.max(...all.map(v => v.lat));
+    const minLon = Math.min(...all.map(v => v.lon));
+    const maxLon = Math.max(...all.map(v => v.lon));
+    const spanLat = Math.max(1e-9, maxLat - minLat);
+    const spanLon = Math.max(1e-9, maxLon - minLon);
+    const toX = (lon:number) => ((lon - minLon) / spanLon) * this.SVG_W;
+    const toY = (lat:number) => this.SVG_H - ((lat - minLat) / spanLat) * this.SVG_H;
+
+    const segs: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string;afr:number }> = [];
+    let segIndex = 0;
+
+    laps.forEach((lap, lapIdx) => {
+      const color = this.lapColors[lapIdx % this.lapColors.length];
+      for (let i = 1; i < lap.length; i++) {
+        const a = lap[i-1], b = lap[i];
+        const la = this.getLatLon(a); const lb = this.getLatLon(b);
+        if (!la || !lb) continue;
+        segs.push({
+          i: segIndex++,
+          x1: toX(la.lon), y1: toY(la.lat), x2: toX(lb.lon), y2: toY(lb.lat),
+          c: color,
+          afr: Number.isFinite(b.afrValue as number) ? (b.afrValue as number) : NaN
+        });
+      }
+    });
+
+    const pointsXY: Array<{x:number;y:number;ts:number;afr:number}> = [];
+    laps.forEach(lap => {
+      lap.forEach(p => {
+        const ll = this.getLatLon(p);
+        if (!ll) return;
+        pointsXY.push({
+          x: toX(ll.lon), y: toY(ll.lat),
+          ts: this.toMillis(p.ts),
+          afr: Number.isFinite(p.afrValue as number) ? (p.afrValue as number) : NaN
+        });
+      });
+    });
+
+    this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: segs };
+    this.currentMapPoints = pointsXY;
+    this.showRoutePath = true;
+  }
+
+  private buildChartsFromLaps(laps: MapPoint[][]) {
+    // 5.1 detail series: 1 lap = 1 series
+    const detailSeries = laps.map((lap, idx) => ({
+      name: `Lap ${idx+1}`,
+      type: 'line',
+      data: lap.map(p => ({
+        x: this.toMillis(p.ts),
+        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+      }))
+    }));
+
+    // 5.2 จุดแดงเกินลิมิต
+    const discrete: any[] = [];
+    const limit = this.afrLimit ?? 14;
+    detailSeries.forEach((s, sIdx) => {
+      (s.data as Array<{x:number;y:number|null}>).forEach((pt, i) => {
+        const y = pt.y;
+        if (typeof y === 'number' && y > limit) {
+          discrete.push({ seriesIndex: sIdx, dataPointIndex: i, fillColor: '#ff3b30', strokeColor: '#ff3b30', size: 4 });
+        }
+      });
+    });
+
+    // 5.3 brush: รวมทุกจุดต่อเนื่อง
+    const brushData: Array<{x:number;y:number|null}> = [];
+    laps.forEach(lap => lap.forEach(p => {
+      brushData.push({
+        x: this.toMillis(p.ts),
+        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+      });
+    }));
+
+    // 5.4 commit
+    this.detailOpts = {
+      ...(this.detailOpts || {}),
+      series: detailSeries,
+      markers: { ...(this.detailOpts?.markers || {}), size: 0, discrete },
+      annotations: { yaxis: [{ y: limit, borderColor: '#ff3b30', label: { text: `AFR Limit ${limit}` } }] }
+    };
+    this.brushOpts = {
+      ...(this.brushOpts || {}),
+      series: [{ name: 'AFR', type: 'line', data: brushData }]
+    };
+  }
+
+  private updateLapArtifacts(key: string, laps: MapPoint[][]) {
+    this.lapStats = laps.map((lap, i) => {
+      const start = this.toMillis(lap[0].ts);
+      const end   = this.toMillis(lap[lap.length - 1].ts);
+      return {
+        lap: i + 1,
+        start,
+        end,
+        durationMs: Math.max(0, end - start),
+        count: lap.length
+      };
+    });
+
+    this.buildMapFromLaps(laps, key);
+    const detailSeries = laps.map((lap, idx) => ({
+      name: `Lap ${idx + 1}`,
+      type: 'line',
+      data: lap.map(p => ({
+        x: this.toMillis(p.ts),
+        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+      }))
+    }));
+
+    const limit = this.afrLimit ?? 14;
+    const discrete: any[] = [];
+    detailSeries.forEach((s, sIdx) => {
+      (s.data as Array<{ x: number; y: number | null }>).forEach((pt, i) => {
+        if (typeof pt.y === 'number' && pt.y > limit) {
+          discrete.push({ seriesIndex: sIdx, dataPointIndex: i, fillColor: '#ff3b30', strokeColor: '#ff3b30', size: 4 });
+        }
+      });
+    });
+
+    const xAnn = this.lapStats.map(s => ({
+      x: s.start,
+      borderColor: '#999',
+      strokeDashArray: 4,
+      label: { text: `Lap ${s.lap}`, style: { fontSize: '11px' } }
+    }));
+
+    const brushData: Array<{ x: number; y: number | null }> = [];
+    laps.forEach(lap => lap.forEach(p => {
+      brushData.push({
+        x: this.toMillis(p.ts),
+        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+      });
+    }));
+
+    this.detailOpts = {
+      ...(this.detailOpts || {}),
+      series: detailSeries,
+      markers: { ...(this.detailOpts?.markers || {}), size: 0, discrete },
+      annotations: {
+        ...(this.detailOpts?.annotations || {}),
+        yaxis: [{ y: limit, borderColor: '#ff3b30', label: { text: `AFR Limit ${limit}` } }],
+        xaxis: xAnn
+      }
+    };
+
+    this.brushOpts = {
+      ...(this.brushOpts || {}),
+      series: [{ name: 'AFR', type: 'line', data: brushData }]
+    };
+
+    this.lapCount = this.lapStats.length; // สร้าง field: lapCount?: number;
+  }
+
+
+
+  private recomputeLapsForKey(key: string) {
+    const points = this.allDataLogger?.[key] ?? [];
+    this.raceLab = this.splitIntoLapsArray(points);
+    // this.buildMapFromLaps(this.raceLab, this.selectedRaceKey);
+    // this.buildChartsFromLaps(this.raceLab);
+    this.updateLapArtifacts(key, this.raceLab);
   }
 
   // --- เพิ่มฟิลด์กันรันซ้ำ ---
@@ -778,49 +1184,53 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private initDefaultSelectionOnce() {
     if (this.initialisedDefault) return;
 
-    const keys = Object.keys(this.allDataLogger || this.mapraceDateList || {});
+    const keys = Object.keys(this.allDataLogger || {});
     if (!keys.length) return;
 
-    // ถ้ามี practice ให้ใช้ practice; ถ้าไม่มีให้ใช้คีย์แรก
     const defaultKey = keys.includes('practice') ? 'practice' : keys[0];
 
     this.isSyncingRace = true;
-    this.filterRace.setValue(defaultKey, { emitEvent: false }); // <-- ไม่ต้องมี []
+    this.filterRace.setValue(defaultKey, { emitEvent: false });
     this.isSyncingRace = false;
 
-    this.selectedRaceKey = defaultKey; // <-- ใช้ตัวแปรใหม่
-    const selectionAsArray = [this.selectedRaceKey];
+    this.selectedRaceKey = defaultKey;
 
-    this.recomputeColors?.(selectionAsArray);      // ถ้ามีระบบสี
-    this.updateMapFromSelection(selectionAsArray); // วาดแผนที่
-    this.updateChartsFromSelection?.(selectionAsArray); // อัปเดตกราฟ (AFR)
-    // this.refreshDetail?.();
-    // this.refreshBrush?.();
+    // ตั้ง start ถ้ายังไม่มี แล้วคำนวณ + ปั้นข้อมูล map/chart
+    // this.ensureStartPointForKey(this.selectedRaceKey);
+    this.recomputeLapsForKey(this.selectedRaceKey);
+
+    // ถ้ามีระบบสี/ฟิลเตอร์เดิมของคุณ ให้เรียกต่อได้
+    const selArr = [this.selectedRaceKey];
+    this.recomputeColors?.(selArr);
+    this.updateMapFromSelection?.(selArr);      // ถ้าคุณยังใช้ในส่วนอื่น
+    this.updateChartsFromSelection?.(selArr);   // ถ้าคุณยังใช้ในส่วนอื่น
 
     this.initialisedDefault = true;
   }
-  // อ่าน CSV แล้วเก็บลง allDataLogger[key] (คงของเดิม)
-  async loadCsvAndDraw(url: string) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      const text = await res.text();
-      const mapPoints = this.csvToMapPoints(text);
 
+  // อ่าน CSV แล้วเก็บลง allDataLogger[key] (คงของเดิม)
+  async loadCsvAndDraw(url: string): Promise<void> {
+    try {
       const filename = url.split('/').pop() ?? 'unknown.csv';
       const key = this.extractKeyFromFilename(filename);
+      if (this.allDataLogger[key]?.length) return;
 
-      const capped = mapPoints.length > MAX_STORE_POINTS
-        ? mapPoints.slice(0, MAX_STORE_POINTS)
-        : mapPoints;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const text = await res.text();
+      const parsed = this.csvToMapPoints(text);
 
-      this.loggerKey.push(key);
-      this.allDataLogger[key] = capped;
+      const capped = parsed.length > MAX_STORE_POINTS ? parsed.slice(0, MAX_STORE_POINTS) : parsed;
+
+      if (!this.loggerKey.includes(key)) this.loggerKey = [...this.loggerKey, key];
+      this.allDataLogger = { ...this.allDataLogger, [key]: capped };
+
       this.initDefaultSelectionOnce();
-      // ไม่ต้องวาดที่นี่ ถ้าคุณให้ filterRace คุมการอัปเดต
     } catch (err) {
-      console.error('loadCsvAndStore error:', err);
+      console.error('loadCsvAndDraw error:', err);
     }
   }
+
   // ใช้ตอนมี text ของ CSV แล้ว (เช่นจาก fetch หรือ FileReader)
   csvToMapPoints(text: string): MapPoint[] {
     // กัน BOM + ตัดบรรทัดว่าง
@@ -839,7 +1249,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const lonIdx = idxOf(['long', 'longitude', 'lon', 'x']);
     const velIdx = idxOf(['velocity', 'speed', 'v']);
     const hdgIdx = idxOf(['heading', 'course', 'bearing']);
-    const afrIdx = idxOf(['afr', 'AFR', 'Air-Fuel Ratio']);
+    const afrIdx = idxOf(['afr', 'air-fuel ratio', 'afr_value']);
+    const tsIdx  = idxOf(['ts', 'timestamp', 'time', 'gps_time', 'datetime']);
 
     if (latIdx === -1 || lonIdx === -1) {
       console.warn('CSV ต้องมีอย่างน้อย lat/long');
@@ -859,10 +1270,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       const velocity = velIdx !== -1 ? parseFloat(cols[velIdx] ?? '') : undefined;
       const heading  = hdgIdx !== -1 ? parseFloat(cols[hdgIdx] ?? '') : undefined;
-      const afrValue  = hdgIdx !== -1 ? parseFloat(cols[afrIdx] ?? '') : undefined;
+      const afrValue = afrIdx !== -1 ? parseFloat(cols[afrIdx] ?? '') : undefined;
+
+      // timestamp parsing with fallbacks
+      let tsVal: number = i;
+      if (tsIdx !== -1) {
+        const raw = cols[tsIdx]?.trim();
+        const asNum = raw != null && raw !== '' ? Number(raw) : NaN;
+        if (Number.isFinite(asNum)) {
+          tsVal = asNum;
+        } else {
+          const parsed = Date.parse(raw ?? '');
+          if (Number.isFinite(parsed)) tsVal = parsed;
+        }
+      }
 
       mapPoints.push({
-        ts:0,
+        ts: tsVal,
         lat,
         lon,
         ...(Number.isFinite(velocity!) ? { velocity } : {}),
@@ -973,6 +1397,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // }
 
   private updateChartsFromSelection(keys: string[]) {
+    // If laps are already computed for the selected race, prefer lap-based series
+    if (keys?.length === 1 && keys[0] === this.selectedRaceKey && this.raceLab && this.raceLab.length) {
+      return;
+    }
     const mkSeries = (k: string) => {
       const data = (this.allDataLogger[k] || []);
       const seriesData = data.map((p, idx) => {
@@ -1043,6 +1471,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private updateMapFromSelection(keys: string[]) {
+    // If laps are already computed for the selected race, prefer lap-based map segments
+    if (keys?.length === 1 && keys[0] === this.selectedRaceKey && this.raceLab && this.raceLab.length) {
+      return;
+    }
     if (!keys?.length) {
       this.svgPointsByKey = {};
       this.startPointByKey = {};
@@ -1158,22 +1590,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.hasRouteData = true;
   }
 
-
-
-
-  // ---------- Helpers ----------
-  // private refreshDetail() {
-  //   const series: ApexAxisChartSeries = this.selectedKeys.map((k) => {
-  //     const name = this.options.find(o => o.value === k)?.label ?? k;
-  //     const field = this.fieldMap[k];
-  //     // ใช้รูปแบบ {x: timestamp(ms), y: number}
-  //     const data = this.currentPoints.map(p => ({ x: p.ts, y: Number(p[field]) || null }));
-  //     return { name, data };
-  //   }) as ApexAxisChartSeries;
-
-  //   this.detailOpts = { ...this.detailOpts, series };
-  // }
-
   private buildSeries(keys: ChartKey[]): ApexAxisChartSeries {
     if (!Array.isArray(this.currentPoints) || !this.currentPoints.length || !keys.length) {
       return [];
@@ -1220,7 +1636,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                 color: '#fff',
                 background: '#dc3545',
               },
-              text: `AFR Limit: ${this.afrLimit.toFixed(1)}`, // อัปเดตข้อความ (แนะนำ .toFixed)
+              text: `AFR Limit: ${Number.isFinite(this.afrLimit as number) ? (this.afrLimit as number).toFixed(1) : String(this.afrLimit)}`,
               position: 'right',
               offsetX: 5,
             }
@@ -1265,27 +1681,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.tooltipStyle.visibility = 'hidden';
   }
 
-  // ---- Mock data (แทน service จริง) ----
-  // private buildMock(n = 180): LoggerPoint[] {
-  //   const start = new Date('2025-06-15T10:00:00Z').getTime();
-  //   const out: LoggerPoint[] = [];
-  //   let avg = 13.2, rt = 13.2, spd = 80;
-  //   for (let i = 0; i < n; i++) {
-  //     const ts = start + i * 1000; // ทุก 1 วินาที
-  //     avg += (Math.random() - 0.5) * 0.05;
-  //     rt += (Math.random() - 0.5) * 0.15;
-  //     spd += (Math.random() - 0.5) * 2;
-  //     out.push({
-  //       ts,
-  //       avgAfr: Number(avg.toFixed(2)),
-  //       realtimeAfr: Number(rt.toFixed(2)),
-  //       warningAfr: 13.0,
-  //       speed: Math.max(0, Math.round(spd))
-  //     });
-  //   }
-  //   return out;
-  // }
-
   private calculateSvgScale() {
     const svg = this.mapSvgEl?.nativeElement;
     if (!svg) return;
@@ -1298,6 +1693,43 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  // private addRedDotSeries() {
+  //   if (!this.detailOpts?.series?.length) return;
+
+  //   const afrLimit = this.afrLimit ?? 14;
+  //   const afr = this.detailOpts.series[0] as any;
+  //   const afrData: any[] = afr.data ?? [];
+
+  //   const redDotData = afrData.reduce(
+  //     (acc: { x: any; y: number }[], pt: any) => {
+  //       const x = Array.isArray(pt) ? pt[0] : (pt?.x ?? pt?.t ?? pt?.time);
+  //       const y = Array.isArray(pt) ? pt[1] : (pt?.y ?? pt?.value);
+  //       if (typeof y === 'number' && y > afrLimit) acc.push({ x, y });
+  //       return acc;
+  //     },
+  //     []
+  //   );
+
+  //   const redDotSeries: ApexAxisChartSeries[number] = {
+  //     name: 'AFR High Points',
+  //     type: 'scatter' as const,
+  //     data: redDotData
+  //   };
+
+  //   const base = (this.detailOpts.series as ApexAxisChartSeries).filter(
+  //     (s: any) => s.name !== 'AFR High Points'
+  //   ) as ApexAxisChartSeries;
+
+  //   this.detailOpts.series = [...base, redDotSeries] as ApexAxisChartSeries;
+
+  //   const existingColors = (this.detailOpts.colors as string[]) ?? [];
+  //   this.detailOpts.colors = [...existingColors.filter(c => c !== '#ff3b30'), '#ff3b30'];
+
+  //   this.detailOpts.markers = {
+  //     ...(this.detailOpts.markers || {}),
+  //     size: 0,
+  //   };
+  // }
 
   private ro?: ResizeObserver;
   ngAfterViewInit(): void {
@@ -1316,6 +1748,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const ro = new ResizeObserver(() => this.calculateSvgScale());
     ro.observe(this.mapSvgEl.nativeElement);
+
+    // this.addRedDotSeries();
   }
 
   ngOnDestroy(): void {
@@ -1326,6 +1760,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.map?.remove();
     // // ปิด WebSocket connection
     // this.webSocketService.disconnect();
+
+    // this.addRedDotSeries();
   }
 
   //////////// RACE /////////////////////////////////
