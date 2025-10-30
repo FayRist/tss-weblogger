@@ -49,7 +49,7 @@ export class EventComponent implements OnInit {
         circuit_name: 'bsc',
         event_start: new Date('6/9/2024 15:10:00'),
         event_end: new Date('6/10/2024 15:30:00'),
-        active: 0
+        active: 1
       }];
   private subscriptions: Subscription[] = [];
 
@@ -91,7 +91,11 @@ export class EventComponent implements OnInit {
     const eventData = this.eventService.getEvent().subscribe(
       eventRes => {
         this.allEvent = []
-        this.allEvent = eventRes;
+        this.allEvent = (eventRes || []).slice().sort((a: any, b: any) => {
+          const aTime = a?.event_start instanceof Date ? a.event_start.getTime() : new Date(a?.event_start).getTime();
+          const bTime = b?.event_start instanceof Date ? b.event_start.getTime() : new Date(b?.event_start).getTime();
+          return aTime - bTime;
+        });
       },
       error => {
         console.error('Error loading matchList:', error);
@@ -192,6 +196,9 @@ export class EventComponent implements OnInit {
     });
   }
 
+  eventListActive(eventId :number, active :number){
+    console.log("eventListActive(): ",eventId, active);
+  }
 
   openEnd(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any): void {
     let arrayData = this.allEvent.filter(x => x.event_id == eventId);
@@ -205,7 +212,8 @@ export class EventComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(result => {
       console.log('The dialog was closed');
-      this.allEvent = this.allEvent.filter(e => e.event_id !== result);
+      // this.allEvent = this.allEvent.filter(e => e.event_id !== result);
+      this.loadEvent();
     });
   }
 }
@@ -425,7 +433,8 @@ export class DialogAnimationsModalEnd {
     const payload = {
       event_id : this.eventId,
       event_name : this.eventName,
-      current_Time : this.time.now()
+      current_Time : this.time.now(),
+      active: 0
     }
 
     this.eventService.endEvent(payload).subscribe(

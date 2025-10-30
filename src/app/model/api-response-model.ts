@@ -90,6 +90,7 @@ export interface LoggerRaceDetailRes {
   SeasonID: number;
   CategoryName: string;
   SessionValue: string;
+  Circuitname: string;
 
   // ฟิลด์ใหม่จาก countdetect_afr (อาจเป็น null)
   countDetect?: number | null;
@@ -113,6 +114,7 @@ export interface LoggerRaceDetailModel {
   seasonId: number;
   categoryName: string;
   sessionValue: string;
+  circuitName: string;
 
   // ฟิลด์ใหม่ (ทำให้เป็น number/string เสมอเพื่อตัดปัญหา strictNullChecks)
   countDetect: number;      // default 0

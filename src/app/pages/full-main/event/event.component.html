@@ -27,15 +27,16 @@
               </td>
               <td class="text-center">
                 <div class="row d-flex justify-content-center">
-                  @if (eventList.active == 1) {
-                    <div class="col-12">
-                          <button type="button" class="btn btn-info w-100 p-0"> active </button>
-                    </div>
-                  }@else {
-                    <div class="col-12">
-                          <button type="button" class="btn btn-secondary w-100 p-0" disabled> inactive </button>
-                    </div>
-                  }
+                  <div class="col-12">
+                    <button
+                      type="button"
+                      class="w-100 p-0 btn"
+                      [class]="eventList.active == 1 ? 'btn-info' : 'btn-secondary'"
+                      [disabled]="eventList.active == 0 && (statusOf(eventList) == RaceStatus.Live || statusOf(eventList) == RaceStatus.Finished)"
+                      (click)="eventListActive(eventList.event_id, eventList.active)">
+                      {{ eventList.active == 1 ? 'active' : 'inactive' }}
+                    </button>
+                  </div>
                 </div>
               </td>
               <td class="text-center">

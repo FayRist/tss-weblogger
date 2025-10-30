@@ -20,9 +20,8 @@ export const APP_CONFIG = {
     HOST_SERVER: 'http://localhost:7005',
     BASE_URL_SERVER: 'http://43.228.85.167:7001/api',
 
-    URL_SOCKET_LOCAL: 'ws://localhost:7005/ws',
+    URL_SOCKET_LOCAL: 'ws://localhost:7005',
     URL_SOCKET_SERVER: 'ws://43.228.85.167:7001',
-
     ENDPOINTS: {
       // Config
       GET_CONFIG: '/configWeb/getAllConfig',
@@ -75,9 +74,11 @@ export const APP_CONFIG = {
       LOGOUT: '/auth/logout',
       REFRESH_TOKEN: '/auth/refresh',
       // WebSocket
+
       WEB_SOCKET: '/ws/logger',
       WEB_SOCKET_BY_CARNUMBER: '/ws/logger-by-carnumber',
-      WEB_LOGGER_STATUS: '/ws/logger-status'
+      WEB_LOGGER_STATUS: '/ws/logger-status',
+      WEB_SOCKET_REAL_TIME: '/ws/logger-realtime'
     }
   },
 
@@ -116,7 +117,7 @@ function normalizeEndpoint(endpoint: string): string {
 /** เลือก Base API URL ตาม host ที่กำลังรันอยู่ */
 function resolveBaseApiUrl(): string {
   // กันไว้กรณี SSR/ไม่มี window
-  if (typeof window === 'undefined') return APP_CONFIG.API.BASE_URL_SERVER;
+  if (typeof window === 'undefined') return APP_CONFIG.API.URL_SOCKET_LOCAL;
 
   const { hostname } = window.location;
 
@@ -127,16 +128,15 @@ function resolveBaseApiUrl(): string {
 
   // server IP ของคุณ
   if (hostname === '43.228.85.167') {
-    return APP_CONFIG.API.BASE_URL_SERVER;
+    return APP_CONFIG.API.URL_SOCKET_SERVER;
   }
 
   // ดีฟอลต์: ถือว่าเป็น server
-  return APP_CONFIG.API.BASE_URL_SERVER;
+  return APP_CONFIG.API.URL_SOCKET_LOCAL;
 }
-
 /** ถ้ามี WebSocket และต้องสลับตาม host ด้วย */
 function resolveSocketBaseUrl(): string {
-  if (typeof window === 'undefined') return APP_CONFIG.API.URL_SOCKET_SERVER;
+  if (typeof window === 'undefined') return APP_CONFIG.API.URL_SOCKET_LOCAL;
 
   const { hostname } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {

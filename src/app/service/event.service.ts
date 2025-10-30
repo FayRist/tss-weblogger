@@ -60,6 +60,7 @@ export class EventService {
         seasonId: data.SeasonID,
         categoryName: data.CategoryName,       // <- เดิมคุณเผลอใส่ segmentValue
         sessionValue: data.SessionValue,
+        circuitName: data.Circuitname,
 
         // ป้องกัน null/undefined → ให้เป็น number/string เสมอ
         countDetect: Number(data.countDetect ?? 0),

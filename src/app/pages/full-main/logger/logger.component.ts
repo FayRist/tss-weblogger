@@ -18,12 +18,15 @@ import {
 } from 'ngx-apexcharts';
 import * as L from 'leaflet';
 import { LoggerDataService } from '../../../service/logger-data.service';
+import { WebSocketMessage, WebSocketService } from '../../../service/websocket.service';
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { EventService } from '../../../service/event.service';
 import { ResetWarningLoggerComponent } from '../dashboard/reset-warning-logger/reset-warning-logger.component';
 import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
+import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
+import { DataProcessingService } from '../../../service/data-processing.service';
 
 
 
@@ -143,7 +146,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
   currentMapPoints: Array<{ x:number; y:number; ts:number; afr:number }> = [];
   readonly dialog = inject(MatDialog);
-  loggerStatus : string = 'offline';
+  loggerStatus : string = 'Offline';
 
   afr: number = 0;
   countDetect: number = 0;
@@ -151,12 +154,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   raceLab: MapPoint[][] = [];         // ผลลัพธ์รอบ
   startLatLongPoint?: { lat: number; lon: number }; // ตัวกลางเก็บจุด start
   lapCount?: number= 0;
+  private wsReconnectTimeout:any;
+  private wsReconnectDelay = 3000; // ms
 
-  readonly START_RADIUS_M = 10;          // ±10m
-  readonly START_RADIUS_UNITS = 15;     // สำหรับพิกัดที่ไม่ใช่ lat/lon (โมเดล/พิกัดภายใน)
-  readonly MIN_LAP_GAP_MS = 5000;        // กันนับซ้ำภายใน 5s (ปรับได้)
+  // Lap split tuning
+  private readonly ENTER_RADIUS_M = 30;   // เข้าในรัศมีนี้ = ตัดรอบได้
+  private readonly START_RADIUS_UNITS  = 30;   // ต้องออก ≥ นี้ก่อน ถึงนับรอบถัดไป
+  private readonly MIN_LAP_GAP_MS = 5000; // กันเด้งซ้ำ
+  private readonly MIN_SPEED_MS   = 0;    // กันนับตอนช้ามาก/จอด (0 = ปิด)
+
   activeKey: string | null = null;  // เช่น 'race1'
-  lapStats: Array<{ lap: number; start: number; end: number; durationMs: number; count: number }> = [];
+  lapStats: Array<{ lap: number; start: number; end: number; durationMs: number; count?: number }> = [];
 
 
   // private currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
@@ -271,6 +279,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   allLogger: CarLogger[] = [];
+  wsLoggerData: CarLogger[] = [];
 
   private fieldMap: Record<ChartKey, keyof LoggerPoint> = {
     avgAfr: 'avgAfr',
@@ -538,62 +547,125 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ---- แบ่งรอบจาก "หนึ่งชุด" (Array) ----
   private splitIntoLapsArray(points: MapPoint[]): MapPoint[][] {
+    console.log('splitIntoLapsArray called with', points.length, 'points');
     if (!points?.length) return [];
 
+    // 1) เลือก/สร้าง startLatLongPoint ถ้ายังไม่มี
     if (!this.startLatLongPoint) {
-      // ยังไม่ตั้ง start → ใช้พิกัดจุดแรกที่ valid
+      console.log('No start point found, using first valid point');
       for (const p of points) {
-        const ll = this.getLatLon(p);
-        if (ll) { this.startLatLongPoint = ll; break; }
-      }
-      if (!this.startLatLongPoint) return [points.slice()]; // ไม่มี lat/lon เลย
-    }
-
-    // เรียงตามเวลา
-    const data = points.slice().sort((a, b) => this.toMillis(a.ts) - this.toMillis(b.ts));
-
-    let laps: MapPoint[][] = [];
-    let current: MapPoint[] = [];
-
-    let insidePrev = false;
-    let lastCrossMs = -Infinity;
-
-    // ใช้รัศมีคงที่ 10 หน่วยสำหรับ non-lat/lon (และ 10 เมตรสำหรับ lat/lon)
-    const startLL = this.startLatLongPoint!;
-    const useHaversine = this.isLatLon(startLL);
-    const dynamicRadius = this.lapRadiusUnits;
-
-    for (const pt of data) {
-      current.push(pt);
-
-      const ll = this.getLatLon(pt);
-      if (!ll) continue;
-
-      const dist = this.distanceMetersOrUnits(ll, startLL);
-      const radius = useHaversine ? this.START_RADIUS_M : dynamicRadius;
-      const inside = dist <= radius;
-
-      // นอก → ใน และห่างจากครั้งก่อน ≥ MIN_LAP_GAP_MS
-      if (!insidePrev && inside) {
-        const nowMs = this.toMillis(pt.ts);
-        if (nowMs - lastCrossMs >= this.MIN_LAP_GAP_MS) {
-          if (current.length > 1) {
-            // ปิดรอบก่อนหน้า (ไม่รวมจุดปัจจุบัน เพื่อให้จุดนี้เริ่มรอบใหม่)
-            const done = current.slice(0, -1);
-            if (done.length) laps.push(done);
-          }
-          // เปิดรอบใหม่เริ่มที่จุดปัจจุบัน
-          current = [pt];
-          lastCrossMs = nowMs;
+        const lat = this.num(p.lat), lon = this.num(p.lon);
+        if (lat!=null && lon!=null) {
+          this.startLatLongPoint = { lat, lon };
+          console.log('Auto-selected start point:', this.startLatLongPoint);
+          break;
         }
       }
-      insidePrev = inside;
+      if (!this.startLatLongPoint) {
+        console.log('No valid start point found, returning all points as single lap');
+        return [points.slice()];
+      }
+    } else {
+      console.log('Using existing start point:', this.startLatLongPoint);
     }
 
-    // เก็บรอบสุดท้าย
-    if (current.length) laps.push(current);
+    // 2) ตัดสินใจว่าจะใช้ Haversine หรือ Euclidean
+    const first = points.find(p => this.num(p.lat)!=null && this.num(p.lon)!=null);
+    const useDegrees = first
+      ? this.isLatLon(first)
+      : false;
+
+    const distMeters = (lat:number, lon:number) =>
+      useDegrees
+        ? this.haversineMeters({lat,lon}, this.startLatLongPoint!)
+        : this.distanceMetersOrUnits({lat,lon}, this.startLatLongPoint!);
+
+    // 3) เรียงตามเวลา
+    const data = points.slice().sort((a,b)=>this.toMillis(a.ts)-this.toMillis(b.ts));
+
+    // 4) state machine + hysteresis
+    const laps: MapPoint[][] = [];
+    let curr: MapPoint[] = [];
+    let state: 'outside'|'inside' = 'outside';
+    let lastCrossMs = -Infinity;
+    let canCountAgain = true;
+    let lapCount = 0;
+
+    console.log('Starting lap detection with ENTER_RADIUS_M:', this.ENTER_RADIUS_M, 'START_RADIUS_UNITS:', this.START_RADIUS_UNITS);
+
+    for (const pt of data) {
+      curr.push(pt);
+
+      const lat = this.num(pt.lat), lon = this.num(pt.lon);
+      if (lat==null || lon==null) continue;
+
+      // กันนับตอนจอด (ถ้าตั้ง MIN_SPEED_MS > 0)
+      if (this.MIN_SPEED_MS > 0 && typeof pt.velocity === 'number') {
+        if (pt.velocity < this.MIN_SPEED_MS) continue;
+      }
+
+      const d   = distMeters(lat, lon);
+      const now = this.toMillis(pt.ts);
+
+      // ออกนอกโซน (≥ EXIT) → พร้อมนับครั้งเข้าใหม่
+      if (d >= this.START_RADIUS_UNITS) {
+        if (state === 'inside') {
+          console.log('Exited start zone, distance:', d.toFixed(2));
+        }
+        state = 'outside';
+        canCountAgain = true;
+      }
+
+      // เข้าขอบเขต (≤ ENTER) + เพิ่งอยู่นอก/เพิ่งพร้อมนับ + ห่างเวลาเพียงพอ
+      if (d <= this.ENTER_RADIUS_M && state === 'outside' && canCountAgain) {
+        if (now - lastCrossMs >= this.MIN_LAP_GAP_MS) {
+          lapCount++;
+          console.log(`Lap ${lapCount} detected! Distance: ${d.toFixed(2)}m, Time gap: ${(now - lastCrossMs)/1000}s`);
+
+          // ปิด lap เดิม (ไม่รวม pt ปัจจุบันเพื่อไม่ให้ซ้ำ)
+          if (curr.length > 1) {
+            const done = curr.slice(0, -1);
+            if (done.length) laps.push(done);
+            console.log(`  - Completed lap ${lapCount-1} with ${done.length} points`);
+          }
+          // เริ่ม lap ใหม่ด้วย pt นี้
+          curr = [pt];
+
+          lastCrossMs = now;
+          state = 'inside';
+          canCountAgain = false; // จนกว่าจะออก ≥ EXIT
+        }
+      }
+    }
+
+    // เก็บ lap สุดท้าย
+    if (curr.length) {
+      laps.push(curr);
+      console.log(`Final lap with ${curr.length} points`);
+    }
+
+    console.log(`Total laps detected: ${laps.length}`);
+
+    // 5) อัปเดตสรุป lap
+    this.lapStats = laps.map(
+      (lap, i): { lap: number; start: number; end: number; durationMs: number; count: number } => {
+        const start = this.toMillis(lap[0].ts);
+        const end   = this.toMillis(lap[lap.length - 1].ts);
+        return {
+          lap: i + 1,
+          start,
+          end,
+          durationMs: Math.max(0, end - start),
+          count: lap.length,          // ★ เพิ่มฟิลด์นี้ให้ตรง type
+        };
+      }
+    );
+
+    this.lapCount = laps.length;
+
     return laps;
   }
+
 
   // ---- อินพุตได้ทั้ง Array และ Record<string, MapPoint[]> ----
   splitIntoLapsInput(input: MapPoint[] | Record<string, MapPoint[]>) {
@@ -641,8 +713,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
 
-  // ====== ตั้ง start ด้วยการคลิกบน SVG (ถ้าคุณใช้วิธีนี้) ======
+  // ====== ตั้ง start ด้วยการคลิกบน SVG ======
   startPx?: { x:number; y:number };
+  startPointPx?: { x:number; y:number };
+
+  // ตัวแปรสำหรับแสดง lap ที่เลือก
+  selectedLapIndex: number = 0; // แสดง lap แรก (index 0)
+  showOnlySelectedLap: boolean = true; // แสดงเฉพาะ lap ที่เลือก
 
   private svgClientToLocal(evt: MouseEvent): {x:number;y:number} {
     const svg = (evt.currentTarget || evt.target) as SVGSVGElement;
@@ -651,6 +728,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const local = pt.matrixTransform(svg.getScreenCTM()!.inverse());
     return { x: local.x, y: local.y };
   }
+
   private findNearestMapPoint(px: {x:number;y:number}) {
     if (!this.currentMapPoints?.length) return null;
     let best = null, bestD2 = Number.POSITIVE_INFINITY;
@@ -660,29 +738,169 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     return best;
   }
-  onSetStartByClick(evt: MouseEvent) {
-    const local = this.svgClientToLocal(evt);
-    const nearest = this.findNearestMapPoint(local);
-    if (!nearest) return;
 
+  onSetStartByClick(evt: MouseEvent) {
+    // หยุดการ propagate ของ event เพื่อไม่ให้เกิดการคลิกซ้อน
+    evt.stopPropagation();
+
+    const local = this.svgClientToLocal(evt);
+    console.log('Clicked at SVG coordinates:', local);
+
+    // หาจุดที่ใกล้ที่สุดจากข้อมูลปัจจุบัน
+    const nearest = this.findNearestMapPoint(local);
+    if (!nearest) {
+      console.log('No nearest point found');
+      return;
+    }
+
+    console.log('Nearest point found:', nearest);
+
+    // เก็บพิกัด SVG สำหรับแสดงผล
     this.startPx = { x: nearest.x, y: nearest.y };
 
-    // ถ้ามี mapping จาก currentMapPoints → MapPoint จริง เพื่อดึง lat/lon ให้ทำที่นี่
-    // ในตัวอย่างนี้ สมมติคุณสามารถหา lat/lon ของจุดใกล้สุดได้จาก selectedRaceKey
+    // ตรวจสอบและตั้งค่า selectedRaceKey ถ้ายังไม่มี
+    if (!this.selectedRaceKey) {
+      const availableKeys = Object.keys(this.allDataLogger || {});
+      if (availableKeys.length > 0) {
+        this.selectedRaceKey = availableKeys[0];
+        console.log('Auto-selected race key:', this.selectedRaceKey);
+      } else {
+        console.log('No race data available');
+        return;
+      }
+    }
+
+    // หา MapPoint ที่สอดคล้องกับจุดที่คลิก
     const arr = this.allDataLogger?.[this.selectedRaceKey ?? ''] ?? [];
-    // หา MapPoint ที่เวลาใกล้กับ nearest.ts
     let best: MapPoint | null = null, bestDt = Number.POSITIVE_INFINITY;
+
     for (const p of arr) {
       const dt = Math.abs(this.toMillis(p.ts) - nearest.ts);
-      if (dt < bestDt) { bestDt = dt; best = p; }
+      if (dt < bestDt) {
+        bestDt = dt;
+        best = p;
+      }
     }
+
     if (best) {
       const ll = this.getLatLon(best);
       if (ll) {
+        console.log('Setting start point to:', ll);
         this.setStartPoint(ll.lat, ll.lon);
-        if (this.selectedRaceKey) this.recomputeLapsForKey(this.selectedRaceKey);
+
+        // ตั้งค่าให้แสดงเฉพาะ lap แรก
+        this.selectedLapIndex = 0;
+        this.showOnlySelectedLap = true;
+
+        // คำนวณ lap และอัปเดต map + กราฟ
+        this.recomputeLapsForKey(this.selectedRaceKey);
+        console.log('Laps recomputed. Total laps:', this.lapCount);
       }
+    } else {
+      console.log('No matching MapPoint found');
     }
+  }
+
+  // ฟังก์ชันสำหรับอัปเดตแผนที่ให้แสดงเฉพาะ lap ที่เลือก
+  updateMapWithSelectedLap() {
+    console.log('updateMapWithSelectedLap called');
+    console.log('raceLab length:', this.raceLab?.length || 0);
+    console.log('showOnlySelectedLap:', this.showOnlySelectedLap);
+    console.log('selectedLapIndex:', this.selectedLapIndex);
+
+    if (!this.raceLab || this.raceLab.length === 0) {
+      console.log('No laps available to display');
+      return;
+    }
+
+    if (this.showOnlySelectedLap && this.selectedLapIndex < this.raceLab.length) {
+      // แสดงเฉพาะ lap ที่เลือก
+      const selectedLap = this.raceLab[this.selectedLapIndex];
+      console.log(`Displaying lap ${this.selectedLapIndex + 1} with ${selectedLap.length} points`);
+
+      // สร้างแผนที่จาก lap เดียว
+      this.buildMapFromSingleLap(selectedLap, this.selectedRaceKey!);
+
+      // อัปเดตกราฟให้ใช้ข้อมูล lap เดียวกัน
+      this.buildChartFromSingleLap(selectedLap);
+    } else {
+      console.log('Displaying all laps');
+      // แสดงทุก lap
+      this.buildMapFromLaps(this.raceLab, this.selectedRaceKey!);
+
+      // อัปเดตกราฟให้ใช้ข้อมูลทุก lap
+      this.buildChartsFromLaps(this.raceLab);
+    }
+  }
+
+  // ฟังก์ชันสำหรับสร้างแผนที่จาก lap เดียว
+  private buildMapFromSingleLap(lap: MapPoint[], key: string) {
+    const all = lap.map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
+    if (!all.length) {
+      this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: [] };
+      this.currentMapPoints = [];
+      return;
+    }
+
+    const minLat = Math.min(...all.map(v => v.lat));
+    const maxLat = Math.max(...all.map(v => v.lat));
+    const minLon = Math.min(...all.map(v => v.lon));
+    const maxLon = Math.max(...all.map(v => v.lon));
+
+    // ใช้สูตรเดียวกับ generateSVGPoints: ไม่มี padding, คำนวณตามช่วงจริง
+    const spanLat = Math.max(1e-9, maxLat - minLat);
+    const spanLon = Math.max(1e-9, maxLon - minLon);
+    const paddedSpanLat = spanLat; // no padding
+    const paddedSpanLon = spanLon; // no padding
+    const paddedMinLat = minLat;   // no padding
+    const paddedMinLon = minLon;   // no padding
+
+    const toX = (lon:number) => {
+      const normalizedX = (lon - paddedMinLon) / paddedSpanLon;
+      return Math.max(0, Math.min(this.SVG_W, normalizedX * this.SVG_W));
+    };
+    const toY = (lat:number) => {
+      const normalizedY = (lat - paddedMinLat) / paddedSpanLat;
+      return Math.max(0, Math.min(this.SVG_H, this.SVG_H - (normalizedY * this.SVG_H)));
+    };
+
+    const segs: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string;afr:number }> = [];
+    let segIndex = 0;
+
+    // สร้าง segments จาก lap เดียว
+    for (let i = 1; i < lap.length; i++) {
+      const a = lap[i-1], b = lap[i];
+      const la = this.getLatLon(a); const lb = this.getLatLon(b);
+      if (!la || !lb) continue;
+
+      // ใช้การไล่ระดับสีจากค่า AFR
+      const afrValue = Number.isFinite(b.afrValue as number) ? (b.afrValue as number) : NaN;
+      const color = Number.isFinite(afrValue) ? this.getAfrColor(afrValue) : '#808080';
+
+      segs.push({
+        i: segIndex++,
+        x1: toX(la.lon), y1: toY(la.lat), x2: toX(lb.lon), y2: toY(lb.lat),
+        c: color,
+        afr: afrValue
+      });
+    }
+
+    const pointsXY: Array<{x:number;y:number;ts:number;afr:number}> = [];
+    lap.forEach(p => {
+      const ll = this.getLatLon(p);
+      if (!ll) return;
+      pointsXY.push({
+        x: toX(ll.lon), y: toY(ll.lat),
+        ts: this.toMillis(p.ts),
+        afr: Number.isFinite(p.afrValue as number) ? (p.afrValue as number) : NaN
+      });
+    });
+
+    this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: segs };
+    this.currentMapPoints = pointsXY;
+    this.showRoutePath = true;
+
+    console.log(`Map updated for lap ${this.selectedLapIndex + 1}: ${segs.length} segments, ${pointsXY.length} points`);
   }
 
   private readonly intLabel = (val: number) =>
@@ -708,24 +926,38 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   allDataLogger: Record<string, MapPoint[]> = {};
   loggerKey: any[] = [];
 
+
+  parameterRaceId:any = null;
+  parameterSegment:any = null;
+  parameterClass:any = null;
+  parameterLoggerID:any = null;
+
+  loggerID     = 0;
+  carNumber    = '';
+  firstName    = '';
+  lastName     = '';
+  classType    = '';
+  segmentValue = '';
+  seasonID     = 0;
+  categoryName = '';
+  sessionValue = '';
+  circuitName = '';
+
+
   constructor(private router: Router, private route: ActivatedRoute, private cdr: ChangeDetectorRef
     , private toastr: ToastrService
     // , private loggerData: LoggerDataService
     , private http: HttpClient
     , private eventService: EventService
+    , private webSocketService: WebSocketService
+    ,private dataProcessingService: DataProcessingService
+
   ) {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
     this.setstartLatLongPoint(798.451662,-6054.358584);
     this.loadAndApplyConfig();
     // this.setCurrentPoints(this.buildMock(180));
-    let parameterClass = this.route.snapshot.queryParamMap.get('class') ?? '';
-
-    // ใช้ string interpolation สร้าง path ใหม่
-    this.loadCsvAndDraw(`models/mock-data/practice_section_${parameterClass}_test.csv`);
-    this.loadCsvAndDraw(`models/mock-data/qualifying_section_${parameterClass}.csv`);
-    this.loadCsvAndDraw(`models/mock-data/race1_section_${parameterClass}.csv`);
-    this.loadCsvAndDraw(`models/mock-data/race2_section_${parameterClass}.csv`);
   }
 
   downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
@@ -843,11 +1075,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======
   // ---------- ตั้งค่า DEFAULT ----------
 
-  parameterRaceId:any = null;
-  parameterSegment:any = null;
-  parameterClass:any = null;
-  parameterLoggerID:any = null;
-
   ngOnInit() {
     this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
     this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
@@ -891,17 +1118,26 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.updateMapFromSelection(selectionAsArray);
         this.updateChartsFromSelection(selectionAsArray);
       });
+      this.subscribeWebSocketMessages();
+    }
+
+  private subscribeWebSocketMessages() {
+    this.webSocketService.message$.subscribe((message) => {
+      let msgObj;
+      try {
+        msgObj = typeof message === 'string' ? JSON.parse(message) : message;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (e) {
+        msgObj = {};
+      }
+      if (msgObj.index !== undefined) {
+        this.wsCurrentIndex = msgObj.index + 1;
+        // process msgObj.data ตามเดิม (ถ้าต้องการ)
+      }
+    });
   }
 
-  loggerID     = 0;
-  carNumber    = '';
-  firstName    = '';
-  lastName     = '';
-  classType    = '';
-  segmentValue = '';
-  seasonID     = 0;
-  categoryName = '';
-  sessionValue = '';
+
 
   getDetailLoggerById(): void {
     // let payload = {
@@ -923,16 +1159,294 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.seasonID     = detail.seasonId;
           this.categoryName = detail.categoryName;
           this.sessionValue = detail.sessionValue;
+          this.circuitName = detail.circuitName;
 
           // ใหม่
           this.countDetect  = detail.countDetect;
           this.afr          = detail.afr;
           this.afrAverage   = detail.afrAverage;
-          this.loggerStatus       = detail.status;
+          this.loggerStatus       = detail.status || 'Offline';
+
+          // เริ่มโหลดข้อมูลหลังจากได้ข้อมูลจาก API แล้วเท่านั้น
+          this.initializeDataLoading();
         },
         error: (err) => console.error('getDetailLoggerInRace error:', err),
       });
 
+  }
+
+  private initializeDataLoading(): void {
+
+    const cls = this.parameterClass ?? '';
+    if (this.circuitName === 'bsc') {
+      this.loadCsvAndDraw(`models/mock-data/practice_section_${cls}_test.csv`);
+      this.loadCsvAndDraw(`models/mock-data/qualifying_section_${cls}.csv`);
+      this.loadCsvAndDraw(`models/mock-data/race1_section_${cls}.csv`);
+      this.loadCsvAndDraw(`models/mock-data/race2_section_${cls}.csv`);
+      this.disconnectWebSocket();
+      this.clearWebSocketData(); // clear ข้อมูลที่เกี่ยวข้อง
+    } else {
+      this.initializeWebSocket(this.parameterLoggerID);
+
+      // // เตรียมไว้สำหรับการดึงข้อมูลจาก Backend ผ่าน WebSocket
+      // if (!this.allDataLogger['realtime']) {
+      //   this.allDataLogger['realtime'] = [];
+      // }
+      // if (!this.allDataLogger['history']) {
+      //   this.allDataLogger['history'] = [];
+      // }
+      // this.selectedRaceKey = 'realtime';
+      // const loggerId = String(this.parameterLoggerID ?? '').trim() || '117';
+      // // start channels via service
+      // // this.webSocketService.connectRealtime(loggerId);
+      // // this.webSocketService.connectHistory(loggerId, 0);
+      // // this.webSocketService.connectStatus();
+
+      // // subscribe once
+      // const subRealtime = this.webSocketService.realtimePoint$.subscribe(pt => {
+      //   if (!pt) return;
+      //   console.log('[Logger] realtime point:', pt);
+      //   const key = this.selectedRaceKey || 'realtime';
+      //   (this.allDataLogger[key] ??= []).push({
+      //     ts: pt.ts,
+      //     lat: pt.lat,
+      //     lon: pt.lon,
+      //     velocity: pt.velocity,
+      //     heading: pt.heading,
+      //     afrValue: pt.afrValue,
+      //     time: typeof pt.time === 'string' ? pt.time : new Date(pt.ts).toISOString()
+      //   });
+      //   console.log('[Logger] realtime total points:', (this.allDataLogger[key] || []).length);
+      //   const selection = [key];
+      //   this.updateChartsFromSelection(selection);
+      //   this.updateMapFromSelection(selection);
+      // });
+      // const subHist = this.webSocketService.historyPoint$.subscribe(pt => {
+      //   if (!pt) return;
+      //   console.log('[Logger] history point:', pt);
+      //   (this.allDataLogger['history'] ??= []).push({
+      //     ts: pt.ts,
+      //     lat: pt.lat,
+      //     lon: pt.lon,
+      //     velocity: pt.velocity,
+      //     heading: pt.heading,
+      //     afrValue: pt.afrValue,
+      //     time: typeof pt.time === 'string' ? pt.time : new Date(pt.ts).toISOString()
+      //   });
+      //   console.log('[Logger] history total points:', (this.allDataLogger['history'] || []).length);
+      //   const selection = [this.selectedRaceKey || 'realtime'];
+      //   this.updateChartsFromSelection(selection);
+      //   this.updateMapFromSelection(selection);
+      // });
+      // const subStatus = this.webSocketService.statusList$.subscribe(list => {
+      //   if (!list) return;
+      //   this.loggerStatusList = list as any;
+      //   console.log('[Logger] status list size:', this.loggerStatusList?.length ?? 0);
+      // });
+      // this.subscriptions.push(subRealtime, subHist, subStatus);
+    }
+  }
+
+    clearWebSocketData(): void {
+    this.webSocketService.clearLoggerData();
+    this.wsLoggerData = [];
+    this.allLogger = [];
+    console.log('Cleared all WebSocket data');
+  }
+
+
+  // ===== WebSocket via service =====
+  wsConnectionStatus: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
+  loggerStatusList: Array<{ logger_key: string; status: string; last_seen?: string; data_count?: number; is_connected?: boolean }>=[];
+  isWebSocketEnabled = false;
+  private wsSubscriptions: Subscription[] = [];
+
+  // เริ่มต้น WebSocket connection
+  private initializeWebSocket(loggerId: string): void {
+    console.log('MatchDetail: Initializing WebSocket connection for loggerId:', loggerId);
+
+    // Subscribe to connection status
+    const statusSub = this.webSocketService.connectionStatus$.subscribe(status => {
+      this.wsConnectionStatus = status;
+      if (status === 'disconnected') {
+        this.tryReconnectWebSocket();
+      } else if (status === 'connected' && this.wsReconnectTimeout) {
+        clearTimeout(this.wsReconnectTimeout);
+        this.wsReconnectTimeout = null;
+      }
+      console.log('MatchDetail: WebSocket status changed to:', status);
+    });
+
+    // Subscribe to logger data
+    const dataSub = this.webSocketService.loggerData$.subscribe(data => {
+      this.wsLoggerData = data;
+      console.log('MatchDetail: Received WebSocket logger data, count:', data.length);
+
+      // รวมข้อมูล WebSocket กับข้อมูลที่มีอยู่
+      this.mergeWebSocketData();
+    });
+
+    // Subscribe to raw messages
+    const messageSub = this.webSocketService.message$.subscribe(message => {
+      if (message) {
+        // console.log('MatchDetail: Received WebSocket message:', message);
+
+        // ประมวลผลข้อมูล WebSocket และส่งไปยัง generateSVGPoints()
+        this.processWebSocketMessage(message);
+      }
+    });
+
+    this.wsSubscriptions.push(statusSub, dataSub, messageSub);
+
+    // เชื่อมต่อ WebSocket พร้อมส่ง loggerId
+    this.connectWebSocket(loggerId);
+  }
+
+    /**
+   * ประมวลผลข้อมูล WebSocket และส่งไปยัง generateSVGPoints()
+   */
+  private processWebSocketMessage(message: WebSocketMessage): void {
+    try {
+      // เช็ค loggerId ปัจจุบันก่อน
+      if (!this.currentLoggerId) return;
+      // ตรวจสอบว่าเป็นข้อมูล sensor_data ของ loggerId ที่เลือก
+      if (message.type === 'sensor_data:' + this.currentLoggerId && message.data) {
+        const data = message.data as string;
+        const parsedData = JSON.parse(data);
+        if (parsedData.lat && parsedData.lon) {
+          const loggerData: CarLogger = {
+            sats: '12',
+            time: parsedData.timestamp || new Date().toISOString(),
+            lat: parsedData.lat,
+            long: parsedData.lon,
+            velocity: parseFloat(parsedData.data) || 0,
+            heading: '0',
+            height: '0',
+            FixType: '3',
+            accelX: '0',
+            accelY: '0',
+            accelZ: '0',
+            accelSqrt: '0',
+            gyroX: '0',
+            gyroY: '0',
+            gyroZ: '0',
+            magX: '0',
+            magY: '0',
+            magZ: '0',
+            mDirection: '0',
+            Time_ms: Date.now().toString(),
+            averageHeight: 0
+          };
+          this.allLogger.push(loggerData);
+          console.log('ProcessWebSocketMessage. Total records:', this.allLogger.length);
+          // อัปเดตข้อมูลแบบ real-time ให้กับแผนที่ SVG และกราฟ
+          const key = this.selectedRaceKey || 'realtime';
+          const ts = typeof loggerData.time === 'string' && !isNaN(Date.parse(loggerData.time))
+            ? new Date(loggerData.time).getTime()
+            : Date.now();
+
+          const point: MapPoint = {
+            ts,
+            lat: Number(loggerData.lat),
+            lon: Number(loggerData.long),
+            velocity: Number(loggerData.velocity),
+            time: loggerData.time
+          };
+
+          (this.allDataLogger[key] ??= []).push(point);
+
+          // เลือก key ปัจจุบันเพื่อเรนเดอร์ทันที
+          const selection = [key];
+          this.updateChartsFromSelection(selection);
+          this.updateMapFromSelection(selection);
+          // console.log('Updated SVG points & charts (realtime)');
+        }
+      }
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+    }
+  }
+
+
+    private wsCurrentIndex = 0;
+  /**
+   * เชื่อมต่อ WebSocket
+   */
+  connectWebSocket(loggerId?: string): void {
+    if (!loggerId) {
+      console.warn('WebSocket: No loggerId provided, cannot connect');
+      this.isWebSocketEnabled = false;
+      return;
+    }
+
+    this.isWebSocketEnabled = true;
+    // const apiEndPoint: string = APP_CONFIG.API.ENDPOINTS.WEB_SOCKET+'?logger=' + loggerId+'&startIndex=' + this.wsCurrentIndex;
+    const apiEndPoint: string = APP_CONFIG.API.ENDPOINTS.WEB_SOCKET_REAL_TIME+'?logger=client_' + loggerId;
+    this.currentLoggerId = loggerId;
+    const loggersUrl = getApiWebSocket(apiEndPoint);
+
+
+
+    console.log('WebSocket: Connecting with loggerId:', loggerId, ' this.wsCurrentIndex : ',this.wsCurrentIndex, 'URL:', loggersUrl);
+
+    // ส่ง loggerId ไปยัง WebSocket service
+    this.webSocketService.connect(loggersUrl, loggerId);
+
+
+  }
+
+  /**
+   * ปิดการเชื่อมต่อ WebSocket
+   */
+  disconnectWebSocket(): void {
+    this.isWebSocketEnabled = false;
+    this.webSocketService.disconnect();
+    this.wsConnectionStatus = 'disconnected';
+    console.log('WebSocket: Disconnected by user');
+  }
+
+  /**
+   * รวมข้อมูล WebSocket กับข้อมูลที่มีอยู่
+   */
+  private mergeWebSocketData(): void {
+    if (this.wsLoggerData.length > 0) {
+      // ใช้ data processing service เพื่อรวมข้อมูล
+      this.dataProcessingService.mergeWebSocketData(this.wsLoggerData);
+
+      // อัพเดทข้อมูลใน component
+      this.allLogger = this.dataProcessingService.getCurrentData();
+      console.log("mergeWebSocketData : ", this.allLogger)
+      // อัพเดทกราฟและแผนที่
+      // if (this.showPageDataOnly && this.currentPageData.length > 0) {
+      //   this.updateChartWithPageData(this.currentPageData);
+      //   this.updateMapWithPageData(this.currentPageData);
+      // } else {
+      //   this.updateChartWithData(this.allLogger);
+      //   this.updateMapWithAllData();
+      // }
+    }
+  }
+
+  /**
+   * ส่งข้อความไปยัง WebSocket
+   */
+  sendWebSocketMessage(message: string): void {
+    this.webSocketService.sendMessage(message);
+  }
+  private currentLoggerId: string | null = null;
+
+  private tryReconnectWebSocket() {
+    if (this.wsReconnectTimeout) {
+      // ป้องกันการ setTimeout ซ้ำ
+      return;
+    }
+
+    this.wsReconnectTimeout = setTimeout(() => {
+      if (this.wsConnectionStatus === 'disconnected' && this.currentLoggerId) {
+        this.connectWebSocket(this.currentLoggerId);
+        this.wsReconnectTimeout = null; // reset เพื่อให้รอบถัดไป setTimeout ใหม่ได้
+      }
+    }, this.wsReconnectDelay);
   }
 
   // ====== เวอร์ชันใหม่: อ่านจากไฟล์ .txt ======
@@ -974,6 +1488,42 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const lon = this.num(lonDeg);
     if (lat == null || lon == null) return;
     this.startLatLongPoint = { lat, lon };
+
+    // อัปเดตพิกัด SVG สำหรับแสดงผล
+    this.updateStartPointPx();
+  }
+
+  private updateStartPointPx() {
+    if (!this.startLatLongPoint || !this.currentMapPoints?.length) {
+      this.startPointPx = undefined;
+      return;
+    }
+
+    // หาจุดที่ใกล้ที่สุดกับจุดเริ่มต้นจากข้อมูลทั้งหมด
+    const allData = this.allDataLogger?.[this.selectedRaceKey ?? ''] ?? [];
+    let best = null, bestD2 = Number.POSITIVE_INFINITY;
+
+    for (const p of allData) {
+      const ll = this.getLatLon(p);
+      if (!ll) continue;
+
+      const d = this.haversineMeters(this.startLatLongPoint!, ll);
+      if (d < bestD2) {
+        bestD2 = d;
+        best = p;
+      }
+    }
+
+    if (best) {
+      // หาพิกัด SVG ที่สอดคล้องกับ MapPoint ที่ใกล้ที่สุด
+      const correspondingPoint = this.currentMapPoints.find(cp =>
+        Math.abs(cp.ts - this.toMillis(best!.ts)) < 1000 // ภายใน 1 วินาที
+      );
+
+      if (correspondingPoint) {
+        this.startPointPx = { x: correspondingPoint.x, y: correspondingPoint.y };
+      }
+    }
   }
 
   private ensureStartPointForKey(key: string) {
@@ -985,8 +1535,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // สีต่อ lap (ปรับได้)
-  private lapColors = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b'];
 
   private projectToXY(p: MapPoint): { x: number; y: number } | null {
     const rawX = (p as any).x;
@@ -1014,25 +1562,43 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const maxLat = Math.max(...all.map(v => v.lat));
     const minLon = Math.min(...all.map(v => v.lon));
     const maxLon = Math.max(...all.map(v => v.lon));
+
+    // เพิ่ม padding 2% เพื่อให้เส้นไม่ชิดขอบ (เหมือนกับ updateMapFromSelection)
+    const padding = 0.02;
     const spanLat = Math.max(1e-9, maxLat - minLat);
     const spanLon = Math.max(1e-9, maxLon - minLon);
-    const toX = (lon:number) => ((lon - minLon) / spanLon) * this.SVG_W;
-    const toY = (lat:number) => this.SVG_H - ((lat - minLat) / spanLat) * this.SVG_H;
+    const paddedSpanLat = spanLat * (1 + 2 * padding);
+    const paddedSpanLon = spanLon * (1 + 2 * padding);
+    const paddedMinLat = minLat - spanLat * padding;
+    const paddedMinLon = minLon - spanLon * padding;
+
+    const toX = (lon:number) => {
+      const normalizedX = (lon - paddedMinLon) / paddedSpanLon;
+      return Math.max(0, Math.min(this.SVG_W, normalizedX * this.SVG_W));
+    };
+    const toY = (lat:number) => {
+      const normalizedY = (lat - paddedMinLat) / paddedSpanLat;
+      return Math.max(0, Math.min(this.SVG_H, this.SVG_H - (normalizedY * this.SVG_H)));
+    };
 
     const segs: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string;afr:number }> = [];
     let segIndex = 0;
 
     laps.forEach((lap, lapIdx) => {
-      const color = this.lapColors[lapIdx % this.lapColors.length];
       for (let i = 1; i < lap.length; i++) {
         const a = lap[i-1], b = lap[i];
         const la = this.getLatLon(a); const lb = this.getLatLon(b);
         if (!la || !lb) continue;
+
+        // ใช้การไล่ระดับสีจากค่า AFR แทนการใช้สีแบบเดิม
+        const afrValue = Number.isFinite(b.afrValue as number) ? (b.afrValue as number) : NaN;
+        const color = Number.isFinite(afrValue) ? this.getAfrColor(afrValue) : '#808080'; // สีเทาสำหรับค่าที่ไม่มี
+
         segs.push({
           i: segIndex++,
           x1: toX(la.lon), y1: toY(la.lat), x2: toX(lb.lon), y2: toY(lb.lat),
           c: color,
-          afr: Number.isFinite(b.afrValue as number) ? (b.afrValue as number) : NaN
+          afr: afrValue
         });
       }
     });
@@ -1053,6 +1619,70 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: segs };
     this.currentMapPoints = pointsXY;
     this.showRoutePath = true;
+  }
+
+  // ฟังก์ชันสำหรับสร้างกราฟจาก lap เดียว
+  private buildChartFromSingleLap(lap: MapPoint[]) {
+    const lapIndex = this.selectedLapIndex;
+
+    // สร้าง series สำหรับ lap เดียว
+    const detailSeries = [{
+      name: `Lap ${lapIndex + 1}`,
+      type: 'line',
+      data: lap.map(p => ({
+        x: this.toMillis(p.ts),
+        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+      }))
+    }];
+
+    // จุดแดงเกินลิมิต
+    const discrete: any[] = [];
+    const limit = this.afrLimit ?? 14;
+    detailSeries.forEach((s, sIdx) => {
+      (s.data as Array<{x:number;y:number|null}>).forEach((pt, i) => {
+        const y = pt.y;
+        if (typeof y === 'number' && y > limit) {
+          discrete.push({
+            seriesIndex: sIdx,
+            dataPointIndex: i,
+            fillColor: '#ff3b30',
+            strokeColor: '#ff3b30',
+            size: 4
+          });
+        }
+      });
+    });
+
+    // brush: ใช้ข้อมูลจาก lap เดียว
+    const brushData: Array<{x:number;y:number|null}> = [];
+    lap.forEach(p => {
+      brushData.push({
+        x: this.toMillis(p.ts),
+        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+      });
+    });
+
+    // อัปเดตกราฟ detail และ brush
+    this.detailOpts = {
+      ...(this.detailOpts || {}),
+      series: detailSeries,
+      markers: { ...(this.detailOpts?.markers || {}), size: 0, discrete },
+      annotations: {
+        ...(this.detailOpts?.annotations || {}),
+        yaxis: [{
+          y: limit,
+          borderColor: '#ff3b30',
+          label: { text: `AFR Limit ${limit}` }
+        }]
+      }
+    };
+
+    this.brushOpts = {
+      ...(this.brushOpts || {}),
+      series: [{ name: `Lap ${lapIndex + 1}`, type: 'line', data: brushData }]
+    };
+
+    console.log(`Chart updated for lap ${lapIndex + 1}: ${detailSeries[0].data.length} data points`);
   }
 
   private buildChartsFromLaps(laps: MapPoint[][]) {
@@ -1113,68 +1743,30 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       };
     });
 
-    this.buildMapFromLaps(laps, key);
-    const detailSeries = laps.map((lap, idx) => ({
-      name: `Lap ${idx + 1}`,
-      type: 'line',
-      data: lap.map(p => ({
-        x: this.toMillis(p.ts),
-        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
-      }))
-    }));
+    // อัปเดตพิกัด SVG ของจุดเริ่มต้น
+    this.updateStartPointPx();
 
-    const limit = this.afrLimit ?? 14;
-    const discrete: any[] = [];
-    detailSeries.forEach((s, sIdx) => {
-      (s.data as Array<{ x: number; y: number | null }>).forEach((pt, i) => {
-        if (typeof pt.y === 'number' && pt.y > limit) {
-          discrete.push({ seriesIndex: sIdx, dataPointIndex: i, fillColor: '#ff3b30', strokeColor: '#ff3b30', size: 4 });
-        }
-      });
-    });
+    this.lapCount = this.lapStats.length;
 
-    const xAnn = this.lapStats.map(s => ({
-      x: s.start,
-      borderColor: '#999',
-      strokeDashArray: 4,
-      label: { text: `Lap ${s.lap}`, style: { fontSize: '11px' } }
-    }));
-
-    const brushData: Array<{ x: number; y: number | null }> = [];
-    laps.forEach(lap => lap.forEach(p => {
-      brushData.push({
-        x: this.toMillis(p.ts),
-        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
-      });
-    }));
-
-    this.detailOpts = {
-      ...(this.detailOpts || {}),
-      series: detailSeries,
-      markers: { ...(this.detailOpts?.markers || {}), size: 0, discrete },
-      annotations: {
-        ...(this.detailOpts?.annotations || {}),
-        yaxis: [{ y: limit, borderColor: '#ff3b30', label: { text: `AFR Limit ${limit}` } }],
-        xaxis: xAnn
-      }
-    };
-
-    this.brushOpts = {
-      ...(this.brushOpts || {}),
-      series: [{ name: 'AFR', type: 'line', data: brushData }]
-    };
-
-    this.lapCount = this.lapStats.length; // สร้าง field: lapCount?: number;
+    // ไม่สร้าง map และกราฟที่นี่ แต่ให้ updateMapWithSelectedLap() จัดการแทน
+    // เพื่อให้สามารถเลือกแสดง lap เดียวหรือทุก lap ได้
   }
 
 
 
   private recomputeLapsForKey(key: string) {
+    console.log('recomputeLapsForKey called for key:', key);
     const points = this.allDataLogger?.[key] ?? [];
+    console.log('Points available:', points.length);
+
     this.raceLab = this.splitIntoLapsArray(points);
-    // this.buildMapFromLaps(this.raceLab, this.selectedRaceKey);
-    // this.buildChartsFromLaps(this.raceLab);
+    console.log('Laps computed:', this.raceLab.length);
+
+    // อัปเดตสถิติ lap
     this.updateLapArtifacts(key, this.raceLab);
+
+    // อัปเดต map และกราฟตาม lap ที่เลือก
+    this.updateMapWithSelectedLap();
   }
 
   // --- เพิ่มฟิลด์กันรันซ้ำ ---
@@ -1298,13 +1890,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return mapPoints;
   }
 
-  cal = { tx: 6, ty: 33, sx: 1, sy: 1, rot: 0 };
+  cal = { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 };
   readonly SVG_W = 800;
-  readonly SVG_H = 600;
+  readonly SVG_H = 660;
 
   get polyTransform(): string {
-    const { tx, ty, sx, sy, rot } = this.cal;
-    return `translate(${tx},${ty}) scale(${sx},${sy}) rotate(${rot} ${this.SVG_W/2} ${this.SVG_H/2})`;
+    // ไม่ใช้ transform เพื่อให้พิกัดตรงกับ viewBox โดยตรง
+    return '';
   }
 
 
@@ -1342,13 +1934,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const minLong = Math.min(...longs);
     const maxLong = Math.max(...longs);
     const SVG_W = 800;
-    const SVG_H = 600;
-    // สร้างจุดสำหรับ SVG โดยแปลงพิกัด GPS เป็นพิกัด SVG (0-800, 0-600)
+    const SVG_H = 660;
+    // สร้างจุดสำหรับ SVG โดยแปลงพิกัด GPS เป็นพิกัด SVG (0-800, 0-660)
     const points = validPoints.map((p: { lat: string; lon: string; }) => {
       const lat = parseFloat(p.lat);
       const long = parseFloat(p.lon);
-      const x = ((long - minLong) / (maxLong - minLong)) * SVG_W;
-      const y = SVG_H - ((lat - minLat) / (maxLat - minLat)) * SVG_H;
+      const x = Math.max(0, Math.min(SVG_W, ((long - minLong) / (maxLong - minLong)) * SVG_W));
+      const y = Math.max(0, Math.min(SVG_H, SVG_H - ((lat - minLat) / (maxLat - minLat)) * SVG_H));
       return { x, y, lat, long };
     });
 
@@ -1513,14 +2105,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    // ---- bounds สำหรับ normalize (เหมือนเดิม)
+    // ---- bounds สำหรับ normalize (เพิ่ม padding เพื่อไม่ให้ชิดขอบ)
     const lats = all.map(p => p.lat);
     const lons = all.map(p => p.lon);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+
+    // เพิ่ม padding 2% เพื่อให้เส้นไม่ชิดขอบ
+    const padding = 0.02;
     const spanLat = Math.max(1e-9, maxLat - minLat);
     const spanLon = Math.max(1e-9, maxLon - minLon);
-    const SVG_W = 800, SVG_H = 600;
+    const paddedSpanLat = spanLat * (1 + 2 * padding);
+    const paddedSpanLon = spanLon * (1 + 2 * padding);
+    const paddedMinLat = minLat - spanLat * padding;
+    const paddedMinLon = minLon - spanLon * padding;
+
+    const SVG_W = 800, SVG_H = 660;
 
     // ---- ช่วง AFR (ถ้าไม่มีค่าเลย ใช้ค่า default)
     const afrVals = all.map(p => p.afrValue).filter((v): v is number => Number.isFinite(v));
@@ -1531,56 +2131,72 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const outPoints: Record<string, string> = {};
     const start: Record<string, {x:number;y:number;lat:number;long:number}> = {};
     const end:   Record<string, {x:number;y:number;lat:number;long:number}> = {};
+    // ปรับเป็นไม่สร้างเส้น segment อีกต่อไป (ต้องการแค่จุดแดง)
     const segs:  Record<string, Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string; afr:number;  }>> = {};
 
     for (const k of keys) {
       const arr = perKey[k];
       if (!arr.length) continue;
 
-      // map เป็นพิกัด SVG
+      // map เป็นพิกัด SVG (คำนวณให้อยู่ภายใน 0-800 และ 0-660)
       const pts = arr.map((r, i) => {
-        const x = ((r.lon - minLon) / spanLon) * SVG_W;
-        const y = SVG_H - ((r.lat - minLat) / spanLat) * SVG_H;
+        // คำนวณพิกัดโดยตรงโดยไม่ใช้ transform
+        const normalizedX = (r.lon - paddedMinLon) / paddedSpanLon;
+        const normalizedY = (r.lat - paddedMinLat) / paddedSpanLat;
+
+        // แปลงเป็นพิกัด SVG และ clamp ให้อยู่ในขอบเขต
+        const x = Math.max(0, Math.min(SVG_W, normalizedX * SVG_W));
+        const y = Math.max(0, Math.min(SVG_H, SVG_H - (normalizedY * SVG_H)));
+
         const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
 
         return { ts, i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue };
       });
 
-      this.currentMapPoints = pts.map(p => ({
-        ts: p.ts,
-        x: p.x,
-        y: p.y,
-        afr: p.afr ?? 0
-      }));
+      if (this.circuitName === 'bsc') {
+        // โหมดเส้น: เก็บทุกจุด (ไม่มีจุดแดงแยกในเทมเพลต)
+        this.currentMapPoints = pts.map(p => ({
+          ts: p.ts,
+          x: p.x,
+          y: p.y,
+          afr: p.afr ?? 0
+        }));
+      } else {
+        // โหมดจุดเดียว: แสดงเฉพาะจุดล่าสุดให้ลากตาม
+        const lastPt = pts[pts.length - 1];
+        this.currentMapPoints = lastPt ? [{
+          ts: lastPt.ts,
+          x: lastPt.x,
+          y: lastPt.y,
+          afr: lastPt.afr ?? 0
+        }] : [];
+      }
 
       // สตริง polyline (เผื่อยังใช้วาดแบบสีเดียว)
       outPoints[k] = pts.map(p => `${p.x},${p.y}`).join(' ');
       start[k] = { x: pts[0].x, y: pts[0].y, lat: pts[0].lat, long: pts[0].long };
       end[k]   = { x: pts[pts.length-1].x, y: pts[pts.length-1].y, lat: pts[pts.length-1].lat, long: pts[pts.length-1].long };
 
-      // ---- แตกเป็น segment พร้อมสีจากค่า AFR (ใช้ค่าเฉลี่ยของคู่จุด)
-      const step = Math.max(1, Math.ceil(pts.length / 20000)); // กันหนัก: สูงสุด ~20k segment ต่อ key
-      const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string , afr:number; }> = [];
-      for (let i = 0; i < pts.length - step; i += step) {
-        const a = pts[i], b = pts[i + step];
-
-        const p1 = pts[i];
-        const p2 = pts[i + 1];
-
-        const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
-        const afrB = Number.isFinite(b.afr!) ? b.afr! : undefined;
-        const afr  = afrA!=null && afrB!=null ? (afrA + afrB)/2
-                    : afrA!=null ? afrA
-                    : afrB!=null ? afrB
-                    : (afrMin + afrMax)/2; // ถ้าไม่มี ใช้กลางช่วง
-        // const color = afrToColor(afr, afrMin, afrMax);
-
-        s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y
-          // , c: color
-          , c: this.getAfrColor(p1.afr)
-          ,afr});
+      if (this.circuitName === 'bsc') {
+        // โหมดเส้น: แตกเป็น segment และระบายสีตาม AFR
+        const step = Math.max(1, Math.ceil(pts.length / 20000));
+        const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string , afr:number; }> = [];
+        for (let i = 0; i < pts.length - step; i += step) {
+          const a = pts[i], b = pts[i + step];
+          const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
+          const afrB = Number.isFinite(b.afr!) ? b.afr! : undefined;
+          const afr  = afrA!=null && afrB!=null ? (afrA + afrB)/2
+                      : afrA!=null ? afrA
+                      : afrB!=null ? afrB
+                      : (afrMin + afrMax)/2;
+          const color = afrToColor(afr, afrMin, afrMax);
+          s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y, c: color, afr });
+        }
+        segs[k] = s;
+      } else {
+        // โหมดจุด: ไม่สร้างเส้น
+        segs[k] = [];
       }
-      segs[k] = s;
     }
 
     this.svgPointsByKey = outPoints;
@@ -1588,6 +2204,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.endPointByKey = end;
     this.segmentsByKey = segs;
     this.hasRouteData = true;
+    // แสดงเส้นทางเฉพาะโหมด bsc
+    this.showRoutePath = (this.circuitName === 'bsc');
   }
 
   private buildSeries(keys: ChartKey[]): ApexAxisChartSeries {
@@ -1758,8 +2376,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // this.wsSubscriptions.forEach(sub => sub.unsubscribe());
     this.ro?.disconnect();
     this.map?.remove();
-    // // ปิด WebSocket connection
-    // this.webSocketService.disconnect();
+    // ปิด WebSocket ที่เปิดไว้ (ถ้ามี)
+    this.webSocketService.disconnectRealtime();
+    this.webSocketService.disconnectHistory();
+    this.webSocketService.disconnectStatus();
 
     // this.addRedDotSeries();
   }
