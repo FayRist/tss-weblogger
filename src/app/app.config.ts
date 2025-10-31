@@ -114,10 +114,11 @@ function normalizeEndpoint(endpoint: string): string {
   return endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 }
 
+
 /** เลือก Base API URL ตาม host ที่กำลังรันอยู่ */
 function resolveBaseApiUrl(): string {
   // กันไว้กรณี SSR/ไม่มี window
-  if (typeof window === 'undefined') return APP_CONFIG.API.URL_SOCKET_LOCAL;
+  if (typeof window === 'undefined') return APP_CONFIG.API.BASE_URL_SERVER;
 
   const { hostname } = window.location;
 
@@ -128,12 +129,13 @@ function resolveBaseApiUrl(): string {
 
   // server IP ของคุณ
   if (hostname === '43.228.85.167') {
-    return APP_CONFIG.API.URL_SOCKET_SERVER;
+    return APP_CONFIG.API.BASE_URL_SERVER;
   }
 
   // ดีฟอลต์: ถือว่าเป็น server
-  return APP_CONFIG.API.URL_SOCKET_LOCAL;
+  return APP_CONFIG.API.BASE_URL_SERVER;
 }
+
 /** ถ้ามี WebSocket และต้องสลับตาม host ด้วย */
 function resolveSocketBaseUrl(): string {
   if (typeof window === 'undefined') return APP_CONFIG.API.URL_SOCKET_LOCAL;

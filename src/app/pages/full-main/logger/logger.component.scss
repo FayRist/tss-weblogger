@@ -178,15 +178,17 @@ button[mat-raised-button] {
 
 .map-tooltip {
   position: absolute;
-  transform: translate(15px, 15px); /* ขยับเล็กน้อยให้ไม่บังจุด */
+  /* ไม่ใช้ transform ที่นี่ เพราะตำแหน่งจะคำนวณใน component แล้ว */
   background: rgba(0, 0, 0, 0.8);
   color: #fff;
-  padding: 10px 15px;
+  padding: 8px 12px;
   border-radius: 4px;
   font-size: 14px;
   pointer-events: none; /* ทำให้เมาส์คลิกทะลุได้ */
   white-space: nowrap;
   z-index: 1000;
+  /* เพิ่ม arrow หรือ styling เพื่อให้เห็นชัดว่าเชื่อมกับจุด */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .mat-mdc-option {
@@ -255,4 +257,53 @@ button[mat-raised-button] {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+// SVG Controls Styles
+.card-body.card-body--flush.p-2 {
+  background: #212529;
+  
+  .btn {
+    border-color: #2B3035;
+    color: #CFD8DC;
+    
+    &:hover {
+      background-color: #2B3035;
+      border-color: #3B444D;
+      color: #FFFFFF;
+    }
+    
+    &.active {
+      background-color: #FFCA28;
+      border-color: #FFCA28;
+      color: #212529;
+    }
+  }
+  
+  .btn-outline-danger:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #FFFFFF;
+  }
+  
+  .input-group {
+    .form-control {
+      background-color: #101414;
+      border-color: #2B3035;
+      color: #FFFFFF;
+      
+      &:focus {
+        background-color: #101414;
+        border-color: #4FC3F7;
+        color: #FFFFFF;
+        box-shadow: 0 0 0 0.2rem rgba(79, 195, 247, 0.25);
+      }
+    }
+    
+    .input-group-text {
+      background-color: #212529;
+      border-color: #2B3035;
+      color: #CFD8DC;
+    }
+  }
 }

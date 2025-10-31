@@ -193,9 +193,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private isSyncingRace  = false;
 
   @ViewChild('mapSvg') mapSvgEl!: ElementRef<SVGElement>;
+  @ViewChild('hoverCircle') hoverCircleEl?: ElementRef<SVGCircleElement>;
 
   private scaleX = 1;
   private scaleY = 1;
+
+  // การหมุนและกลับด้าน SVG
+  svgRotation = 0; // องศาการหมุน (0-360) - จะตั้งค่าเริ่มต้นตาม circuitName
+  svgFlipHorizontal = false; // กลับด้านแนวนอน - จะตั้งค่าเริ่มต้นตาม circuitName
+  svgFlipVertical = false; // กลับด้านแนวตั้ง
 
   tooltipStyle = {
     left: '0px',
@@ -385,25 +391,107 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
               const seriesCfg = w?.config?.series?.[seriesIndex];
               const seriesData = Array.isArray(seriesCfg?.data) ? seriesCfg.data : undefined;
               const pointOnChart: any = seriesData ? seriesData[dataPointIndex] : undefined;
+              
               if (pointOnChart && (pointOnChart.x != null || pointOnChart.t != null || pointOnChart.time != null)) {
                 const timestamp = pointOnChart.x ?? pointOnChart.t ?? pointOnChart.time;
-                const closestMapPoint = (this.currentMapPoints?.length ? this.currentMapPoints : []).reduce((prev, curr) =>
+                
+                // ดึงค่า AFR จากค่า y ของ series ที่ hover อยู่ (ตรงกับค่าที่แสดงในกราฟ)
+                const afrFromSeries = pointOnChart.y !== null && pointOnChart.y !== undefined 
+                  ? pointOnChart.y 
+                  : null;
+                
+                let closestMapPoint = null;
+                
+                // ใช้ index โดยตรงถ้าเป็น single lap mode
+                if (this.currentLapDataForChart && this.currentLapDataForChart.length > dataPointIndex) {
+                  const lapPoint = this.currentLapDataForChart[dataPointIndex];
+                  if (lapPoint) {
+                    // หา map point ที่สอดคล้องกับ lap point นี้
+                    const lapTimestamp = this.toMillis(lapPoint.ts);
+                    closestMapPoint = this.currentMapPoints?.find(mp => 
+                      Math.abs(mp.ts - lapTimestamp) < 100
+                    );
+                    
+                    // ถ้าไม่เจอ ใช้การคำนวณพิกัดใหม่
+                    if (!closestMapPoint && this.currentMapPoints?.length) {
+                      const ll = this.getLatLon(lapPoint);
+                      if (ll) {
+                        // คำนวณพิกัดเหมือน buildMapFromSingleLap
+                        const all = this.currentLapDataForChart.map(p => this.getLatLon(p))
+                          .filter((v): v is {lat:number;lon:number} => !!v);
+                        if (all.length > 0) {
+                          const minLat = Math.min(...all.map(v => v.lat));
+                          const maxLat = Math.max(...all.map(v => v.lat));
+                          const minLon = Math.min(...all.map(v => v.lon));
+                          const maxLon = Math.max(...all.map(v => v.lon));
+                          const padding = this.circuitName === 'bric' ? 0.05 : 0.02;
+                          const spanLat = Math.max(1e-9, maxLat - minLat);
+                          const spanLon = Math.max(1e-9, maxLon - minLon);
+                          const paddedSpanLat = spanLat * (1 + 2 * padding);
+                          const paddedSpanLon = spanLon * (1 + 2 * padding);
+                          const paddedMinLat = minLat - spanLat * padding;
+                          const paddedMinLon = minLon - spanLon * padding;
+                          
+                          const normalizedX = paddedSpanLon > 0 ? (ll.lon - paddedMinLon) / paddedSpanLon : 0.5;
+                          const normalizedY = paddedSpanLat > 0 ? (ll.lat - paddedMinLat) / paddedSpanLat : 0.5;
+                          const SVG_W = 800;
+                          const SVG_H = 660;
+                          const x = Math.max(0, Math.min(SVG_W, normalizedX * SVG_W));
+                          const y = Math.max(0, Math.min(SVG_H, SVG_H - (normalizedY * SVG_H)));
+                          
+                          closestMapPoint = {
+                            x, y,
+                            ts: lapTimestamp,
+                            afr: Number.isFinite(lapPoint.afrValue as number) ? (lapPoint.afrValue as number) : 0
+                          };
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                // ถ้าเป็น multi-lap mode หรือไม่เจอ ให้ใช้วิธีเดิม
+                if (!closestMapPoint && this.currentMapPoints?.length) {
+                  const timestampTolerance = 100; // 100ms tolerance
+                  let minTimeDiff = Number.POSITIVE_INFINITY;
+                  
+                  // ลองหา exact match ก่อน
+                  const exactMatch = this.currentMapPoints.find(mp => Math.abs(mp.ts - timestamp) < 50);
+                  if (exactMatch) {
+                    closestMapPoint = exactMatch;
+                  } else {
+                    // หาจุดที่ใกล้ที่สุดภายใน tolerance
+                    for (const mp of this.currentMapPoints) {
+                      const timeDiff = Math.abs(mp.ts - timestamp);
+                      if (timeDiff < timestampTolerance && timeDiff < minTimeDiff) {
+                        minTimeDiff = timeDiff;
+                        closestMapPoint = mp;
+                      }
+                    }
+                    
+                    // ถ้าไม่พบจุดที่ใกล้พอ ให้ใช้จุดที่ใกล้ที่สุดทั้งหมด (ไม่จำกัด tolerance)
+                    if (!closestMapPoint) {
+                      closestMapPoint = this.currentMapPoints.reduce((prev, curr) =>
                   Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
-                , this.currentMapPoints?.[0] ?? { ts: timestamp, x: 0, y: 0, afr: 0 });
+                      , this.currentMapPoints[0]);
+                    }
+                  }
+                }
 
                 if (closestMapPoint) {
+                  // ใช้ค่า AFR จาก series (ตรงกับค่าที่แสดงในกราฟ) แทนค่า AFR จาก closestMapPoint
                   this.hoverPoint = {
                     visible: true,
                     x: closestMapPoint.x,
                     y: closestMapPoint.y,
-                    afr: closestMapPoint.afr
+                    afr: afrFromSeries !== null && !isNaN(afrFromSeries) ? afrFromSeries : closestMapPoint.afr
                   };
+                  
+                  // ใช้ updateTooltipPosition เพื่อคำนวณตำแหน่งโดยคำนึงถึง transform
+                  this.updateTooltipPosition(this.hoverPoint.x, this.hoverPoint.y);
                 }
               }
             }
-            const left = this.hoverPoint.x * this.scaleX;
-            const top = this.hoverPoint.y * this.scaleY;
-            this.tooltipStyle = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
             this.cdr.detectChanges();
           },
           mouseLeave: () => {
@@ -454,7 +542,72 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       colors: PAL.series,
       grid: { borderColor: PAL.grid, strokeDashArray: 3 },
       fill: { type: 'gradient', gradient: { shade: 'dark' } },
-      tooltip: { theme: 'dark', fillSeriesColor: false },
+      tooltip: { 
+        theme: 'dark', 
+        fillSeriesColor: false,
+        custom: ({ series, seriesIndex, dataPointIndex, w }: any) => {
+          // สร้าง custom tooltip ที่แสดงพิกัดที่ถูก transform แล้ว
+          if (dataPointIndex < 0 || seriesIndex < 0) {
+            return '';
+          }
+
+          const seriesCfg = w?.config?.series?.[seriesIndex];
+          if (!seriesCfg || !Array.isArray(seriesCfg.data)) {
+            return '';
+          }
+
+          const pointOnChart = seriesCfg.data[dataPointIndex];
+          if (!pointOnChart) {
+            return '';
+          }
+
+          const timestamp = pointOnChart.x ?? pointOnChart.t ?? pointOnChart.time;
+          if (!timestamp) {
+            return '';
+          }
+
+          // หาจุดที่ใกล้ที่สุดจากแผนที่
+          const closestMapPoint = (this.currentMapPoints?.length ? this.currentMapPoints : []).reduce((prev, curr) =>
+            Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
+          , this.currentMapPoints?.[0] ?? { ts: timestamp, x: 0, y: 0, afr: 0 });
+
+          // ดึงค่า AFR จากค่า y ของ series (ตรงกับค่าที่แสดงในกราฟ)
+          const afrFromSeries = pointOnChart.y !== null && pointOnChart.y !== undefined 
+            ? pointOnChart.y 
+            : null;
+
+          // สร้าง HTML สำหรับ tooltip
+          const seriesName = seriesCfg?.name || `Series ${seriesIndex + 1}`;
+          const value = series[seriesIndex]?.[dataPointIndex];
+          const timeStr = new Date(timestamp).toLocaleTimeString();
+          
+          let tooltipHTML = `
+            <div style="padding: 8px 12px;">
+              <div style="font-weight: 600; margin-bottom: 4px;">${seriesName}: <span style="color: ${seriesCfg.color || '#fff'};">${value !== undefined ? value.toFixed(2) : 'N/A'}</span></div>
+              <div style="font-size: 11px; color: #aaa; margin-bottom: 2px;">Time: ${timeStr}</div>
+          `;
+
+          if (closestMapPoint && (closestMapPoint.x !== 0 || closestMapPoint.y !== 0)) {
+            // แปลงพิกัดให้สอดคล้องกับ transform
+            const transformedPoint = this.applyTransform({ x: closestMapPoint.x, y: closestMapPoint.y });
+            
+            tooltipHTML += `
+              <div style="font-size: 11px; color: #aaa; margin-bottom: 2px;">Original: (${closestMapPoint.x.toFixed(1)}, ${closestMapPoint.y.toFixed(1)})</div>
+              <div style="font-size: 11px; color: #4FC3F7;">Transformed: (${transformedPoint.x.toFixed(1)}, ${transformedPoint.y.toFixed(1)})</div>
+            `;
+            
+            // ใช้ค่า AFR จาก series (ตรงกับค่าที่แสดงในกราฟ)
+            if (afrFromSeries !== null && !isNaN(afrFromSeries)) {
+              tooltipHTML += `<div style="font-size: 11px; color: #00E5A8; margin-top: 4px;">AFR: ${afrFromSeries.toFixed(2)}</div>`;
+            } else if (closestMapPoint.afr !== undefined) {
+              tooltipHTML += `<div style="font-size: 11px; color: #00E5A8; margin-top: 4px;">AFR: ${closestMapPoint.afr.toFixed(2)}</div>`;
+            }
+          }
+
+          tooltipHTML += `</div>`;
+          return tooltipHTML;
+        }
+      },
       legend: { show: true, position: 'bottom', labels: { colors: PAL.textMuted } },
       theme: { mode: 'dark' }
   };
@@ -768,7 +921,54 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const pt = svg.createSVGPoint();
     pt.x = evt.clientX; pt.y = evt.clientY;
     const local = pt.matrixTransform(svg.getScreenCTM()!.inverse());
-    return { x: local.x, y: local.y };
+    
+    // แปลงพิกัดกลับ (reverse transform) เพื่อให้ตรงกับข้อมูลเดิม
+    return this.reverseTransform({ x: local.x, y: local.y });
+  }
+
+  /**
+   * แปลงพิกัดกลับ (reverse transform) จากพิกัดที่แสดงผลเป็นพิกัดเดิม
+   * เพื่อให้การคลิกและ hover ตรงกับตำแหน่งที่แสดงผล
+   */
+  private reverseTransform(point: {x: number; y: number}): {x: number; y: number} {
+    const viewBoxWidth = 800;
+    const viewBoxHeight = 660;
+    const centerX = viewBoxWidth / 2;
+    const centerY = viewBoxHeight / 2;
+    
+    let x = point.x;
+    let y = point.y;
+    
+    // ย้ายไปที่จุดกึ่งกลาง
+    x -= centerX;
+    y -= centerY;
+    
+    // Reverse: สะท้อนบน-ล่าง ก่อน (ถ้ามี)
+    if (this.svgFlipVertical) {
+      y = -y;
+    }
+    
+    // Reverse: สะท้อนซ้าย-ขวา ก่อน (ถ้ามี)
+    if (this.svgFlipHorizontal) {
+      x = -x;
+    }
+    
+    // Reverse: หมุนกลับ (ถ้ามี)
+    if (this.svgRotation !== 0) {
+      const angle = -this.svgRotation * (Math.PI / 180); // แปลงเป็นเรเดียนและกลับทิศ
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const newX = x * cos - y * sin;
+      const newY = x * sin + y * cos;
+      x = newX;
+      y = newY;
+    }
+    
+    // ย้ายกลับ
+    x += centerX;
+    y += centerY;
+    
+    return { x, y };
   }
 
   private findNearestMapPoint(px: {x:number;y:number}) {
@@ -875,8 +1075,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  // เก็บ reference ไปยัง lap data ที่ใช้สร้าง chart เพื่อให้การ hover ตรงกัน
+  private currentLapDataForChart: MapPoint[] | null = null;
+  private currentLapsDataForChart: MapPoint[][] | null = null;
+
   // ฟังก์ชันสำหรับสร้างแผนที่จาก lap เดียว
   private buildMapFromSingleLap(lap: MapPoint[], key: string) {
+    // เก็บ reference ไปยัง lap data
+    this.currentLapDataForChart = lap;
+    this.currentLapsDataForChart = null;
     const all = lap.map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
     if (!all.length) {
       this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: [] };
@@ -1205,6 +1412,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.categoryName = detail.categoryName;
           this.sessionValue = detail.sessionValue;
           this.circuitName = detail.circuitName;
+          // ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
+          this.initializeSvgTransformForCircuit();
 
           // ใหม่
           this.countDetect  = detail.countDetect;
@@ -1597,6 +1806,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   private buildMapFromLaps(laps: MapPoint[][], key: string) {
+    // เก็บ reference ไปยัง laps data
+    this.currentLapsDataForChart = laps;
+    this.currentLapDataForChart = null;
     const all = laps.flat().map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
     if (!all.length) {
       this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: [] };
@@ -2392,11 +2604,287 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // Method นี้จะถูกเรียกเมื่อเมาส์เข้าสู่พื้นที่ของจุดบนแผนที่
   onMapPointEnter(point: { x: number; y: number; afr: number }) {
     this.hoverPoint = { visible: true, x: point.x, y: point.y, afr: point.afr };
+    this.updateTooltipPosition(point.x, point.y);
+  }
 
-    // คำนวณตำแหน่ง Tooltip ใหม่
-    const left = this.hoverPoint.x * this.scaleX;
-    const top = this.hoverPoint.y * this.scaleY;
-    this.tooltipStyle = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
+  /**
+   * จัดการ hover บน segment (เส้น) เพื่อแสดง AFR
+   */
+  onSegmentHover(evt: MouseEvent, seg: any) {
+    if (!seg) return;
+    
+    // แปลงพิกัดที่ hover เป็นพิกัดเดิม (reverse transform)
+    const local = this.svgClientToLocal(evt);
+    
+    // ตรวจสอบว่า hover อยู่บนเส้นหรือใกล้เส้น
+    const distance = this.distanceToSegment(local, seg);
+    if (distance < 15) { // ระยะห่างที่ยอมรับได้ (เพิ่มขึ้นเพื่อให้ hover ได้ง่ายขึ้น)
+      // หาจุดบนเส้นที่ใกล้ที่สุดเพื่อแสดง circle indicator
+      const closestPoint = this.closestPointOnSegment(local, seg);
+      
+      this.hoverPoint = { 
+        visible: true, 
+        x: closestPoint.x, // ใช้จุดบนเส้นที่ใกล้ที่สุดสำหรับแสดง circle
+        y: closestPoint.y, 
+        afr: seg.afr || 0 
+      };
+      
+      // แสดง tooltip ที่ตำแหน่งเมาส์จริงๆ เพื่อให้ตามเมาส์ไปด้วย
+      this.updateTooltipPositionFromMouse(evt);
+    } else {
+      // ถ้าไกลเกินไป ให้ซ่อน hover
+      this.onSegmentLeave();
+    }
+  }
+
+  /**
+   * เมื่อเมาส์ออกจาก segment
+   */
+  onSegmentLeave() {
+    // ไม่ต้องซ่อนทันที เพราะอาจจะ hover ไปที่จุดอื่น
+    // จะซ่อนเมื่อ hover ออกจากพื้นที่ทั้งหมด
+  }
+
+  /**
+   * เมื่อเมาส์ออกจาก SVG element ทั้งหมด
+   */
+  onSvgMouseLeave() {
+    this.hoverPoint.visible = false;
+    this.tooltipStyle.visibility = 'hidden';
+  }
+
+  /**
+   * คำนวณระยะห่างจากจุดไปยังเส้น segment
+   */
+  private distanceToSegment(point: {x: number; y: number}, seg: {x1: number; y1: number; x2: number; y2: number}): number {
+    const A = point.x - seg.x1;
+    const B = point.y - seg.y1;
+    const C = seg.x2 - seg.x1;
+    const D = seg.y2 - seg.y1;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = 0;
+
+    if (lenSq !== 0) {
+      param = dot / lenSq;
+    }
+
+    let xx: number, yy: number;
+
+    if (param < 0) {
+      xx = seg.x1;
+      yy = seg.y1;
+    } else if (param > 1) {
+      xx = seg.x2;
+      yy = seg.y2;
+    } else {
+      xx = seg.x1 + param * C;
+      yy = seg.y1 + param * D;
+    }
+
+    const dx = point.x - xx;
+    const dy = point.y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * หาจุดบนเส้น segment ที่ใกล้กับจุดที่กำหนดมากที่สุด
+   */
+  private closestPointOnSegment(point: {x: number; y: number}, seg: {x1: number; y1: number; x2: number; y2: number}): {x: number; y: number} {
+    const A = point.x - seg.x1;
+    const B = point.y - seg.y1;
+    const C = seg.x2 - seg.x1;
+    const D = seg.y2 - seg.y1;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = 0;
+
+    if (lenSq !== 0) {
+      param = dot / lenSq;
+    }
+
+    // จำกัด param ให้อยู่ระหว่าง 0 ถึง 1 (บนเส้น segment)
+    param = Math.max(0, Math.min(1, param));
+
+    return {
+      x: seg.x1 + param * C,
+      y: seg.y1 + param * D
+    };
+  }
+
+  /**
+   * อัปเดตตำแหน่ง tooltip โดยคำนึงถึง transform
+   * คำนวณให้ตรงกับตำแหน่งของ circle indicator หลัง transform มากที่สุด
+   */
+  private updateTooltipPosition(svgX: number, svgY: number) {
+    if (!this.mapSvgEl?.nativeElement) return;
+    
+    const svg = this.mapSvgEl.nativeElement as SVGSVGElement;
+    const svgRect = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox?.baseVal || { width: 800, height: 660 };
+    
+    // หา group element ที่มี transform (คือ group ที่ครอบ circle)
+    const transformedGroup = svg.querySelector('g[transform]') as SVGGElement;
+    
+    if (transformedGroup) {
+      // สร้าง SVGPoint เพื่อแปลงพิกัด
+      const svgPoint = svg.createSVGPoint();
+      svgPoint.x = svgX;
+      svgPoint.y = svgY;
+      
+      // ใช้ getScreenCTM() ของ transformed group เพื่อแปลงพิกัด SVG เป็น screen coordinates
+      // ซึ่งจะคำนึงถึง transform ทั้งหมด (rotation, flip, scale) อัตโนมัติ
+      const groupCTM = transformedGroup.getScreenCTM();
+      if (groupCTM) {
+        // แปลงพิกัดผ่าน group transform matrix
+        const screenPoint = svgPoint.matrixTransform(groupCTM);
+        
+        // คำนวณตำแหน่งสัมพัทธ์กับ container
+        const container = svg.closest('.track-image-container') as HTMLElement;
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          
+          // offset เล็กน้อยเพื่อให้ tooltip อยู่ใกล้กับ circle แต่ไม่บัง
+          const offsetX = 12; // offset จากขอบขวาของ circle (radius 7 + gap 5)
+          const offsetY = -8; // offset จากขอบบนของ circle
+          
+          const left = (screenPoint.x - containerRect.left) + offsetX;
+          const top = (screenPoint.y - containerRect.top) + offsetY;
+          
+          this.tooltipStyle = { 
+            left: `${left}px`, 
+            top: `${top}px`, 
+            visibility: 'visible' 
+          };
+          return;
+        }
+      }
+    }
+    
+    // Fallback: ใช้วิธีคำนวณแบบเดิม
+    this.calculateTooltipPositionFallback(svgX, svgY, svg, svgRect, viewBox);
+  }
+
+  /**
+   * Fallback method สำหรับคำนวณตำแหน่ง tooltip
+   */
+  private calculateTooltipPositionFallback(
+    svgX: number, 
+    svgY: number, 
+    svg: SVGSVGElement, 
+    svgRect: DOMRect, 
+    viewBox: { width: number; height: number }
+  ) {
+    // แปลงพิกัด SVG กลับเป็นพิกัดที่แสดงผล (apply transform)
+    const transformedPoint = this.applyTransform({ x: svgX, y: svgY });
+    
+    // คำนวณตำแหน่งจาก viewBox coordinates เป็น pixel coordinates
+    const scaleX = svgRect.width / viewBox.width;
+    const scaleY = svgRect.height / viewBox.height;
+    
+    // คำนวณตำแหน่งของ circle หลัง transform ใน pixel coordinates
+    const circleLeft = transformedPoint.x * scaleX;
+    const circleTop = transformedPoint.y * scaleY;
+    
+    // offset เพื่อให้ tooltip อยู่ใกล้กับ circle แต่ไม่บัง
+    const offsetX = 12;
+    const offsetY = -8;
+    
+    // คำนวณตำแหน่งสัมพัทธ์กับ container
+    const container = svg.closest('.track-image-container') as HTMLElement;
+    if (container) {
+      const containerRect = container.getBoundingClientRect();
+      const left = (svgRect.left - containerRect.left) + circleLeft + offsetX;
+      const top = (svgRect.top - containerRect.top) + circleTop + offsetY;
+      
+      this.tooltipStyle = { 
+        left: `${left}px`, 
+        top: `${top}px`, 
+        visibility: 'visible' 
+      };
+    } else {
+      // Fallback: ใช้วิธีเดิม
+      const left = circleLeft + offsetX;
+      const top = circleTop + offsetY;
+      this.tooltipStyle = { 
+        left: `${left}px`, 
+        top: `${top}px`, 
+        visibility: 'visible' 
+      };
+    }
+  }
+
+  /**
+   * อัปเดตตำแหน่ง tooltip จากตำแหน่งเมาส์ (เพื่อให้ tooltip ตามเมาส์ไปด้วย)
+   */
+  private updateTooltipPositionFromMouse(evt: MouseEvent) {
+    if (!this.mapSvgEl?.nativeElement) return;
+    
+    // ใช้ container แทน SVG เพื่อให้คำนวณตำแหน่งได้ถูกต้อง
+    const container = this.mapSvgEl.nativeElement.closest('.track-image-container') as HTMLElement;
+    if (!container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    
+    // คำนวณตำแหน่ง tooltip จากตำแหน่งเมาส์บนหน้าจอ
+    // offset เพื่อให้ tooltip ไม่บังเมาส์
+    const offsetX = 15;
+    const offsetY = 15;
+    
+    const left = evt.clientX - containerRect.left + offsetX;
+    const top = evt.clientY - containerRect.top + offsetY;
+    
+    this.tooltipStyle = { 
+      left: `${left}px`, 
+      top: `${top}px`, 
+      visibility: 'visible' 
+    };
+  }
+
+  /**
+   * แปลงพิกัดเดิมเป็นพิกัดที่แสดงผล (apply transform) - ตรงข้ามกับ reverseTransform
+   */
+  private applyTransform(point: {x: number; y: number}): {x: number; y: number} {
+    const viewBoxWidth = 800;
+    const viewBoxHeight = 660;
+    const centerX = viewBoxWidth / 2;
+    const centerY = viewBoxHeight / 2;
+    
+    let x = point.x;
+    let y = point.y;
+    
+    // ย้ายไปที่จุดกึ่งกลาง
+    x -= centerX;
+    y -= centerY;
+    
+    // หมุน (ถ้ามี)
+    if (this.svgRotation !== 0) {
+      const angle = this.svgRotation * (Math.PI / 180);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const newX = x * cos - y * sin;
+      const newY = x * sin + y * cos;
+      x = newX;
+      y = newY;
+    }
+    
+    // สะท้อนซ้าย-ขวา (ถ้ามี)
+    if (this.svgFlipHorizontal) {
+      x = -x;
+    }
+    
+    // สะท้อนบน-ล่าง (ถ้ามี)
+    if (this.svgFlipVertical) {
+      y = -y;
+    }
+    
+    // ย้ายกลับ
+    x += centerX;
+    y += centerY;
+    
+    return { x, y };
   }
 
   // Method นี้จะถูกเรียกเมื่อเมาส์ออกจากพื้นที่ของจุดบนแผนที่
@@ -2468,7 +2956,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // const points = this.transformRows(sample);
     // this.setMapPoints(points);
 
-    setTimeout(() => this.calculateSvgScale(), 0);
+    setTimeout(() => {
+      this.calculateSvgScale();
+      // ตั้งค่า transform เริ่มต้นตาม circuitName (ถ้ายังไม่ตั้งค่า)
+      if (!this.circuitName) {
+        // ถ้ายังไม่มี circuitName ให้ใช้ค่าเริ่มต้นเป็น bsc
+        this.initializeSvgTransformForCircuit();
+      } else {
+        this.initializeSvgTransformForCircuit();
+      }
+    }, 0);
 
     const ro = new ResizeObserver(() => this.calculateSvgScale());
     ro.observe(this.mapSvgEl.nativeElement);
@@ -2673,5 +3170,126 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     //     // this.afrAverage
     //   }
     // });
+  }
+
+  // ====== ฟังก์ชันสำหรับควบคุมการหมุนและกลับด้าน SVG ======
+  
+  /**
+   * คำนวณ transform string สำหรับ SVG (ใช้กับ SVG transform attribute)
+   * สำหรับการสะท้อนแบบภาพในกระจก (ซ้าย-ขวา)
+   */
+  getSvgTransformAttribute(): string {
+    const viewBoxWidth = 800;
+    const viewBoxHeight = 660;
+    const centerX = viewBoxWidth / 2;
+    const centerY = viewBoxHeight / 2;
+    
+    const transforms: string[] = [];
+    
+    // ย้ายไปที่จุดกึ่งกลางก่อน
+    transforms.push(`translate(${centerX}, ${centerY})`);
+    
+    // การหมุน (รอบจุดกึ่งกลาง)
+    if (this.svgRotation !== 0) {
+      transforms.push(`rotate(${this.svgRotation})`);
+    }
+    
+    // สะท้อนซ้าย-ขวา (แบบภาพในกระจก) - ใช้ scale(-1, 1)
+    if (this.svgFlipHorizontal) {
+      transforms.push(`scale(-1, 1)`);
+    }
+    
+    // สะท้อนบน-ล่าง - ใช้ scale(1, -1)
+    if (this.svgFlipVertical) {
+      transforms.push(`scale(1, -1)`);
+    }
+    
+    // ย้ายกลับ
+    transforms.push(`translate(${-centerX}, ${-centerY})`);
+    
+    return transforms.join(' ') || '';
+  }
+
+  /**
+   * คำนวณ transform string สำหรับ SVG (เก่า - ใช้กับ CSS)
+   */
+  get svgTransform(): string {
+    return this.getSvgTransformAttribute();
+  }
+
+  // ====== ฟังก์ชันการหมุนและกลับด้าน ======
+  
+  /**
+   * หมุน SVG ตามองศาที่กำหนด
+   */
+  rotateSvg(degrees: number): void {
+    this.svgRotation = (this.svgRotation + degrees) % 360;
+    if (this.svgRotation < 0) {
+      this.svgRotation += 360;
+    }
+    this.applySvgTransform();
+  }
+
+  /**
+   * ตั้งค่าการหมุน SVG โดยตรง
+   */
+  setSvgRotation(degrees: number): void {
+    this.svgRotation = degrees % 360;
+    if (this.svgRotation < 0) {
+      this.svgRotation += 360;
+    }
+    this.applySvgTransform();
+  }
+
+  /**
+   * กลับด้านแนวนอน
+   */
+  flipHorizontal(): void {
+    this.svgFlipHorizontal = !this.svgFlipHorizontal;
+    this.applySvgTransform();
+  }
+
+  /**
+   * กลับด้านแนวตั้ง
+   */
+  flipVertical(): void {
+    this.svgFlipVertical = !this.svgFlipVertical;
+    this.applySvgTransform();
+  }
+
+  /**
+   * รีเซ็ตการหมุนและกลับด้านทั้งหมด - กลับไปยังค่า default ตาม circuitName
+   */
+  resetSvgTransform(): void {
+    this.initializeSvgTransformForCircuit();
+  }
+
+  /**
+   * ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
+   */
+  private initializeSvgTransformForCircuit(): void {
+    if (this.circuitName === 'bsc') {
+      // bsc: หมุน 45° และสลับซ้ายขวา
+      this.svgRotation = 45;
+      this.svgFlipHorizontal = true;
+      this.svgFlipVertical = false;
+    } else {
+      // bric และ sic: ไม่หมุนและไม่สลับด้าน
+      this.svgRotation = 0;
+      this.svgFlipHorizontal = false;
+      this.svgFlipVertical = false;
+    }
+    this.applySvgTransform();
+  }
+
+  /**
+   * นำ transform ไปใช้กับ SVG element
+   * ตอนนี้ใช้ SVG transform attribute ผ่าน getSvgTransformAttribute() ใน template แล้ว
+   * Method นี้เหลือไว้สำหรับความเข้ากันได้
+   */
+  private applySvgTransform(): void {
+    // ไม่ต้องทำอะไร เพราะตอนนี้ใช้ [attr.transform] ใน template แทน
+    // แต่ยังคงเรียกใช้เพื่อให้แน่ใจว่า Angular detect changes
+    this.cdr.detectChanges();
   }
 }
