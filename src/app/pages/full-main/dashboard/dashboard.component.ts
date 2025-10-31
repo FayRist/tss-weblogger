@@ -164,30 +164,50 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     );
     this.subscriptions.push(MatchSub);
   }
+
+  /**
+   * Helper function สำหรับเรียงลำดับข้อมูลตาม:
+   * 1. Count (countDetect) จากมากไปน้อย
+   * 2. Status (online ก่อน offline)
+   * 3. NBR. (carNumber) จากน้อยไปมาก
+   */
+  private sortLoggers(loggers: LoggerItem[]): LoggerItem[] {
+    return [...loggers].sort((a, b) => {
+      // 1. เรียงตาม Count (countDetect) จากมากไปน้อย
+      const countA = a.countDetect ?? 0;
+      const countB = b.countDetect ?? 0;
+      if (countA !== countB) {
+        return countB - countA; // มาก→น้อย
+      }
+
+      // 2. เรียงตาม Status (online ก่อน offline)
+      const statusA = (a.status ?? a.loggerStatus ?? '').toString().toLowerCase().trim();
+      const statusB = (b.status ?? b.loggerStatus ?? '').toString().toLowerCase().trim();
+      const isOnlineA = statusA === 'online' ? 1 : 0;
+      const isOnlineB = statusB === 'online' ? 1 : 0;
+      if (isOnlineA !== isOnlineB) {
+        return isOnlineB - isOnlineA; // online (1) ก่อน offline (0)
+      }
+
+      // 3. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
+      const carNumA = Number(a.carNumber) || 0;
+      const carNumB = Number(b.carNumber) || 0;
+      return carNumA - carNumB; // น้อย→มาก
+    });
+  }
+
   updateView(allLoggers: LoggerItem[] = []): void {
     const filters = this.filterLogger.value ?? ['all'];
 
     // FILTER
     let filtered = allLoggers.filter(x => this.matchesFilters(x, filters));
 
-    // SORT
-    const desc = !!this.formGroup.value.sortType; // true = มาก→น้อย
-    filtered.sort((a, b) => {
-      const byWarning = desc ? b.countDetect - a.countDetect : a.countDetect - b.countDetect;
-      if (byWarning !== 0) return byWarning;
-      const byDetector = Number(b.warningDetector) - Number(a.warningDetector);
-      if (byDetector !== 0) return byDetector;
-      return a.firstName.localeCompare(b.firstName, 'th');
-    });
+    // SORT: เรียงตาม Count (มาก→น้อย) / Status(online→offline) / NBR. (น้อย→มาก)
+    filtered = this.sortLoggers(filtered);
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
-    this.onShowAllLoggers = [...filtered];
-
-    this.formGroup.get('sortLoggerType')?.value;
-    this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
-      return Number(a.carNumber) - Number(b.carNumber); // ✅ แปลงเป็นตัวเลข
-    });
-    this.sortStatus = desc ? 'มาก - น้อย' : 'น้อย - มาก';
+    this.onShowAllLoggers = filtered;
+    this.sortStatus = 'Count↓ / Status(online→offline) / NBR.↑';
     this.dataSource.data = this.onShowAllLoggers;
   }
 
@@ -265,20 +285,21 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   }
 
   private applyFilter(value: FilterKey) {
+    let filtered: LoggerItem[] = [];
     switch (value) {
       case 'all':
-        this.onShowAllLoggers = this.allLoggers;
-        this.dataSource.data = this.onShowAllLoggers;
+        filtered = this.allLoggers;
         break;
       case 'allSmokeDetect': // มี warning > 1
-        this.onShowAllLoggers = this.allLoggers.filter(l => (l.countDetect ?? 0) > 1);
-        this.dataSource.data = this.onShowAllLoggers;
+        filtered = this.allLoggers.filter(l => (l.countDetect ?? 0) > 1);
         break;
       case 'excludeSmokeDetect': // ไม่มี warning เลย
-        this.onShowAllLoggers = this.allLoggers.filter(l => (l.countDetect ?? 0) === 0);
-        this.dataSource.data = this.onShowAllLoggers;
+        filtered = this.allLoggers.filter(l => (l.countDetect ?? 0) === 0);
         break;
     }
+    // เรียงลำดับข้อมูลตามที่กำหนด
+    this.onShowAllLoggers = this.sortLoggers(filtered);
+    this.dataSource.data = this.onShowAllLoggers;
   }
 
   searchFilter(event: Event) {
@@ -326,17 +347,9 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     }
   }
   onToggleSortCarNumber() {
-    const isSortCarNumber = this.formGroup.get('sortLoggerType')?.value;
-
-    if (isSortCarNumber) {
-      this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
-        return Number(a.carNumber) - Number(b.carNumber); // ✅ แปลงเป็นตัวเลข
-      });
-    } else {
-      this.onShowAllLoggers = [...this.onShowAllLoggers].sort((a, b) => {
-        return Number(b.carNumber) - Number(a.carNumber); // ✅ แปลงเป็นตัวเลข
-      });
-    }
+    // ใช้การเรียงลำดับแบบเดียวกัน (Count → Status → NBR.)
+    this.onShowAllLoggers = this.sortLoggers(this.onShowAllLoggers);
+    this.dataSource.data = this.onShowAllLoggers;
   }
 
   get allWarning(): LoggerItem[] {

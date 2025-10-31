@@ -203,6 +203,42 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     visibility: 'hidden' as 'hidden' | 'visible'
   };
 
+  // สำหรับเก็บ fixed bounds สำหรับ bric (เพื่อไม่ให้แผนที่ปรับ scale ตลอดเวลา)
+  private fixedBoundsForBric: {
+    minLat: number;
+    maxLat: number;
+    minLon: number;
+    maxLon: number;
+  } | null = null;
+
+  // ฟังก์ชันสำหรับตั้งค่า fixed bounds จากข้อมูลเริ่มต้น
+  private initializeFixedBoundsForBric(all: Array<{lat: number; lon: number}>) {
+    if (this.fixedBoundsForBric) return; // ถ้ามี bounds แล้ว ไม่ต้องตั้งใหม่
+
+    if (all.length < 2) return;
+
+    const lats = all.map(p => p.lat);
+    const lons = all.map(p => p.lon);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons);
+    const maxLon = Math.max(...lons);
+
+    // ใช้ padding 10% เพื่อให้มีพื้นที่เพียงพอสำหรับการเดินทางต่อเนื่อง
+    const padding = 0.10;
+    const spanLat = Math.max(1e-9, maxLat - minLat);
+    const spanLon = Math.max(1e-9, maxLon - minLon);
+
+    this.fixedBoundsForBric = {
+      minLat: minLat - spanLat * padding,
+      maxLat: maxLat + spanLat * padding,
+      minLon: minLon - spanLon * padding,
+      maxLon: maxLon + spanLon * padding
+    };
+
+    console.log('Initialized fixed bounds for bric:', this.fixedBoundsForBric);
+  }
+
 
   // private arraysEqual(a?: any[], b?: any[]) {
   //   if (a === b) return true;
@@ -705,6 +741,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   onRaceChange(key: string) {
     this.selectedRaceKey = key;
     // this.ensureStartPointForKey(key);
+
+    // รีเซ็ต fixed bounds เมื่อเปลี่ยน race (สำหรับ bric)
+    if (this.circuitName === 'bric') {
+      this.fixedBoundsForBric = null;
+    }
+
     this.recomputeLapsForKey(key);
 
     const sel = [key];
@@ -847,20 +889,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const minLon = Math.min(...all.map(v => v.lon));
     const maxLon = Math.max(...all.map(v => v.lon));
 
-    // ใช้สูตรเดียวกับ generateSVGPoints: ไม่มี padding, คำนวณตามช่วงจริง
+    // สำหรับ bric ใช้ padding เพื่อให้แสดงผลดีขึ้นเมื่อค่าพิกัดแตกต่างจาก bsc
+    const padding = this.circuitName === 'bric' ? 0.05 : 0.02;
     const spanLat = Math.max(1e-9, maxLat - minLat);
     const spanLon = Math.max(1e-9, maxLon - minLon);
-    const paddedSpanLat = spanLat; // no padding
-    const paddedSpanLon = spanLon; // no padding
-    const paddedMinLat = minLat;   // no padding
-    const paddedMinLon = minLon;   // no padding
+    const paddedSpanLat = spanLat * (1 + 2 * padding);
+    const paddedSpanLon = spanLon * (1 + 2 * padding);
+    const paddedMinLat = minLat - spanLat * padding;
+    const paddedMinLon = minLon - spanLon * padding;
 
     const toX = (lon:number) => {
-      const normalizedX = (lon - paddedMinLon) / paddedSpanLon;
+      // ตรวจสอบและป้องกันการหารด้วย 0 หรือค่าที่ไม่ถูกต้อง
+      const normalizedX = paddedSpanLon > 0 ? (lon - paddedMinLon) / paddedSpanLon : 0.5;
       return Math.max(0, Math.min(this.SVG_W, normalizedX * this.SVG_W));
     };
     const toY = (lat:number) => {
-      const normalizedY = (lat - paddedMinLat) / paddedSpanLat;
+      // ตรวจสอบและป้องกันการหารด้วย 0 หรือค่าที่ไม่ถูกต้อง
+      const normalizedY = paddedSpanLat > 0 ? (lat - paddedMinLat) / paddedSpanLat : 0.5;
       return Math.max(0, Math.min(this.SVG_H, this.SVG_H - (normalizedY * this.SVG_H)));
     };
 
@@ -1563,8 +1608,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const minLon = Math.min(...all.map(v => v.lon));
     const maxLon = Math.max(...all.map(v => v.lon));
 
-    // เพิ่ม padding 2% เพื่อให้เส้นไม่ชิดขอบ (เหมือนกับ updateMapFromSelection)
-    const padding = 0.02;
+    // เพิ่ม padding เพื่อให้เส้นไม่ชิดขอบ (สำหรับ bric ใช้ padding มากขึ้น)
+    const padding = this.circuitName === 'bric' ? 0.05 : 0.02;
     const spanLat = Math.max(1e-9, maxLat - minLat);
     const spanLon = Math.max(1e-9, maxLon - minLon);
     const paddedSpanLat = spanLat * (1 + 2 * padding);
@@ -1573,11 +1618,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const paddedMinLon = minLon - spanLon * padding;
 
     const toX = (lon:number) => {
-      const normalizedX = (lon - paddedMinLon) / paddedSpanLon;
+      // ตรวจสอบและป้องกันการหารด้วย 0 หรือค่าที่ไม่ถูกต้อง
+      const normalizedX = paddedSpanLon > 0 ? (lon - paddedMinLon) / paddedSpanLon : 0.5;
       return Math.max(0, Math.min(this.SVG_W, normalizedX * this.SVG_W));
     };
     const toY = (lat:number) => {
-      const normalizedY = (lat - paddedMinLat) / paddedSpanLat;
+      // ตรวจสอบและป้องกันการหารด้วย 0 หรือค่าที่ไม่ถูกต้อง
+      const normalizedY = paddedSpanLat > 0 ? (lat - paddedMinLat) / paddedSpanLat : 0.5;
       return Math.max(0, Math.min(this.SVG_H, this.SVG_H - (normalizedY * this.SVG_H)));
     };
 
@@ -2108,11 +2155,68 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // ---- bounds สำหรับ normalize (เพิ่ม padding เพื่อไม่ให้ชิดขอบ)
     const lats = all.map(p => p.lat);
     const lons = all.map(p => p.lon);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
 
-    // เพิ่ม padding 2% เพื่อให้เส้นไม่ชิดขอบ
-    const padding = 0.02;
+    let minLat: number, maxLat: number, minLon: number, maxLon: number;
+    let padding: number;
+
+    // สำหรับ bric: ใช้ fixed bounds ถ้ามีแล้ว เพื่อไม่ให้แผนที่ปรับ scale ตลอดเวลา
+    if (this.circuitName === 'bric' && this.fixedBoundsForBric) {
+      // ใช้ fixed bounds ที่ตั้งไว้แล้ว
+      minLat = this.fixedBoundsForBric.minLat;
+      maxLat = this.fixedBoundsForBric.maxLat;
+      minLon = this.fixedBoundsForBric.minLon;
+      maxLon = this.fixedBoundsForBric.maxLon;
+      padding = 0; // ไม่ต้อง padding อีกเพราะ fixed bounds มี padding แล้ว
+
+      // อัปเดต fixed bounds ถ้าจุดใหม่อยู่นอก bounds (ขยายออกไป)
+      const actualMinLat = Math.min(...lats);
+      const actualMaxLat = Math.max(...lats);
+      const actualMinLon = Math.min(...lons);
+      const actualMaxLon = Math.max(...lons);
+
+      if (actualMinLat < minLat || actualMaxLat > maxLat || actualMinLon < minLon || actualMaxLon > maxLon) {
+        // ขยาย bounds ออกไป 10% จากจุดที่อยู่นอก bounds
+        const expandPadding = 0.10;
+        const newSpanLat = Math.max(1e-9, (actualMaxLat > maxLat ? actualMaxLat : maxLat) - (actualMinLat < minLat ? actualMinLat : minLat));
+        const newSpanLon = Math.max(1e-9, (actualMaxLon > maxLon ? actualMaxLon : maxLon) - (actualMinLon < minLon ? actualMinLon : minLon));
+
+        this.fixedBoundsForBric = {
+          minLat: (actualMinLat < minLat ? actualMinLat : minLat) - newSpanLat * expandPadding,
+          maxLat: (actualMaxLat > maxLat ? actualMaxLat : maxLat) + newSpanLat * expandPadding,
+          minLon: (actualMinLon < minLon ? actualMinLon : minLon) - newSpanLon * expandPadding,
+          maxLon: (actualMaxLon > maxLon ? actualMaxLon : maxLon) + newSpanLon * expandPadding
+        };
+
+        minLat = this.fixedBoundsForBric.minLat;
+        maxLat = this.fixedBoundsForBric.maxLat;
+        minLon = this.fixedBoundsForBric.minLon;
+        maxLon = this.fixedBoundsForBric.maxLon;
+      }
+    } else {
+      // สำหรับ bsc หรือ bric ที่ยังไม่มี fixed bounds: คำนวณจากข้อมูลจริง
+      minLat = Math.min(...lats);
+      maxLat = Math.max(...lats);
+      minLon = Math.min(...lons);
+      maxLon = Math.max(...lons);
+
+      // สำหรับ bric: ตั้ง fixed bounds ครั้งแรก (ใช้ข้อมูลเริ่มต้น 10 จุดแรกขึ้นไป)
+      if (this.circuitName === 'bric' && !this.fixedBoundsForBric && all.length >= 10) {
+        this.initializeFixedBoundsForBric(all);
+      }
+
+      // ใช้ fixed bounds ถ้ามี (หลังจาก initialize)
+      const currentFixedBounds = this.fixedBoundsForBric;
+      if (this.circuitName === 'bric' && currentFixedBounds) {
+        minLat = currentFixedBounds.minLat;
+        maxLat = currentFixedBounds.maxLat;
+        minLon = currentFixedBounds.minLon;
+        maxLon = currentFixedBounds.maxLon;
+        padding = 0;
+      } else {
+        padding = this.circuitName === 'bric' ? 0.05 : 0.02;
+      }
+    }
+
     const spanLat = Math.max(1e-9, maxLat - minLat);
     const spanLon = Math.max(1e-9, maxLon - minLon);
     const paddedSpanLat = spanLat * (1 + 2 * padding);
@@ -2141,10 +2245,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // map เป็นพิกัด SVG (คำนวณให้อยู่ภายใน 0-800 และ 0-660)
       const pts = arr.map((r, i) => {
         // คำนวณพิกัดโดยตรงโดยไม่ใช้ transform
-        const normalizedX = (r.lon - paddedMinLon) / paddedSpanLon;
-        const normalizedY = (r.lat - paddedMinLat) / paddedSpanLat;
+        // ใช้ Math.max เพื่อป้องกันการหารด้วย 0 และจัดการกับค่าที่แตกต่างกันมาก
+        const normalizedX = paddedSpanLon > 0 ? (r.lon - paddedMinLon) / paddedSpanLon : 0.5;
+        const normalizedY = paddedSpanLat > 0 ? (r.lat - paddedMinLat) / paddedSpanLat : 0.5;
 
-        // แปลงเป็นพิกัด SVG และ clamp ให้อยู่ในขอบเขต
+        // แปลงเป็นพิกัด SVG และ clamp ให้อยู่ในขอบเขตอย่างแน่นหนา
+        // เพื่อให้แน่ใจว่าทุกจุดจะแสดงภายในกรอบ SVG ไม่ว่าจะค่าพิกัดเป็นอย่างไร
         const x = Math.max(0, Math.min(SVG_W, normalizedX * SVG_W));
         const y = Math.max(0, Math.min(SVG_H, SVG_H - (normalizedY * SVG_H)));
 
@@ -2204,7 +2310,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.endPointByKey = end;
     this.segmentsByKey = segs;
     this.hasRouteData = true;
-    // แสดงเส้นทางเฉพาะโหมด bsc
+    // แสดงเส้นทางสำหรับ bsc และ bric
     this.showRoutePath = (this.circuitName === 'bsc');
   }
 
