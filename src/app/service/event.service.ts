@@ -170,6 +170,21 @@ export class EventService {
       );
     }
 
+    updateActiveEvent(editEvent: any): Observable<unknown> {
+      const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.ACTIVE_EVENT);
+      return this.http.post(eventUrl, editEvent).pipe(
+        map(response => {
+          console.log('Event added/updated successfully:', response);
+          return response;
+        }),
+        catchError(error => {
+          console.error('Error adding/updating Event:', error);
+          throw error;
+        })
+      );
+    }
+
+
   deleteEvent(configID: any): Observable<unknown> {
     const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_CONFIG);
     return this.http.post(eventUrl, configID).pipe(

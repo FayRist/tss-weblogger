@@ -34,6 +34,7 @@ export const APP_CONFIG = {
       ADD_EVENT: '/event/addEvent',
       UPDATE_EVENT: '/event/updateEvent',
       DELETE_EVENT: '/event/deleteEvent',
+      ACTIVE_EVENT: '/event/activeEvent',
       END_EVENT: '/event/endEvent',
       EVENT_DROPDOWN: '/event/dropDownValue',
       EVENT_SEGMENT_DROPDOWN: '/event/dropDownOptionSegment',

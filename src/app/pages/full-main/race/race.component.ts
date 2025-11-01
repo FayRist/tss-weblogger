@@ -80,6 +80,31 @@ export class RaceComponent implements OnInit {
     this.loadDropDownEvent();
   }
 
+  raceListActive(sessionName: string, eventId: number, raceId :number, active :number, type: string){
+    console.log("raceListActive(): ",raceId, active);
+    let payload = {
+      id_req: raceId,
+      current_Time : this.time.now(),
+      active: active,
+      type: type,
+    }
+
+    this.eventService.updateActiveEvent(payload).subscribe(
+      response => {
+        console.log('Event added/updated successfully:', response);
+        // this.dialogRef.close('success');
+        this.toastr.success(`เริ่มการแข่ง ${this.getSessionName(sessionName)} `);
+        // this.loadEvent();
+        this.loadRace(eventId);
+
+      },
+      error => {
+        console.error('Error adding/updating Event:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Event');
+      }
+    );
+  }
+
 
   loadDropDownEvent(){
     const eventData = this.eventService.getDropDownEvent().subscribe(

@@ -33,7 +33,7 @@
                       class="w-100 p-0 btn"
                       [class]="eventList.active == 1 ? 'btn-info' : 'btn-secondary'"
                       [disabled]="eventList.active == 0 && (statusOf(eventList) == RaceStatus.Live || statusOf(eventList) == RaceStatus.Finished)"
-                      (click)="eventListActive(eventList.event_id, eventList.active)">
+                      (click)="eventListActive(eventList.event_name ,eventList.event_id, eventList.active, 'event')">
                       {{ eventList.active == 1 ? 'active' : 'inactive' }}
                     </button>
                   </div>

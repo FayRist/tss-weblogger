@@ -196,8 +196,27 @@ export class EventComponent implements OnInit {
     });
   }
 
-  eventListActive(eventId :number, active :number){
+  eventListActive(eventName: string, eventId :number, active :number, type: string){
     console.log("eventListActive(): ",eventId, active);
+    let payload = {
+      id_req: eventId,
+      current_Time : this.time.now(),
+      active: active,
+      type: type,
+    }
+
+    this.eventService.updateActiveEvent(payload).subscribe(
+      response => {
+        console.log('Event added/updated successfully:', response);
+        // this.dialogRef.close('success');
+        this.toastr.success(`เริ่ม Event ${eventName}`);
+        this.loadEvent();
+      },
+      error => {
+        console.error('Error adding/updating Event:', error);
+          this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Event');
+      }
+    );
   }
 
   openEnd(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any): void {
