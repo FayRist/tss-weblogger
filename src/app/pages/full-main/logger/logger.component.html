@@ -205,7 +205,7 @@
                       }
 
                       <!-- จุดเริ่มต้นปัจจุบัน -->
-                      @if (startLatLongPoint && this.circuitName === 'bsc') {
+                      @if (startLatLongPoint && (this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118))) {
                         <circle
                           [attr.cx]="startPointPx?.x || 0"
                           [attr.cy]="startPointPx?.y || 0"
@@ -230,7 +230,7 @@
                     }
                   </g>
 
-                  @if (this.circuitName !== 'bsc') {
+                  @if (this.circuitName !== 'bsc' && !(this.circuitName === 'bric' && this.loggerID === 118)) {
                     <g class="interactive-points">
                       @for (p of currentMapPoints; track p.ts) {
                         <circle
