@@ -228,8 +228,18 @@ exportLoggerEx(): void {
     'Logger'
   ]];
 
-  // สร้าง worksheet มีแค่ header
-  const ws = XLSX.utils.aoa_to_sheet(loggerHeader);
+  // แปลงข้อมูลจาก this.allLoggers เป็น array ของ rows
+  const rows = (this.allLoggers ?? []).map(logger => ([
+    logger.carNumber ?? '',
+    logger.firstName ?? '',
+    logger.lastName ?? '',
+    logger.teamName ?? '',
+    logger.classType ?? '',
+    logger.loggerId ?? ''
+  ]));
+
+  // สร้าง worksheet รวม header และข้อมูล
+  const ws = XLSX.utils.aoa_to_sheet([...loggerHeader, ...rows]);
 
   // set ความกว้าง column ตามเหมาะสม
   ws['!cols'] = [

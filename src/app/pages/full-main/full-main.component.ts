@@ -141,6 +141,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
         const now = toDate(this.time.now());
         this.eventService.getLoggerByDate(now).subscribe({
           next: ({ items, count }) => {
+            if (items.length <= 0){
+              return;
+            }
+
             this.eventNameSelect = items[0].eventName || 'BANGSAEN';
             this.SegmentNameSelect = items[0].segmentValue;
             this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";
@@ -266,6 +270,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
         const now = toDate(this.time.now());
         this.eventService.getLoggerByDate(now).subscribe({
           next: ({ items, count }) => {
+            if (items.length <= 0){
+              return
+            }
+
             this.eventNameSelect = items[0].eventName;
             this.SegmentNameSelect = items[0].segmentValue;
             this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";

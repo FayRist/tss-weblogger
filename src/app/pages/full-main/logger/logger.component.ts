@@ -1432,9 +1432,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         // ถ้าเป็น bric แต่ loggerId != 118 ให้รอรับค่าจาก webSocketService
         this.initializeWebSocket(this.parameterLoggerID);
       }
-    } else {
+    } else if (this.circuitName === 'sic'){
       this.loadCsvAndDraw(`models/mock-data/practice_section_ab_test_bric.csv`);
       // this.initializeWebSocket(this.parameterLoggerID);
+    } else {
+        this.initializeWebSocket(this.parameterLoggerID);
+
     }
   }
 
