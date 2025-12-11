@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import {MatProgressBarModule} from '@angular/material/progress-bar';
 import {MatCardModule} from '@angular/material/card';
 import {MatChipsModule} from '@angular/material/chips';
@@ -28,6 +28,7 @@ import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { CommonModule } from '@angular/common';
 import { LoggerItem } from '../../../model/api-response-model';
 import { TimeService } from '../../../service/time.service';
+import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
@@ -54,9 +55,16 @@ function toDate(v: unknown): Date {
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DashboardComponent implements OnInit, AfterViewInit {
+export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
+
+  // WebSocket สำหรับ logger status
+  private wsStatus: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 5;
+  private readonly reconnectDelay = 3000; // 3 seconds
+  private reconnectTimeout: any = null;
 
 
   allLoggers: LoggerItem[] = [
@@ -165,12 +173,6 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.subscriptions.push(MatchSub);
   }
 
-  /**
-   * Helper function สำหรับเรียงลำดับข้อมูลตาม:
-   * 1. Count (countDetect) จากมากไปน้อย
-   * 2. Status (online ก่อน offline)
-   * 3. NBR. (carNumber) จากน้อยไปมาก
-   */
   private sortLoggers(loggers: LoggerItem[]): LoggerItem[] {
     return [...loggers].sort((a, b) => {
       // 1. เรียงตาม Count (countDetect) จากมากไปน้อย
@@ -213,6 +215,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
   ngOnDestroy() {
     this.subscriptions.forEach(s => s.unsubscribe());
+    this.disconnectWebSocket();
   }
 
   parameterRaceId:any = null;
@@ -258,6 +261,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
             this.allLoggers = loggerRes ?? [];
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
+            // เชื่อมต่อ WebSocket หลังจากโหลดข้อมูล loggers แล้ว
+            this.connectWebSocket();
           },
           error: (err) => console.error('Error loading logger list:', err)
         });
@@ -421,6 +426,165 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         this.subscriptions.push(qpSub);
       }
     });
+  }
+
+  /**
+   * เชื่อมต่อ WebSocket สำหรับ logger status
+   */
+  private connectWebSocket(): void {
+    // ถ้ามี connection อยู่แล้วและยังเปิดอยู่ ให้ข้าม
+    if (this.wsStatus && this.wsStatus.readyState === WebSocket.OPEN) {
+      console.log('[WS Status] Already connected');
+      return;
+    }
+
+    // ถ้ากำลังเชื่อมต่ออยู่ ให้ข้าม
+    if (this.wsStatus && this.wsStatus.readyState === WebSocket.CONNECTING) {
+      console.log('[WS Status] Already connecting');
+      return;
+    }
+
+    try {
+      const loggersStatusUrl = getApiWebSocket(APP_CONFIG.API.ENDPOINTS.WEB_LOGGER_STATUS)
+      console.log('[WS Status] Connecting to:', loggersStatusUrl);
+      this.wsStatus = new WebSocket(loggersStatusUrl);
+
+      this.wsStatus.onopen = () => {
+        console.log('[WS Status] Connected successfully');
+        this.reconnectAttempts = 0;
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = null;
+        }
+      };
+
+      this.wsStatus.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleStatusUpdate(data);
+        } catch (error) {
+          console.error('[WS Status] Error parsing message:', error, event.data);
+        }
+      };
+
+      this.wsStatus.onclose = (event) => {
+        console.log('[WS Status] Connection closed', event.code, event.reason);
+        this.wsStatus = null;
+        this.handleReconnect();
+      };
+
+      this.wsStatus.onerror = (error) => {
+        console.error('[WS Status] Error occurred:', error);
+      };
+
+    } catch (error) {
+      console.error('[WS Status] Failed to create connection:', error);
+      this.handleReconnect();
+    }
+  }
+
+  /**
+   * จัดการการเชื่อมต่อใหม่
+   */
+  private handleReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('[WS Status] Max reconnection attempts reached');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * this.reconnectAttempts;
+    console.log(`[WS Status] Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms`);
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.connectWebSocket();
+    }, delay);
+  }
+
+  /**
+   * อัปเดต status ของ loggers จาก WebSocket
+   */
+  private handleStatusUpdate(data: any): void {
+    // ตรวจสอบรูปแบบข้อมูลที่ได้รับ
+    // อาจเป็น array ของ status objects หรือ object เดียว
+    let statusList: any[] = [];
+
+    if (Array.isArray(data)) {
+      statusList = data;
+    } else if (data && Array.isArray(data.data)) {
+      statusList = data.data;
+    } else if (data && typeof data === 'object') {
+      // ถ้าเป็น object เดียว ให้แปลงเป็น array
+      statusList = [data];
+    }
+
+    if (statusList.length === 0) {
+      return;
+    }
+
+    // สร้าง map สำหรับเก็บ status updates
+    const statusMap = new Map<string, string>();
+    statusList.forEach((statusItem: any) => {
+      const loggerId = statusItem.logger_key || '';
+      const status = (statusItem.status || '').toString().toLowerCase().trim();
+      if (loggerId && status) {
+        statusMap.set(String(loggerId), status === 'online' ? 'online' : 'offline');
+      }
+    });
+
+    if (statusMap.size === 0) {
+      return;
+    }
+
+    // อัปเดต status ของ loggers แบบ immutable (สร้าง array และ object ใหม่)
+    let hasUpdate = false;
+    const updatedLoggers = this.allLoggers.map(logger => {
+      const loggerIdStr = String(logger.loggerId);
+      const newStatus = statusMap.get(loggerIdStr);
+
+      if (newStatus) {
+        const oldStatus = (logger.loggerStatus || logger.status || '').toString().toLowerCase().trim();
+        if (oldStatus !== newStatus) {
+          hasUpdate = true;
+          // สร้าง object ใหม่แทนการแก้ไขโดยตรง (immutable update)
+          return {
+            ...logger,
+            loggerStatus: newStatus as 'online' | 'offline',
+            status: newStatus
+          };
+        }
+      }
+      return logger;
+    });
+
+    // ถ้ามีการอัปเดต ให้ refresh view
+    if (hasUpdate) {
+      // อัปเดต allLoggers ด้วย array ใหม่
+      this.allLoggers = updatedLoggers;
+      this.updateView(this.allLoggers);
+      // ใช้ detectChanges() เพื่อให้อัปเดต view ทันที (เหมาะกับ real-time updates)
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * ปิดการเชื่อมต่อ WebSocket
+   */
+  private disconnectWebSocket(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.wsStatus) {
+      try {
+        this.wsStatus.close();
+      } catch (error) {
+        console.error('[WS Status] Error closing connection:', error);
+      }
+      this.wsStatus = null;
+    }
+    console.log('[WS Status] Disconnected');
   }
 
 }

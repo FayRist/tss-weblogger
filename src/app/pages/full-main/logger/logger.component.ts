@@ -161,6 +161,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   lapCount?: number= 0;
   private wsReconnectTimeout:any;
   private wsReconnectDelay = 3000; // ms
+  private statusTimeout: any = null; // Timer สำหรับเช็ค status offline หลังจาก 5 วินาที
+  private readonly STATUS_TIMEOUT_MS = 5000; // 5 วินาที
 
   // Lap split tuning
   private readonly ENTER_RADIUS_M = 30;   // เข้าในรัศมีนี้ = ตัดรอบได้
@@ -1416,6 +1418,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const cls = this.parameterClass ?? '';
     if (this.circuitName === 'bsc') {
+
       this.loadCsvAndDraw(`models/mock-data/practice_section_${cls}_test.csv`);
       this.loadCsvAndDraw(`models/mock-data/qualifying_section_${cls}.csv`);
       this.loadCsvAndDraw(`models/mock-data/race1_section_${cls}.csv`);
@@ -1490,10 +1493,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     });
 
-    this.wsSubscriptions.push(statusSub, dataSub, messageSub);
+    // Subscribe to logger status updates
+    const statusListSub = this.webSocketService.statusList$.subscribe(statusList => {
+      if (statusList && Array.isArray(statusList)) {
+        this.handleStatusUpdate(statusList);
+      }
+    });
+
+    this.wsSubscriptions.push(statusSub, dataSub, messageSub, statusListSub);
 
     // เชื่อมต่อ WebSocket พร้อมส่ง loggerId
     this.connectWebSocket(loggerId);
+    
+    // เชื่อมต่อ WebSocket สำหรับ status
+    this.webSocketService.connectStatus();
+    
+    // เริ่มต้น timer สำหรับเช็ค status offline
+    this.resetStatusTimeout();
   }
 
     /**
@@ -1507,13 +1523,28 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (message.type === 'sensor_data:' + this.currentLoggerId && message.data) {
         const data = message.data as string;
         const parsedData = JSON.parse(data);
+        
+        // อัปเดต status ถ้ามีในข้อมูล
+        if (parsedData.status && parsedData.logger_key) {
+          const loggerKey = String(parsedData.logger_key);
+          const currentLoggerKey = String(this.currentLoggerId);
+          if (loggerKey === currentLoggerKey) {
+            const status = (parsedData.status || '').toString().toLowerCase().trim();
+            this.loggerStatus = status === 'online' ? 'Online' : 'Offline';
+            this.cdr.detectChanges();
+          }
+        }
+        
         if (parsedData.lat && parsedData.lon) {
+          // รีเซ็ต timer เมื่อมีข้อมูลใหม่มา
+          this.resetStatusTimeout();
+          
           const loggerData: CarLogger = {
             sats: '12',
             time: parsedData.timestamp || new Date().toISOString(),
             lat: parsedData.lat,
             long: parsedData.lon,
-            velocity: parseFloat(parsedData.data) || 0,
+            velocity: parseFloat(parsedData.AFR) || 0,
             heading: '0',
             height: '0',
             FixType: '3',
@@ -1595,8 +1626,74 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   disconnectWebSocket(): void {
     this.isWebSocketEnabled = false;
     this.webSocketService.disconnect();
+    this.webSocketService.disconnectStatus();
     this.wsConnectionStatus = 'disconnected';
+    this.clearStatusTimeout();
     console.log('WebSocket: Disconnected by user');
+  }
+
+  /**
+   * อัปเดต status ของ logger จาก WebSocket status list
+   */
+  private handleStatusUpdate(statusList: Array<{ logger_key: string; status: string; last_seen?: string; is_connected?: boolean }>): void {
+    if (!this.currentLoggerId || !statusList || statusList.length === 0) {
+      return;
+    }
+
+    const currentLoggerKey = String(this.currentLoggerId);
+    const statusItem = statusList.find(item => 
+      String(item.logger_key) === currentLoggerKey || 
+      String(item.logger_key) === `client_${currentLoggerKey}` ||
+      String(item.logger_key) === currentLoggerKey.replace('client_', '')
+    );
+
+    if (statusItem) {
+      const status = (statusItem.status || '').toString().toLowerCase().trim();
+      const newStatus = status === 'online' ? 'Online' : 'Offline';
+      
+      if (this.loggerStatus !== newStatus) {
+        this.loggerStatus = newStatus;
+        this.cdr.detectChanges();
+        console.log(`[Logger Status] Updated to: ${newStatus} for logger ${currentLoggerKey}`);
+      }
+      
+      // รีเซ็ต timer เมื่อได้รับ status update
+      if (newStatus === 'Online') {
+        this.resetStatusTimeout();
+      }
+    }
+  }
+
+  /**
+   * รีเซ็ต timer สำหรับเช็ค status offline
+   * เรียกใช้เมื่อมีข้อมูลใหม่มา
+   */
+  private resetStatusTimeout(): void {
+    // ล้าง timer เดิม
+    if (this.statusTimeout) {
+      clearTimeout(this.statusTimeout);
+      this.statusTimeout = null;
+    }
+
+    // ตั้งค่า timer ใหม่: ถ้าไม่มีข้อมูลใหม่ภายใน 5 วินาที ให้ตั้งเป็น offline
+    this.statusTimeout = setTimeout(() => {
+      if (this.loggerStatus !== 'Offline') {
+        console.log('[Logger Status] No data received for 5 seconds, setting status to Offline');
+        this.loggerStatus = 'Offline';
+        this.cdr.detectChanges();
+      }
+      this.statusTimeout = null;
+    }, this.STATUS_TIMEOUT_MS);
+  }
+
+  /**
+   * ล้าง status timeout
+   */
+  private clearStatusTimeout(): void {
+    if (this.statusTimeout) {
+      clearTimeout(this.statusTimeout);
+      this.statusTimeout = null;
+    }
   }
 
   /**
@@ -3035,13 +3132,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   ngOnDestroy(): void {
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
-    // this.wsSubscriptions.forEach(sub => sub.unsubscribe());
+    this.wsSubscriptions.forEach(sub => sub.unsubscribe());
     this.ro?.disconnect();
     this.map?.remove();
     // ปิด WebSocket ที่เปิดไว้ (ถ้ามี)
     this.webSocketService.disconnectRealtime();
     this.webSocketService.disconnectHistory();
     this.webSocketService.disconnectStatus();
+    this.disconnectWebSocket();
+    // ล้าง status timeout
+    this.clearStatusTimeout();
 
     // this.addRedDotSeries();
   }
