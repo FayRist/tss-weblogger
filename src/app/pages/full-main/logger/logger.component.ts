@@ -1504,10 +1504,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // เชื่อมต่อ WebSocket พร้อมส่ง loggerId
     this.connectWebSocket(loggerId);
-    
+
     // เชื่อมต่อ WebSocket สำหรับ status
     this.webSocketService.connectStatus();
-    
+
     // เริ่มต้น timer สำหรับเช็ค status offline
     this.resetStatusTimeout();
   }
@@ -1523,7 +1523,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (message.type === 'sensor_data:' + this.currentLoggerId && message.data) {
         const data = message.data as string;
         const parsedData = JSON.parse(data);
-        
+
         // อัปเดต status ถ้ามีในข้อมูล
         if (parsedData.status && parsedData.logger_key) {
           const loggerKey = String(parsedData.logger_key);
@@ -1534,11 +1534,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             this.cdr.detectChanges();
           }
         }
-        
+
         if (parsedData.lat && parsedData.lon) {
           // รีเซ็ต timer เมื่อมีข้อมูลใหม่มา
           this.resetStatusTimeout();
-          
+
           const loggerData: CarLogger = {
             sats: '12',
             time: parsedData.timestamp || new Date().toISOString(),
@@ -1565,7 +1565,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.allLogger.push(loggerData);
           console.log('ProcessWebSocketMessage. Total records:', this.allLogger.length);
           // อัปเดตข้อมูลแบบ real-time ให้กับแผนที่ SVG และกราฟ
-          const key = this.selectedRaceKey || 'realtime';
+          // ใช้ 'realtime' เป็น key เสมอเมื่อมีข้อมูลจาก WebSocket
+          const key = 'realtime';
+          // ตั้งค่า selectedRaceKey เป็น 'realtime' เพื่อให้ template แสดง segments ได้ถูกต้อง
+          if (this.selectedRaceKey !== 'realtime') {
+            this.selectedRaceKey = 'realtime';
+          }
           const ts = typeof loggerData.time === 'string' && !isNaN(Date.parse(loggerData.time))
             ? new Date(loggerData.time).getTime()
             : Date.now();
@@ -1641,8 +1646,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     const currentLoggerKey = String(this.currentLoggerId);
-    const statusItem = statusList.find(item => 
-      String(item.logger_key) === currentLoggerKey || 
+    const statusItem = statusList.find(item =>
+      String(item.logger_key) === currentLoggerKey ||
       String(item.logger_key) === `client_${currentLoggerKey}` ||
       String(item.logger_key) === currentLoggerKey.replace('client_', '')
     );
@@ -1650,13 +1655,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (statusItem) {
       const status = (statusItem.status || '').toString().toLowerCase().trim();
       const newStatus = status === 'online' ? 'Online' : 'Offline';
-      
+
       if (this.loggerStatus !== newStatus) {
         this.loggerStatus = newStatus;
         this.cdr.detectChanges();
         console.log(`[Logger Status] Updated to: ${newStatus} for logger ${currentLoggerKey}`);
       }
-      
+
       // รีเซ็ต timer เมื่อได้รับ status update
       if (newStatus === 'Online') {
         this.resetStatusTimeout();
@@ -2497,20 +2502,92 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const arr = perKey[k];
       if (!arr.length) continue;
 
-      // ถ้าเป็น bsc หรือ bric ที่มี loggerId = 118 ให้ใช้โหมดเส้น
-      const isLineMode = this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118);
+      // ถ้าเป็น bsc หรือ bric ที่มี loggerId = 118 หรือ realtime (หรือ WebSocket เปิดอยู่) ให้ใช้โหมดเส้น
+      const isRealtimeMode = k === 'realtime' || (this.isWebSocketEnabled && keys.length === 1 && keys[0] === k);
+      const isLineMode = this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118) || isRealtimeMode;
+
+      // สำหรับ realtime: เก็บจุดแรกเพื่อใช้เป็นจุดอ้างอิง (จุดกึ่งกลาง)
+      const firstPoint = arr.length > 0 ? { lat: arr[0].lat, lon: arr[0].lon } : null;
+
+      // สำหรับ realtime: คำนวณ bounds จากข้อมูลของ key นี้เท่านั้น และขยายแบบไดนามิก
+      let realtimeMinLat: number, realtimeMaxLat: number, realtimeMinLon: number, realtimeMaxLon: number;
+      let realtimeSpanLat: number, realtimeSpanLon: number;
+      let realtimePaddedMinLat: number, realtimePaddedMinLon: number;
+      let realtimePaddedSpanLat: number, realtimePaddedSpanLon: number;
+      
+      if (isRealtimeMode && arr.length > 0 && firstPoint) {
+        // สำหรับ realtime: คำนวณ bounds จากความแตกต่างจากจุดแรก
+        // เพื่อให้จุดแรกอยู่กึ่งกลาง SVG เสมอ
+        const deltasLat = arr.map(p => p.lat - firstPoint.lat);
+        const deltasLon = arr.map(p => p.lon - firstPoint.lon);
+        
+        const minDeltaLat = Math.min(...deltasLat);
+        const maxDeltaLat = Math.max(...deltasLat);
+        const minDeltaLon = Math.min(...deltasLon);
+        const maxDeltaLon = Math.max(...deltasLon);
+        
+        // คำนวณ span ของ deltas
+        realtimeSpanLat = maxDeltaLat - minDeltaLat;
+        realtimeSpanLon = maxDeltaLon - minDeltaLon;
+        
+        // กำหนด minimum span เพื่อไม่ให้ภาพเล็กลงเกินไปเมื่อข้อมูลยังน้อย
+        // ใช้ค่า minimum span ที่เหมาะสม (เช่น 0.001 องศา หรือประมาณ 111 เมตร)
+        const MIN_SPAN_LAT = 0.001; // ประมาณ 111 เมตร
+        const MIN_SPAN_LON = 0.001; // ประมาณ 111 เมตร (ที่ละติจูดประเทศไทย)
+        
+        // ใช้ค่าที่มากกว่าจาก span จริงหรือ minimum span
+        const effectiveSpanLat = Math.max(MIN_SPAN_LAT, realtimeSpanLat);
+        const effectiveSpanLon = Math.max(MIN_SPAN_LON, realtimeSpanLon);
+        
+        // เพิ่ม padding เพื่อให้จุดไม่อยู่ขอบ SVG (ใช้ padding 15% เพื่อให้มีพื้นที่ว่างรอบๆ)
+        const realtimePadding = 0.15;
+        realtimePaddedSpanLat = effectiveSpanLat * (1 + 2 * realtimePadding);
+        realtimePaddedSpanLon = effectiveSpanLon * (1 + 2 * realtimePadding);
+        
+        // สำหรับ realtime เราไม่ใช้ paddedMinLat/Lon เพราะจุดแรกอยู่กึ่งกลางเสมอ
+        // แต่เราต้องเก็บค่าไว้เพื่อให้โค้ดทำงานได้
+        realtimePaddedMinLat = 0;
+        realtimePaddedMinLon = 0;
+      }
+
+      const SVG_CENTER_X = SVG_W / 2; // 400
+      const SVG_CENTER_Y = SVG_H / 2; // 330
 
       // map เป็นพิกัด SVG (คำนวณให้อยู่ภายใน 0-800 และ 0-660)
       const pts = arr.map((r, i) => {
-        // คำนวณพิกัดโดยตรงโดยไม่ใช้ transform
-        // ใช้ Math.max เพื่อป้องกันการหารด้วย 0 และจัดการกับค่าที่แตกต่างกันมาก
-        const normalizedX = paddedSpanLon > 0 ? (r.lon - paddedMinLon) / paddedSpanLon : 0.5;
-        const normalizedY = paddedSpanLat > 0 ? (r.lat - paddedMinLat) / paddedSpanLat : 0.5;
+        let x: number, y: number;
 
-        // แปลงเป็นพิกัด SVG และ clamp ให้อยู่ในขอบเขตอย่างแน่นหนา
-        // เพื่อให้แน่ใจว่าทุกจุดจะแสดงภายในกรอบ SVG ไม่ว่าจะค่าพิกัดเป็นอย่างไร
-        const x = Math.max(0, Math.min(SVG_W, normalizedX * SVG_W));
-        const y = Math.max(0, Math.min(SVG_H, SVG_H - (normalizedY * SVG_H)));
+        if (isRealtimeMode && firstPoint && realtimePaddedSpanLat > 0 && realtimePaddedSpanLon > 0) {
+          // สำหรับ realtime: เริ่มจากจุดกึ่งกลางและค่อยๆ เคลื่อนออกไป
+          // คำนวณความแตกต่างจากจุดแรก
+          const deltaLat = r.lat - firstPoint.lat;
+          const deltaLon = r.lon - firstPoint.lon;
+          
+          // คำนวณ normalized position ตาม bounds ที่ขยายแล้ว (จุดแรก = 0, 0)
+          // realtimePaddedSpanLat/Lon ใช้เพื่อ normalize ให้จุดไม่อยู่ขอบ
+          const normalizedX = deltaLon / realtimePaddedSpanLon;
+          const normalizedY = deltaLat / realtimePaddedSpanLat;
+          
+          // คำนวณพิกัดโดยให้จุดแรกอยู่กึ่งกลาง SVG เสมอ (normalized = 0, 0 -> SVG = center)
+          // ใช้ 90% ของขนาด SVG เพื่อให้มี padding รอบๆ (5% ด้านละข้าง)
+          const usableWidth = SVG_W * 0.9;
+          const usableHeight = SVG_H * 0.9;
+          
+          x = SVG_CENTER_X + (normalizedX * usableWidth);
+          y = SVG_CENTER_Y - (normalizedY * usableHeight); // ลบเพราะ Y แกนกลับกัน
+          
+          // Clamp ให้อยู่ในขอบเขต SVG (แต่ควรจะไม่เกินเพราะมี padding แล้ว)
+          x = Math.max(0, Math.min(SVG_W, x));
+          y = Math.max(0, Math.min(SVG_H, y));
+        } else {
+          // โหมดปกติ: คำนวณพิกัดแบบเดิม
+          const normalizedX = paddedSpanLon > 0 ? (r.lon - paddedMinLon) / paddedSpanLon : 0.5;
+          const normalizedY = paddedSpanLat > 0 ? (r.lat - paddedMinLat) / paddedSpanLat : 0.5;
+
+          // แปลงเป็นพิกัด SVG และ clamp ให้อยู่ในขอบเขตอย่างแน่นหนา
+          x = Math.max(0, Math.min(SVG_W, normalizedX * SVG_W));
+          y = Math.max(0, Math.min(SVG_H, SVG_H - (normalizedY * SVG_H)));
+        }
 
         const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
 
@@ -2568,8 +2645,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.endPointByKey = end;
     this.segmentsByKey = segs;
     this.hasRouteData = true;
-    // แสดงเส้นทางสำหรับ bsc และ bric ที่มี loggerId = 118
-    this.showRoutePath = (this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118));
+    // แสดงเส้นทางสำหรับ bsc, bric ที่มี loggerId = 118, และ realtime
+    const isRealtimeKey = keys.some(k => k === 'realtime');
+    this.showRoutePath = (this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118) || isRealtimeKey);
   }
 
   private buildSeries(keys: ChartKey[]): ApexAxisChartSeries {
