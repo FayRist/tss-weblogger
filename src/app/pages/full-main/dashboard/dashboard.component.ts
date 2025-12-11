@@ -259,6 +259,16 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           .subscribe({
           next: (loggerRes) => {
             this.allLoggers = loggerRes ?? [];
+            // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
+            if (this.parameterRaceId === 39) {
+              this.allLoggers = this.allLoggers.map(logger => ({
+                ...logger,
+                carNumber: '',
+                firstName: '',
+                lastName: '',
+                classType: ''
+              }));
+            }
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
             // เชื่อมต่อ WebSocket หลังจากโหลดข้อมูล loggers แล้ว
@@ -404,6 +414,16 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             .subscribe({
             next: (loggerRes) => {
               this.allLoggers = loggerRes ?? [];
+              // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
+              if (this.parameterRaceId === 39) {
+                this.allLoggers = this.allLoggers.map(logger => ({
+                  ...logger,
+                  carNumber: '',
+                  firstName: '',
+                  lastName: '',
+                  classType: ''
+                }));
+              }
               this.updateView(this.allLoggers);
               this.cdr.markForCheck();
             },

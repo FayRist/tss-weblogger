@@ -111,7 +111,7 @@
           *matHeaderCellDef mat-sort-header sortActionDescription="Sort by carNumber">&nbsp;&nbsp;
           NBR.
         </th>
-        <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)" > {{element.carNumber}} </td>
+        <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)" > {{parameterRaceId === 39 ? '' : element.carNumber}} </td>
       </ng-container>
 
       <!-- Status Online / Offline Column -->
@@ -141,7 +141,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by firstName">
           Name
         </th>
-        <td  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"   > {{element.firstName}}&nbsp;&nbsp;{{element.lastName}} </td>
+        <td  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"   > {{parameterRaceId === 39 ? '' : (element.firstName + ' ' + element.lastName)}} </td>
       </ng-container>
 
       <!-- classType Column -->
@@ -149,7 +149,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by classType">&nbsp;&nbsp;
           Class
         </th>
-        <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.classType}} </td>
+        <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{parameterRaceId === 39 ? '' : element.classType}} </td>
       </ng-container>
 
 
