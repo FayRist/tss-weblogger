@@ -212,9 +212,9 @@ export interface TelemetryToSvgInput {
 }
 
 /**
- * Converts telemetry points to SVG polyline with first point centered.
+ * Converts telemetry points to SVG polyline with centroid (center of mass) centered.
  * Treats lat/lon as arbitrary 2D coordinates (not real GPS).
- * The first point stays at the center of the SVG.
+ * The centroid of all points stays at the center of the SVG.
  * 
  * @param input - Input containing telemetry points, SVG dimensions, and margin
  * @returns SVG element as string
@@ -237,17 +237,19 @@ export function convertTelemetryToSvgPolyline(input: TelemetryToSvgInput): strin
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>`;
   }
 
-  // Step 1: First point is the origin
-  const lat0 = validPoints[0].lat;
-  const lon0 = validPoints[0].lon;
+  // Step 1: Calculate centroid (center of mass) from all points
+  const sumLat = validPoints.reduce((sum, p) => sum + p.lat, 0);
+  const sumLon = validPoints.reduce((sum, p) => sum + p.lon, 0);
+  const lat0 = sumLat / validPoints.length;
+  const lon0 = sumLon / validPoints.length;
 
-  // Step 2: Normalize coordinates relative to first point
+  // Step 2: Normalize coordinates relative to centroid
   const deltas = validPoints.map(p => ({
     dx: p.lon - lon0,
     dy: p.lat - lat0
   }));
 
-  // Step 3: Compute maximum extents
+  // Step 3: Compute maximum extents from centroid
   const maxAbsDx = Math.max(...deltas.map(d => Math.abs(d.dx)), 1);
   const maxAbsDy = Math.max(...deltas.map(d => Math.abs(d.dy)), 1);
 
@@ -270,5 +272,63 @@ export function convertTelemetryToSvgPolyline(input: TelemetryToSvgInput): strin
 
   // Step 7: Return SVG element
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><polyline fill="none" stroke="black" stroke-width="2" points="${pointsString}"/></svg>`;
+}
+
+/**
+ * Converts telemetry points to SVG polyline points array with centroid centered.
+ * Returns the points array for use in Angular templates.
+ * 
+ * @param input - Input containing telemetry points, SVG dimensions, and margin
+ * @returns Array of {x, y} coordinates
+ */
+export function convertTelemetryToSvgPoints(input: TelemetryToSvgInput): Array<{ x: number; y: number }> {
+  const { width, height, margin, points } = input;
+
+  // Handle empty or invalid input
+  if (!points || points.length === 0) {
+    return [];
+  }
+
+  // Filter valid points
+  const validPoints = points.filter(p => 
+    Number.isFinite(p.lat) && 
+    Number.isFinite(p.lon)
+  );
+
+  if (validPoints.length === 0) {
+    return [];
+  }
+
+  // Step 1: Calculate centroid (center of mass) from all points
+  const sumLat = validPoints.reduce((sum, p) => sum + p.lat, 0);
+  const sumLon = validPoints.reduce((sum, p) => sum + p.lon, 0);
+  const lat0 = sumLat / validPoints.length;
+  const lon0 = sumLon / validPoints.length;
+
+  // Step 2: Normalize coordinates relative to centroid
+  const deltas = validPoints.map(p => ({
+    dx: p.lon - lon0,
+    dy: p.lat - lat0
+  }));
+
+  // Step 3: Compute maximum extents from centroid
+  const maxAbsDx = Math.max(...deltas.map(d => Math.abs(d.dx)), 1);
+  const maxAbsDy = Math.max(...deltas.map(d => Math.abs(d.dy)), 1);
+
+  // Step 4: Compute scale
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const scaleX = maxAbsDx > 0 ? (centerX - margin) / maxAbsDx : 1;
+  const scaleY = maxAbsDy > 0 ? (centerY - margin) / maxAbsDy : 1;
+  const scale = Math.min(scaleX, scaleY);
+
+  // Step 5: Convert to SVG coordinates
+  const svgPoints = deltas.map(d => {
+    const x = centerX + d.dx * scale;
+    const y = centerY - d.dy * scale; // invert Y so positive dy goes "up"
+    return { x, y };
+  });
+
+  return svgPoints;
 }
 
