@@ -27,6 +27,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
+import { convertTelemetryToSvgPolyline, TelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 
 
 
@@ -597,6 +598,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   startPoint = { x: 0, y: 0, lat: 0, long: 0 };
   endPoint = { x: 0, y: 0, lat: 0, long: 0 };
 
+  // สำหรับเก็บ SVG polyline ที่สร้างจาก telemetry points (first point centered)
+  telemetrySvgPolyline: string = '';
+
   polyTransCsvform = '';
   startPointCsv: XY = { x: 0, y: 0 };
   endPointCsv: XY = { x: 0, y: 0 };
@@ -886,6 +890,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     this.recomputeLapsForKey(key);
+
+    // สร้าง SVG polyline จาก telemetry points (first point centered)
+    this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
 
     const sel = [key];
     this.updateMapFromSelection?.(sel);
@@ -1585,6 +1592,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           (this.allDataLogger[key] ??= []).push(point);
 
+          // สร้าง SVG polyline จาก telemetry points (first point centered)
+          this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
+
           // เลือก key ปัจจุบันเพื่อเรนเดอร์ทันที
           const selection = [key];
           this.updateChartsFromSelection(selection);
@@ -2122,6 +2132,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (!this.loggerKey.includes(key)) this.loggerKey = [...this.loggerKey, key];
       this.allDataLogger = { ...this.allDataLogger, [key]: capped };
 
+      // สร้าง SVG polyline จาก telemetry points (first point centered)
+      this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
+
       this.initDefaultSelectionOnce();
     } catch (err) {
       console.error('loadCsvAndDraw error:', err);
@@ -2261,6 +2274,72 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.startPoint = { x: 0, y: 0, lat: 0, long: 0 };
       this.endPoint = { x: 0, y: 0, lat: 0, long: 0 };
     }
+  }
+
+  /**
+   * สร้าง SVG polyline จาก telemetry points โดยให้จุดแรกอยู่กึ่งกลาง
+   * ใช้ฟังก์ชัน convertTelemetryToSvgPolyline จาก utility
+   * 
+   * @param points - Array of telemetry points (lat, lon, AFR, RPM, timestamp)
+   * @param width - SVG width (default: 800)
+   * @param height - SVG height (default: 660)
+   * @param margin - Margin in pixels (default: 40)
+   * @returns SVG string หรืออัปเดต this.telemetrySvgPolyline
+   */
+  generateTelemetrySvgPolyline(
+    points: TelemetryPoint[],
+    width: number = 800,
+    height: number = 660,
+    margin: number = 40
+  ): string {
+    if (!points || points.length === 0) {
+      this.telemetrySvgPolyline = '';
+      return '';
+    }
+
+    const input: TelemetryToSvgInput = {
+      width,
+      height,
+      margin,
+      points
+    };
+
+    const svgString = convertTelemetryToSvgPolyline(input);
+    this.telemetrySvgPolyline = svgString;
+    return svgString;
+  }
+
+  /**
+   * แปลงข้อมูลจาก allDataLogger หรือ allLogger เป็น TelemetryPoint[]
+   * และสร้าง SVG polyline
+   * 
+   * @param key - Key ของ race/session (เช่น 'realtime', 'practice', etc.)
+   * @param width - SVG width (default: 800)
+   * @param height - SVG height (default: 660)
+   * @param margin - Margin in pixels (default: 40)
+   */
+  generateTelemetrySvgFromDataKey(
+    key: string,
+    width: number = 800,
+    height: number = 660,
+    margin: number = 40
+  ): void {
+    const dataPoints = this.allDataLogger?.[key] || [];
+    
+    if (dataPoints.length === 0) {
+      this.telemetrySvgPolyline = '';
+      return;
+    }
+
+    // แปลง MapPoint[] เป็น TelemetryPoint[]
+    const telemetryPoints: TelemetryPoint[] = dataPoints.map((p: MapPoint) => ({
+      lat: Number.isFinite(p.lat) ? Number(p.lat) : 0,
+      lon: Number.isFinite(p.lon) ? Number(p.lon) : 0,
+      AFR: Number.isFinite(p.afrValue) ? Number(p.afrValue) : undefined,
+      timestamp: p.time ? String(p.time) : undefined
+    }));
+
+    this.generateTelemetrySvgPolyline(telemetryPoints, width, height, margin);
   }
 
   onMultiSelectChange(values: SelectKey[] | null): void {
