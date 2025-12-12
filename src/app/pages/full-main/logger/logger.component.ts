@@ -27,7 +27,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
-import { convertTelemetryToSvgPolyline, convertTelemetryToSvgPoints, TelemetryPoint, TelemetryToSvgInput, convertGpsToSvg, GpsPoint, GpsToSvgInput } from '../../../utility/gps-to-svg.util';
+import { convertTelemetryToSvgPolyline, TelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 
 
 
@@ -598,10 +598,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   startPoint = { x: 0, y: 0, lat: 0, long: 0 };
   endPoint = { x: 0, y: 0, lat: 0, long: 0 };
 
-  // สำหรับเก็บ SVG polyline ที่สร้างจาก telemetry points (centroid centered)
+  // สำหรับเก็บ SVG polyline ที่สร้างจาก telemetry points (first point centered)
   telemetrySvgPolyline: string = '';
-  // สำหรับเก็บ polyline points สำหรับแสดงใน template (centroid centered)
-  telemetryPolylinePoints: Array<{ x: number; y: number }> = [];
 
   polyTransCsvform = '';
   startPointCsv: XY = { x: 0, y: 0 };
@@ -893,8 +891,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.recomputeLapsForKey(key);
 
-    // สร้าง SVG polyline จาก telemetry points (centroid centered)
-    // this.generateTelemetrySvgFromDataKey(key, 600, 400, 40);
+    // สร้าง SVG polyline จาก telemetry points (first point centered)
+    // this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
 
     const sel = [key];
     this.updateMapFromSelection?.(sel);
@@ -1397,18 +1395,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       .subscribe({
         next: (detail) => {
           this.loggerID     = detail.loggerId;
-          // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
-          if (this.parameterRaceId === 39) {
-            this.carNumber    = '';
-            this.firstName    = '';
-            this.lastName     = '';
-            this.classType    = '';
-          } else {
-            this.carNumber    = detail.carNumber;
-            this.firstName    = detail.firstName;
-            this.lastName     = detail.lastName;
-            this.classType    = detail.classType;
-          }
+          this.carNumber    = detail.carNumber;
+          this.firstName    = detail.firstName;
+          this.lastName     = detail.lastName;
+          this.classType    = detail.classType;
           this.segmentValue = detail.segmentValue;
           this.seasonID     = detail.seasonId;
           this.categoryName = detail.categoryName;
@@ -1602,8 +1592,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           (this.allDataLogger[key] ??= []).push(point);
 
-          // สร้าง SVG polyline จาก telemetry points (centroid centered)
-          // this.generateTelemetrySvgFromDataKey(key, 880, 660, 40);
+          // สร้าง SVG polyline จาก telemetry points (first point centered)
+          // this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
 
           // เลือก key ปัจจุบันเพื่อเรนเดอร์ทันที
           const selection = [key];
@@ -2142,8 +2132,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (!this.loggerKey.includes(key)) this.loggerKey = [...this.loggerKey, key];
       this.allDataLogger = { ...this.allDataLogger, [key]: capped };
 
-      // สร้าง SVG polyline จาก telemetry points (centroid centered)
-      // this.generateTelemetrySvgFromDataKey(key, 600, 400, 40);
+      // สร้าง SVG polyline จาก telemetry points (first point centered)
+      // this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
 
       this.initDefaultSelectionOnce();
     } catch (err) {
@@ -2291,8 +2281,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * ใช้ฟังก์ชัน convertTelemetryToSvgPolyline จาก utility
    *
    * @param points - Array of telemetry points (lat, lon, AFR, RPM, timestamp)
-   * @param width - SVG width (default: 600)
-   * @param height - SVG height (default: 400)
+   * @param width - SVG width (default: 800)
+   * @param height - SVG height (default: 660)
    * @param margin - Margin in pixels (default: 40)
    * @returns SVG string หรืออัปเดต this.telemetrySvgPolyline
    */
@@ -2300,11 +2290,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     points: TelemetryPoint[],
     width: number = 800,
     height: number = 660,
-    margin: number = 5
+    margin: number = 40
   ): string {
     if (!points || points.length === 0) {
       this.telemetrySvgPolyline = '';
-      this.telemetryPolylinePoints = [];
       return '';
     }
 
@@ -2316,10 +2305,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
 
     const svgString = convertTelemetryToSvgPolyline(input);
-    const svgPoints = convertTelemetryToSvgPoints(input);
-
     this.telemetrySvgPolyline = svgString;
-    this.telemetryPolylinePoints = svgPoints;
     return svgString;
   }
 
@@ -2328,8 +2314,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * และสร้าง SVG polyline
    *
    * @param key - Key ของ race/session (เช่น 'realtime', 'practice', etc.)
-   * @param width - SVG width (default: 600)
-   * @param height - SVG height (default: 400)
+   * @param width - SVG width (default: 800)
+   * @param height - SVG height (default: 660)
    * @param margin - Margin in pixels (default: 40)
    */
   generateTelemetrySvgFromDataKey(
@@ -2342,7 +2328,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     if (dataPoints.length === 0) {
       this.telemetrySvgPolyline = '';
-      this.telemetryPolylinePoints = [];
       return;
     }
 
@@ -2355,17 +2340,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }));
 
     this.generateTelemetrySvgPolyline(telemetryPoints, width, height, margin);
-  }
-
-  /**
-   * สร้าง points string สำหรับ polyline จาก telemetryPolylinePoints
-   * ใช้ใน template
-   */
-  getTelemetryPolylinePointsString(): string {
-    if (!this.telemetryPolylinePoints || this.telemetryPolylinePoints.length === 0) {
-      return '';
-    }
-    return this.telemetryPolylinePoints.map(p => `${p.x},${p.y}`).join(' ');
   }
 
   onMultiSelectChange(values: SelectKey[] | null): void {
@@ -2472,92 +2446,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // แปลงค่าสี RGB เป็น Hex string
     const toHex = (c: number) => ('0' + c.toString(16)).slice(-2);
     return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
-  }
-
-  /**
-   * แปลง Raw points เป็น SVG points โดยใช้ utility functions
-   * รองรับทั้งโหมดปกติ (bounds-based) และ realtime mode (centroid-based)
-   */
-  private convertRawPointsToSvgPoints(
-    arr: Array<{ lat: number; lon: number; afrValue?: number }>,
-    isRealtimeMode: boolean,
-    SVG_W: number,
-    SVG_H: number,
-    paddedMinLat?: number,
-    paddedMinLon?: number,
-    paddedSpanLat?: number,
-    paddedSpanLon?: number
-  ): Array<{ ts: number; i: number; x: number; y: number; lat: number; long: number; afr?: number }> {
-    if (isRealtimeMode && arr.length > 0) {
-      // ใช้ convertTelemetryToSvgPoints สำหรับ realtime mode (centroid centered)
-      const telemetryPoints: TelemetryPoint[] = arr.map((r) => ({
-        lat: r.lat,
-        lon: r.lon,
-        AFR: Number.isFinite(r.afrValue) ? r.afrValue : undefined
-      }));
-
-      const input: TelemetryToSvgInput = {
-        width: SVG_W,
-        height: SVG_H,
-        margin: 40,
-        points: telemetryPoints
-      };
-
-      const svgPoints = convertTelemetryToSvgPoints(input);
-
-      // แปลง SVG points เป็น pts format
-      return svgPoints.map((sp, i) => {
-        const r = arr[i];
-        const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
-        return {
-          ts,
-          i,
-          x: sp.x,
-          y: sp.y,
-          lat: r.lat,
-          long: r.lon,
-          afr: r.afrValue
-        };
-      });
-    } else {
-      // โหมดปกติ: ใช้ convertGpsToSvg utility function
-      const gpsPoints: GpsPoint[] = arr.map((r) => ({
-        lat: r.lat,
-        lng: r.lon,
-        afr: Number.isFinite(r.afrValue) ? r.afrValue : undefined
-      }));
-
-      const input: GpsToSvgInput = {
-        points: gpsPoints,
-        svgWidth: SVG_W,
-        svgHeight: SVG_H,
-        margin: 40
-      };
-
-      const result = convertGpsToSvg(input);
-
-      // แปลง segments เป็น pts format
-      // สร้าง map ของ points จาก segments
-      const pointMap = new Map<number, { x: number; y: number }>();
-
-      // เก็บจุดแรก
-      if (result.startPointPx && arr.length > 0) {
-        pointMap.set(0, result.startPointPx);
-      }
-
-      // เก็บจุดจาก segments
-      result.segments.forEach((seg, idx) => {
-        pointMap.set(idx + 1, { x: seg.x2, y: seg.y2 });
-      });
-
-      return arr.map((r, i) => {
-        const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
-        const point = pointMap.get(i);
-        const x = point?.x ?? 0;
-        const y = point?.y ?? 0;
-        return { ts, i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue };
-      });
-    }
   }
 
   private updateMapFromSelection(keys: string[]) {
@@ -2697,17 +2585,96 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const isRealtimeMode = k === 'realtime' || (this.isWebSocketEnabled && keys.length === 1 && keys[0] === k);
       const isLineMode = this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118) || isRealtimeMode;
 
-      // ใช้ utility function เพื่อแปลง points เป็น SVG coordinates
-      const pts = this.convertRawPointsToSvgPoints(
-        arr,
-        isRealtimeMode,
-        SVG_W,
-        SVG_H,
-        paddedMinLat,
-        paddedMinLon,
-        paddedSpanLat,
-        paddedSpanLon
-      );
+      // สำหรับ realtime: คำนวณจุดกึ่งกลางจากข้อมูลทั้งหมดเสมอ
+      let centerPoint: { lat: number; lon: number } | null = null;
+
+      // สำหรับ realtime: คำนวณ bounds จากข้อมูลของ key นี้เท่านั้น และขยายแบบไดนามิก
+      let realtimeMinLat: number, realtimeMaxLat: number, realtimeMinLon: number, realtimeMaxLon: number;
+      let realtimeSpanLat: number, realtimeSpanLon: number;
+      let realtimePaddedMinLat: number, realtimePaddedMinLon: number;
+      let realtimePaddedSpanLat: number, realtimePaddedSpanLon: number;
+
+      if (isRealtimeMode && arr.length > 0) {
+        // คำนวณ bounds จากข้อมูลทั้งหมด
+        const lats = arr.map(p => p.lat);
+        const lons = arr.map(p => p.lon);
+        
+        realtimeMinLat = Math.min(...lats);
+        realtimeMaxLat = Math.max(...lats);
+        realtimeMinLon = Math.min(...lons);
+        realtimeMaxLon = Math.max(...lons);
+
+        // คำนวณจุดกึ่งกลางจาก bounds (จะอัปเดตเมื่อมีข้อมูลมากขึ้น)
+        centerPoint = {
+          lat: (realtimeMinLat + realtimeMaxLat) / 2,
+          lon: (realtimeMinLon + realtimeMaxLon) / 2
+        };
+
+        // คำนวณ span จาก bounds
+        realtimeSpanLat = realtimeMaxLat - realtimeMinLat;
+        realtimeSpanLon = realtimeMaxLon - realtimeMinLon;
+
+        // กำหนด minimum span เพื่อไม่ให้ภาพเล็กลงเกินไปเมื่อข้อมูลยังน้อย
+        // ใช้ค่า minimum span ที่เหมาะสม (เช่น 0.001 องศา หรือประมาณ 111 เมตร)
+        const MIN_SPAN_LAT = 0.001; // ประมาณ 111 เมตร
+        const MIN_SPAN_LON = 0.001; // ประมาณ 111 เมตร (ที่ละติจูดประเทศไทย)
+
+        // ใช้ค่าที่มากกว่าจาก span จริงหรือ minimum span
+        const effectiveSpanLat = Math.max(MIN_SPAN_LAT, realtimeSpanLat);
+        const effectiveSpanLon = Math.max(MIN_SPAN_LON, realtimeSpanLon);
+
+        // เพิ่ม padding เพื่อให้จุดไม่อยู่ขอบ SVG (ใช้ padding 15% เพื่อให้มีพื้นที่ว่างรอบๆ)
+        const realtimePadding = 0.15;
+        realtimePaddedSpanLat = effectiveSpanLat * (1 + 2 * realtimePadding);
+        realtimePaddedSpanLon = effectiveSpanLon * (1 + 2 * realtimePadding);
+
+        // ไม่ใช้ paddedMinLat/Lon เพราะจุดกึ่งกลางอยู่กึ่งกลาง SVG เสมอ
+        realtimePaddedMinLat = 0;
+        realtimePaddedMinLon = 0;
+      }
+
+      const SVG_CENTER_X = SVG_W / 2; // 400
+      const SVG_CENTER_Y = SVG_H / 2; // 330
+
+      // map เป็นพิกัด SVG (คำนวณให้อยู่ภายใน 0-800 และ 0-660)
+      const pts = arr.map((r, i) => {
+        let x: number, y: number;
+
+        if (isRealtimeMode && centerPoint && realtimePaddedSpanLat > 0 && realtimePaddedSpanLon > 0) {
+          // สำหรับ realtime: คำนวณความแตกต่างจากจุดกึ่งกลาง (ซึ่งจะอัปเดตเมื่อมีข้อมูลมากขึ้น)
+          const deltaLat = r.lat - centerPoint.lat;
+          const deltaLon = r.lon - centerPoint.lon;
+
+          // คำนวณ normalized position ตาม bounds ที่ขยายแล้ว (จุดกึ่งกลาง = 0, 0)
+          // realtimePaddedSpanLat/Lon ใช้เพื่อ normalize ให้จุดไม่อยู่ขอบ
+          const normalizedX = deltaLon / realtimePaddedSpanLon;
+          const normalizedY = deltaLat / realtimePaddedSpanLat;
+
+          // คำนวณพิกัดโดยให้จุดกึ่งกลางอยู่กึ่งกลาง SVG เสมอ (normalized = 0, 0 -> SVG = center)
+          // ใช้ 90% ของขนาด SVG เพื่อให้มี padding รอบๆ (5% ด้านละข้าง)
+          const usableWidth = SVG_W * 0.9;
+          const usableHeight = SVG_H * 0.9;
+
+          x = SVG_CENTER_X + (normalizedX * usableWidth);
+          y = SVG_CENTER_Y - (normalizedY * usableHeight); // ลบเพราะ Y แกนกลับกัน
+
+          // Clamp ให้อยู่ในขอบเขต SVG (แต่ควรจะไม่เกินเพราะมี padding แล้ว)
+          x = Math.max(0, Math.min(SVG_W, x));
+          y = Math.max(0, Math.min(SVG_H, y));
+        } else {
+          // โหมดปกติ: คำนวณพิกัดแบบเดิม
+          const normalizedX = paddedSpanLon > 0 ? (r.lon - paddedMinLon) / paddedSpanLon : 0.5;
+          const normalizedY = paddedSpanLat > 0 ? (r.lat - paddedMinLat) / paddedSpanLat : 0.5;
+
+          // แปลงเป็นพิกัด SVG และ clamp ให้อยู่ในขอบเขตอย่างแน่นหนา
+          x = Math.max(0, Math.min(SVG_W, normalizedX * SVG_W));
+          y = Math.max(0, Math.min(SVG_H, SVG_H - (normalizedY * SVG_H)));
+        }
+
+        const ts = (r as any).time ? new Date((r as any).time).getTime() : i;
+
+        return { ts, i, x, y, lat: r.lat, long: r.lon, afr: r.afrValue };
+      });
 
       if (isLineMode) {
         // โหมดเส้น: เก็บทุกจุด (ไม่มีจุดแดงแยกในเทมเพลต)
