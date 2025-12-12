@@ -1453,15 +1453,25 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           // ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
           this.initializeSvgTransformForCircuit();
 
-          // ตั้งค่า preset bounds สำหรับ realtime mode (ใช้ค่าจาก log ที่คำนวณแล้ว)
-          // ค่าที่ log ได้: minLat: 775.016401, maxLat: 775.453781, minLon: -6060.806894, maxLon: -6060.276736
-          this.presetBoundsForRealtime = {
-            minLat: 775.016401,
-            maxLat: 775.453781,
-            minLon: -6060.806894,
-            maxLon: -6060.276736
-          };
-          console.log('Preset bounds for realtime set from log values:', this.presetBoundsForRealtime);
+          // ตั้งค่า preset bounds สำหรับ realtime mode เฉพาะ circuitName ที่กำหนด
+          // กำหนด circuitName ที่ต้องการใช้ preset bounds (เช่น 'bric', 'bsc', 'sic')
+          const circuitsWithPreset = ['bric']; // เพิ่ม circuitName ที่ต้องการใช้ preset bounds ที่นี่
+
+          if (this.circuitName == 'bic') {
+            // ตั้งค่า preset bounds สำหรับ circuitName ที่กำหนด (ใช้ค่าจาก log ที่คำนวณแล้ว)
+            // ค่าที่ log ได้: minLat: 775.016401, maxLat: 775.453781, minLon: -6060.806894, maxLon: -6060.276736
+            this.presetBoundsForRealtime = {
+              minLat: 775.016401,
+              maxLat: 775.453781,
+              minLon: -6060.806894,
+              maxLon: -6060.276736
+            };
+            console.log(`Preset bounds for realtime set for circuit '${this.circuitName}':`, this.presetBoundsForRealtime);
+          } else {
+            // ไม่ตั้งค่า preset bounds สำหรับ circuitName อื่นๆ (ให้คำนวณจากข้อมูลจริง)
+            this.presetBoundsForRealtime = null;
+            console.log(`No preset bounds for circuit '${this.circuitName}', will calculate from actual data`);
+          }
 
           // ใหม่
           this.countDetect  = detail.countDetect;
