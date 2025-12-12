@@ -237,6 +237,38 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     maxLon: number;
   } | null = null;
 
+  // Preset bounds สำหรับ realtime mode (ป้องกันการขยับไปมา)
+  // คำนวณจาก raw data ด้วยสูตรเดียวกับ initializeFixedBoundsForBric (เพิ่ม padding 10%)
+  private presetBoundsForRealtime: {
+    minLat: number;
+    maxLat: number;
+    minLon: number;
+    maxLon: number;
+  } | null = null;
+
+  /**
+   * คำนวณ preset bounds จาก raw data ด้วยสูตรเดียวกับ initializeFixedBoundsForBric
+   * ใช้ padding 10% เพื่อให้มีพื้นที่เพียงพอสำหรับการเดินทางต่อเนื่อง
+   */
+  private calculatePresetBoundsForRealtime(
+    rawMinLat: number,
+    rawMaxLat: number,
+    rawMinLon: number,
+    rawMaxLon: number
+  ): { minLat: number; maxLat: number; minLon: number; maxLon: number } {
+    // ใช้ padding 10% เพื่อให้มีพื้นที่เพียงพอสำหรับการเดินทางต่อเนื่อง
+    const padding = 0.10;
+    const spanLat = Math.max(1e-9, rawMaxLat - rawMinLat);
+    const spanLon = Math.max(1e-9, rawMaxLon - rawMinLon);
+
+    return {
+      minLat: rawMinLat - spanLat * padding,
+      maxLat: rawMaxLat + spanLat * padding,
+      minLon: rawMinLon - spanLon * padding,
+      maxLon: rawMaxLon + spanLon * padding
+    };
+  }
+
   // ฟังก์ชันสำหรับตั้งค่า fixed bounds จากข้อมูลเริ่มต้น
   private initializeFixedBoundsForBric(all: Array<{lat: number; lon: number}>) {
     if (this.fixedBoundsForBric) return; // ถ้ามี bounds แล้ว ไม่ต้องตั้งใหม่
@@ -1368,6 +1400,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private subscribeWebSocketMessages() {
     this.webSocketService.message$.subscribe((message) => {
       let msgObj;
+
+      if(!message){
+        return;
+      }
+
       try {
         msgObj = typeof message === 'string' ? JSON.parse(message) : message;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1390,6 +1427,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     //   class_type  : this.parameterClass,
     //   logger_id  : this.parameterLoggerID,
     // }
+
     this.eventService
       .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID)
       .subscribe({
@@ -1414,6 +1452,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.circuitName = detail.circuitName;
           // ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
           this.initializeSvgTransformForCircuit();
+
+          // ตั้งค่า preset bounds สำหรับ realtime mode (ใช้ค่าจาก log ที่คำนวณแล้ว)
+          // ค่าที่ log ได้: minLat: 775.016401, maxLat: 775.453781, minLon: -6060.806894, maxLon: -6060.276736
+          this.presetBoundsForRealtime = {
+            minLat: 775.016401,
+            maxLat: 775.453781,
+            minLon: -6060.806894,
+            maxLon: -6060.276736
+          };
+          console.log('Preset bounds for realtime set from log values:', this.presetBoundsForRealtime);
 
           // ใหม่
           this.countDetect  = detail.countDetect;
@@ -2593,9 +2641,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const isRealtimeMode = k === 'realtime' || (this.isWebSocketEnabled && keys.length === 1 && keys[0] === k);
       const isLineMode = this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118) || isRealtimeMode;
 
-      // สำหรับ realtime: คำนวณจุดกึ่งกลางจากข้อมูลทั้งหมดเสมอ
-      let centerPoint: { lat: number; lon: number } | null = null;
-
       // สำหรับ realtime: คำนวณ bounds จากข้อมูลของ key นี้เท่านั้น และขยายแบบไดนามิก
       let realtimeMinLat: number, realtimeMaxLat: number, realtimeMinLon: number, realtimeMaxLon: number;
       let realtimeSpanLat: number, realtimeSpanLon: number;
@@ -2603,70 +2648,128 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       let realtimePaddedSpanLat: number, realtimePaddedSpanLon: number;
 
       if (isRealtimeMode && arr.length > 0) {
-        // คำนวณ bounds จากข้อมูลทั้งหมด
-        const lats = arr.map(p => p.lat);
-        const lons = arr.map(p => p.lon);
+        // ใช้ preset bounds ถ้ามี (เพื่อป้องกันการขยับไปมา) หรือคำนวณจากข้อมูลจริง
+        if (this.presetBoundsForRealtime) {
+          // ใช้ preset bounds ที่ตั้งไว้ (ใช้ค่าจาก log ที่คำนวณแล้ว)
+          realtimeMinLat = this.presetBoundsForRealtime.minLat;
+          realtimeMaxLat = this.presetBoundsForRealtime.maxLat;
+          realtimeMinLon = this.presetBoundsForRealtime.minLon;
+          realtimeMaxLon = this.presetBoundsForRealtime.maxLon;
 
-        realtimeMinLat = Math.min(...lats);
-        realtimeMaxLat = Math.max(...lats);
-        realtimeMinLon = Math.min(...lons);
-        realtimeMaxLon = Math.max(...lons);
+          // คำนวณ span จาก preset bounds
+          realtimeSpanLat = Math.max(1e-9, realtimeMaxLat - realtimeMinLat);
+          realtimeSpanLon = Math.max(1e-9, realtimeMaxLon - realtimeMinLon);
 
-        // คำนวณจุดกึ่งกลางจาก bounds (จะอัปเดตเมื่อมีข้อมูลมากขึ้น)
-        centerPoint = {
-          lat: (realtimeMinLat + realtimeMaxLat) / 2,
-          lon: (realtimeMinLon + realtimeMaxLon) / 2
-        };
+          // ใช้ preset bounds โดยตรง (ไม่ต้อง padding อีกเพราะ preset bounds มี padding แล้ว)
+          // ปรับให้พอดีกับ SVG
+          const SVG_W = 800, SVG_H = 660;
+          const presetAspectRatio = realtimeSpanLon / realtimeSpanLat;
+          const svgAspectRatio = SVG_W / SVG_H;
 
-        // คำนวณ span จาก bounds
-        realtimeSpanLat = realtimeMaxLat - realtimeMinLat;
-        realtimeSpanLon = realtimeMaxLon - realtimeMinLon;
+          // ปรับ bounds ให้พอดีกับ SVG โดยคง aspect ratio ของข้อมูล
+          if (presetAspectRatio > svgAspectRatio) {
+            // ข้อมูลกว้างกว่า SVG -> ใช้ความกว้างเต็มที่และปรับ lat span
+            const adjustedSpanLat = realtimeSpanLon / svgAspectRatio;
+            const centerLat = (realtimeMinLat + realtimeMaxLat) / 2;
 
-        // กำหนด minimum span เพื่อไม่ให้ภาพเล็กลงเกินไปเมื่อข้อมูลยังน้อย
-        // ใช้ค่า minimum span ที่เหมาะสม (เช่น 0.001 องศา หรือประมาณ 111 เมตร)
-        const MIN_SPAN_LAT = 0.001; // ประมาณ 111 เมตร
-        const MIN_SPAN_LON = 0.001; // ประมาณ 111 เมตร (ที่ละติจูดประเทศไทย)
+            realtimePaddedSpanLat = adjustedSpanLat;
+            realtimePaddedMinLat = centerLat - realtimePaddedSpanLat / 2;
+            realtimePaddedSpanLon = realtimeSpanLon;
+            realtimePaddedMinLon = realtimeMinLon;
+          } else {
+            // ข้อมูลสูงกว่า SVG -> ใช้ความสูงเต็มที่และปรับ lon span
+            const adjustedSpanLon = realtimeSpanLat * svgAspectRatio;
+            const centerLon = (realtimeMinLon + realtimeMaxLon) / 2;
 
-        // ใช้ค่าที่มากกว่าจาก span จริงหรือ minimum span
-        const effectiveSpanLat = Math.max(MIN_SPAN_LAT, realtimeSpanLat);
-        const effectiveSpanLon = Math.max(MIN_SPAN_LON, realtimeSpanLon);
+            realtimePaddedSpanLat = realtimeSpanLat;
+            realtimePaddedMinLat = realtimeMinLat;
+            realtimePaddedSpanLon = adjustedSpanLon;
+            realtimePaddedMinLon = centerLon - realtimePaddedSpanLon / 2;
+          }
 
-        // เพิ่ม padding เพื่อให้จุดไม่อยู่ขอบ SVG (ใช้ padding 15% เพื่อให้มีพื้นที่ว่างรอบๆ)
-        const realtimePadding = 0.15;
-        realtimePaddedSpanLat = effectiveSpanLat * (1 + 2 * realtimePadding);
-        realtimePaddedSpanLon = effectiveSpanLon * (1 + 2 * realtimePadding);
+          console.log('Using preset bounds for realtime:', this.presetBoundsForRealtime);
+        } else {
+          // Fallback: คำนวณ bounds จากข้อมูลจริงถ้าไม่มี preset
+          const lats = arr.map(p => p.lat);
+          const lons = arr.map(p => p.lon);
 
-        // ไม่ใช้ paddedMinLat/Lon เพราะจุดกึ่งกลางอยู่กึ่งกลาง SVG เสมอ
-        realtimePaddedMinLat = 0;
-        realtimePaddedMinLon = 0;
+          const actualMinLat = Math.min(...lats);
+          const actualMaxLat = Math.max(...lats);
+          const actualMinLon = Math.min(...lons);
+          const actualMaxLon = Math.max(...lons);
+
+          realtimeMinLat = actualMinLat;
+          realtimeMaxLat = actualMaxLat;
+          realtimeMinLon = actualMinLon;
+          realtimeMaxLon = actualMaxLon;
+
+          // คำนวณ span จากข้อมูลจริง
+          realtimeSpanLat = Math.max(1e-9, realtimeMaxLat - realtimeMinLat);
+          realtimeSpanLon = Math.max(1e-9, realtimeMaxLon - realtimeMinLon);
+
+          // เพิ่ม padding รอบๆ ข้อมูลจริง (ใช้สูตรเดียวกับ initializeFixedBoundsForBric)
+          const SVG_W = 800, SVG_H = 660;
+          const padding = 0.10; // padding 10% รอบๆ ข้อมูล
+
+          // คำนวณ aspect ratio ของข้อมูลจริงและ SVG
+          const dataAspectRatio = realtimeSpanLon / realtimeSpanLat;
+          const svgAspectRatio = SVG_W / SVG_H;
+
+          // เพิ่ม padding และปรับให้พอดีกับ SVG
+          if (dataAspectRatio > svgAspectRatio) {
+            const paddedSpanLon = realtimeSpanLon * (1 + 2 * padding);
+            const adjustedSpanLat = paddedSpanLon / svgAspectRatio;
+            const centerLat = (realtimeMinLat + realtimeMaxLat) / 2;
+
+            realtimePaddedSpanLat = adjustedSpanLat;
+            realtimePaddedMinLat = centerLat - realtimePaddedSpanLat / 2;
+            realtimePaddedSpanLon = paddedSpanLon;
+            realtimePaddedMinLon = (realtimeMinLon + realtimeMaxLon) / 2 - realtimePaddedSpanLon / 2;
+          } else {
+            const paddedSpanLat = realtimeSpanLat * (1 + 2 * padding);
+            const adjustedSpanLon = paddedSpanLat * svgAspectRatio;
+            const centerLon = (realtimeMinLon + realtimeMaxLon) / 2;
+
+            realtimePaddedSpanLat = paddedSpanLat;
+            realtimePaddedMinLat = (realtimeMinLat + realtimeMaxLat) / 2 - realtimePaddedSpanLat / 2;
+            realtimePaddedSpanLon = adjustedSpanLon;
+            realtimePaddedMinLon = centerLon - realtimePaddedSpanLon / 2;
+          }
+
+          // Log bounds สุดท้ายเพื่อนำไปตั้งเป็น preset
+          const realtimePaddedMaxLat = realtimePaddedMinLat + realtimePaddedSpanLat;
+          const realtimePaddedMaxLon = realtimePaddedMinLon + realtimePaddedSpanLon;
+          console.log('=== SVG Bounds สำหรับ Preset ===');
+          console.log('Latitude (ความสูง/ยาว):');
+          console.log(`  minLat: ${realtimePaddedMinLat.toFixed(6)}`);
+          console.log(`  maxLat: ${realtimePaddedMaxLat.toFixed(6)}`);
+          console.log(`  spanLat: ${realtimePaddedSpanLat.toFixed(6)}`);
+          console.log('Longitude (ความกว้าง):');
+          console.log(`  minLon: ${realtimePaddedMinLon.toFixed(6)}`);
+          console.log(`  maxLon: ${realtimePaddedMaxLon.toFixed(6)}`);
+          console.log(`  spanLon: ${realtimePaddedSpanLon.toFixed(6)}`);
+          console.log('--- ใช้สำหรับ setPresetBoundsFromRawData() ---');
+          console.log(`setPresetBoundsFromRawData(${realtimePaddedMinLat.toFixed(6)}, ${realtimePaddedMaxLat.toFixed(6)}, ${realtimePaddedMinLon.toFixed(6)}, ${realtimePaddedMaxLon.toFixed(6)});`);
+          console.log('==========================================');
+        }
       }
-
-      const SVG_CENTER_X = SVG_W / 2; // 400
-      const SVG_CENTER_Y = SVG_H / 2; // 330
 
       // map เป็นพิกัด SVG (คำนวณให้อยู่ภายใน 0-800 และ 0-660)
       const pts = arr.map((r, i) => {
         let x: number, y: number;
 
-        if (isRealtimeMode && centerPoint && realtimePaddedSpanLat > 0 && realtimePaddedSpanLon > 0) {
-          // สำหรับ realtime: คำนวณความแตกต่างจากจุดกึ่งกลาง (ซึ่งจะอัปเดตเมื่อมีข้อมูลมากขึ้น)
-          const deltaLat = r.lat - centerPoint.lat;
-          const deltaLon = r.lon - centerPoint.lon;
+        if (isRealtimeMode && realtimePaddedSpanLat > 0 && realtimePaddedSpanLon > 0) {
+          // สำหรับ realtime: ใช้ min/max-based normalization จากข้อมูลจริง
+          // เพื่อให้ภาพใหญ่ขึ้นและมี padding รอบๆ ที่พอดี
+          const normalizedX = realtimePaddedSpanLon > 0 ? (r.lon - realtimePaddedMinLon) / realtimePaddedSpanLon : 0.5;
+          const normalizedY = realtimePaddedSpanLat > 0 ? (r.lat - realtimePaddedMinLat) / realtimePaddedSpanLat : 0.5;
 
-          // คำนวณ normalized position ตาม bounds ที่ขยายแล้ว (จุดกึ่งกลาง = 0, 0)
-          // realtimePaddedSpanLat/Lon ใช้เพื่อ normalize ให้จุดไม่อยู่ขอบ
-          const normalizedX = deltaLon / realtimePaddedSpanLon;
-          const normalizedY = deltaLat / realtimePaddedSpanLat;
+          // แปลงเป็นพิกัด SVG โดยตรง - ทำให้ข้อมูลพอดีกับกรอบ SVG (0-800, 0-660)
+          // ข้อมูลจะถูก map ให้พอดีกับ SVG พร้อม padding รอบๆ
+          x = normalizedX * SVG_W;
+          y = SVG_H - (normalizedY * SVG_H); // ลบเพราะ Y แกนกลับกัน
 
-          // คำนวณพิกัดโดยให้จุดกึ่งกลางอยู่กึ่งกลาง SVG เสมอ (normalized = 0, 0 -> SVG = center)
-          // ใช้ 90% ของขนาด SVG เพื่อให้มี padding รอบๆ (5% ด้านละข้าง)
-          const usableWidth = SVG_W * 0.9;
-          const usableHeight = SVG_H * 0.9;
-
-          x = SVG_CENTER_X + (normalizedX * usableWidth);
-          y = SVG_CENTER_Y - (normalizedY * usableHeight); // ลบเพราะ Y แกนกลับกัน
-
-          // Clamp ให้อยู่ในขอบเขต SVG (แต่ควรจะไม่เกินเพราะมี padding แล้ว)
+          // Clamp ให้อยู่ในขอบเขต SVG เพื่อป้องกันข้อมูลที่อยู่นอก bounds
           x = Math.max(0, Math.min(SVG_W, x));
           y = Math.max(0, Math.min(SVG_H, y));
         } else {
@@ -3618,5 +3721,52 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // ไม่ต้องทำอะไร เพราะตอนนี้ใช้ [attr.transform] ใน template แทน
     // แต่ยังคงเรียกใช้เพื่อให้แน่ใจว่า Angular detect changes
     this.cdr.detectChanges();
+  }
+
+  /**
+   * ตั้งค่า preset bounds สำหรับ realtime mode
+   * ใช้เพื่อป้องกันการขยับไปมาของแผนที่เมื่อมีข้อมูลใหม่เข้ามา
+   * @param bounds - Bounds ที่ต้องการตั้งค่า (ถ้าเป็น null จะล้าง preset)
+   */
+  setPresetBoundsForRealtime(bounds: {
+    minLat: number;
+    maxLat: number;
+    minLon: number;
+    maxLon: number;
+  } | null): void {
+    this.presetBoundsForRealtime = bounds;
+    // อัปเดตแผนที่ทันทีถ้ามีข้อมูลอยู่แล้ว
+    if (this.selectedRaceKey) {
+      const selection = [this.selectedRaceKey];
+      this.updateMapFromSelection(selection);
+    }
+  }
+
+  /**
+   * ตั้งค่า preset bounds สำหรับ realtime mode จาก raw data
+   * จะคำนวณด้วยสูตรเดียวกับ initializeFixedBoundsForBric (เพิ่ม padding 10%)
+   * @param rawMinLat - ค่า latitude ต่ำสุดจาก raw data
+   * @param rawMaxLat - ค่า latitude สูงสุดจาก raw data
+   * @param rawMinLon - ค่า longitude ต่ำสุดจาก raw data
+   * @param rawMaxLon - ค่า longitude สูงสุดจาก raw data
+   */
+  setPresetBoundsFromRawData(
+    rawMinLat: number,
+    rawMaxLat: number,
+    rawMinLon: number,
+    rawMaxLon: number
+  ): void {
+    this.presetBoundsForRealtime = this.calculatePresetBoundsForRealtime(
+      rawMinLat,
+      rawMaxLat,
+      rawMinLon,
+      rawMaxLon
+    );
+    console.log('Preset bounds for realtime calculated from raw data:', this.presetBoundsForRealtime);
+    // อัปเดตแผนที่ทันทีถ้ามีข้อมูลอยู่แล้ว
+    if (this.selectedRaceKey) {
+      const selection = [this.selectedRaceKey];
+      this.updateMapFromSelection(selection);
+    }
   }
 }
