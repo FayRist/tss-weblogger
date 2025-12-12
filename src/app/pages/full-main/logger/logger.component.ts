@@ -9,7 +9,8 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
-import { delay, distinctUntilChanged, map, of, startWith, Subscription } from 'rxjs';
+import { delay, distinctUntilChanged, map, of, startWith, Subscription, Subject } from 'rxjs';
+import { bufferTime, filter } from 'rxjs/operators';
 import {
   ApexAxisChartSeries, ApexChart, ApexXAxis, ApexYAxis, ApexStroke, ApexDataLabels,
   ApexFill, ApexMarkers, ApexGrid, ApexLegend, ApexTooltip, ApexTheme,
@@ -137,6 +138,15 @@ function afrToColor(v:number, min:number, max:number, limit?:number){
 }
 
 
+// incremental laps state (non-breaking)
+interface LapState {
+  laps: MapPoint[][];           // completed laps
+  current: MapPoint[];           // current lap being built
+  state: 'outside' | 'inside';   // state machine state
+  lastCrossMs: number;           // timestamp of last lap cross
+  canCountAgain: boolean;        // can count new lap
+}
+
 @Component({
   selector: 'app-logger',
   imports: [FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
@@ -221,6 +231,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // การหมุนและกลับด้าน SVG
   svgRotation = 0; // องศาการหมุน (0-360) - จะตั้งค่าเริ่มต้นตาม circuitName
   svgFlipHorizontal = false; // กลับด้านแนวนอน - จะตั้งค่าเริ่มต้นตาม circuitName
+  routeFlipHorizontal = false; // กลับด้านแนวนอน - จะตั้งค่าเริ่มต้นตาม circuitName
   svgFlipVertical = false; // กลับด้านแนวตั้ง
 
   tooltipStyle = {
@@ -363,6 +374,20 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private isChartKey = (k: SelectKey): k is ChartKey => k !== 'all';
   showRoutePath: boolean = true;
   private subscriptions: Subscription[] = [];
+
+  // performance: batched realtime UI flush
+  private readonly rtBatch$ = new Subject<{ key: string; point: MapPoint }>();
+  private rtBatchSubscription?: Subscription;
+  private readonly BATCH_INTERVAL_MS = 100; // 80-120ms range, using 100ms
+
+  // incremental laps state (non-breaking)
+  private lapStateByKey: Record<string, LapState> = {};
+  private cachedBoundsByKey: Record<string, {
+    minLat: number; maxLat: number;
+    minLon: number; maxLon: number;
+    minAfr?: number; maxAfr?: number;
+    pointCount: number;
+  }> = {};
 
   // ปรับรัศมีนับรอบ (หน่วยเดียวกับข้อมูล CSV: เมตรจำลอง)
   lapRadiusUnits: number = this.START_RADIUS_UNITS;
@@ -1357,6 +1382,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
     this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? ''; // ใช้ชื่อแปรอื่นแทน class
 
+    // performance: batched realtime UI flush - initialize batch subscription
+    this.rtBatchSubscription = this.rtBatch$.pipe(
+      bufferTime(this.BATCH_INTERVAL_MS),
+      filter(events => events.length > 0)
+    ).subscribe(events => this.flushBatch(events));
+    this.subscriptions.push(this.rtBatchSubscription);
+
     this.getDetailLoggerById();
 
     this.applyYAxisIntegerLabels();
@@ -1658,19 +1690,151 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           (this.allDataLogger[key] ??= []).push(point);
 
-          // สร้าง SVG polyline จาก telemetry points (first point centered)
-          // this.generateTelemetrySvgFromDataKey(key, 800, 660, 40);
-
-          // เลือก key ปัจจุบันเพื่อเรนเดอร์ทันที
-          const selection = [key];
-          this.updateChartsFromSelection(selection);
-          this.updateMapFromSelection(selection);
-          // console.log('Updated SVG points & charts (realtime)');
+          // performance: batched realtime UI flush - push to Subject instead of immediate updates
+          this.rtBatch$.next({ key, point });
         }
       }
     } catch (error) {
       console.error('Error processing WebSocket message:', error);
     }
+  }
+
+  // performance: batched realtime UI flush
+  private flushBatch(events: Array<{ key: string; point: MapPoint }>): void {
+    if (!events.length) return;
+
+    const affectedKeys = new Set<string>();
+    for (const { key, point } of events) {
+      affectedKeys.add(key);
+      // incremental laps state (non-breaking) - optionally process lap segmentation
+      this.pushPointToLap(key, point);
+      // Update cached bounds incrementally (performance optimization)
+      this.updateCachedBounds(key, point);
+    }
+
+    // Use current selection source (same as existing flow)
+    const selection = this.selectedRaceKey ? [this.selectedRaceKey] : Array.from(affectedKeys);
+
+    // Call the SAME existing UI update functions exactly once per tick
+    this.updateChartsFromSelection(selection);
+    this.updateMapFromSelection(selection);
+
+    // Change detection: prefer markForCheck at end of batch
+    this.cdr.markForCheck();
+  }
+
+  // Optimize bounds calculations with incremental caching
+  private updateCachedBounds(key: string, point: MapPoint): void {
+    const lat = parseFloat(point.lat as any);
+    const lon = parseFloat(point.lon as any);
+    const afr = point.velocity != null ? Number(point.velocity) : undefined;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    const cached = this.cachedBoundsByKey[key];
+    if (!cached) {
+      // Initialize cache
+      this.cachedBoundsByKey[key] = {
+        minLat: lat,
+        maxLat: lat,
+        minLon: lon,
+        maxLon: lon,
+        minAfr: afr,
+        maxAfr: afr,
+        pointCount: 1
+      };
+    } else {
+      // Update incrementally
+      cached.minLat = Math.min(cached.minLat, lat);
+      cached.maxLat = Math.max(cached.maxLat, lat);
+      cached.minLon = Math.min(cached.minLon, lon);
+      cached.maxLon = Math.max(cached.maxLon, lon);
+      if (afr !== undefined && Number.isFinite(afr)) {
+        cached.minAfr = cached.minAfr !== undefined ? Math.min(cached.minAfr, afr) : afr;
+        cached.maxAfr = cached.maxAfr !== undefined ? Math.max(cached.maxAfr, afr) : afr;
+      }
+      cached.pointCount++;
+    }
+  }
+
+  // incremental laps state (non-breaking)
+  private initLapState(key: string): void {
+    if (!this.lapStateByKey[key]) {
+      this.lapStateByKey[key] = {
+        laps: [],
+        current: [],
+        state: 'outside',
+        lastCrossMs: -Infinity,
+        canCountAgain: true
+      };
+    }
+  }
+
+  private pushPointToLap(key: string, pt: MapPoint): void {
+    this.initLapState(key);
+    const state = this.lapStateByKey[key];
+
+    // Reuse existing constants/fields
+    if (!this.startLatLongPoint) return; // Can't detect laps without start point
+
+    const lat = this.num(pt.lat), lon = this.num(pt.lon);
+    if (lat == null || lon == null) return;
+
+    // Speed filter (if enabled)
+    if (this.MIN_SPEED_MS > 0 && typeof pt.velocity === 'number') {
+      if (pt.velocity < this.MIN_SPEED_MS) return;
+    }
+
+    // Determine distance calculation method (same as splitIntoLapsArray)
+    const first = this.allDataLogger[key]?.[0];
+    const useDegrees = first ? this.isLatLon(first) : false;
+    const distMeters = (lat: number, lon: number) =>
+      useDegrees
+        ? this.haversineMeters({ lat, lon }, this.startLatLongPoint!)
+        : this.distanceMetersOrUnits({ lat, lon }, this.startLatLongPoint!);
+
+    const d = distMeters(lat, lon);
+    const now = this.toMillis(pt.ts);
+
+    // State machine matching splitIntoLapsArray logic
+    // Exit zone (≥ START_RADIUS_UNITS) → ready to count again
+    if (d >= this.START_RADIUS_UNITS) {
+      if (state.state === 'inside') {
+        // Exited start zone
+      }
+      state.state = 'outside';
+      state.canCountAgain = true;
+    }
+
+    // Enter zone (≤ ENTER_RADIUS_M) + was outside + can count + time gap sufficient
+    if (d <= this.ENTER_RADIUS_M && state.state === 'outside' && state.canCountAgain) {
+      if (now - state.lastCrossMs >= this.MIN_LAP_GAP_MS) {
+        // Close previous lap (if any points)
+        if (state.current.length > 0) {
+          state.laps.push([...state.current]);
+        }
+        // Start new lap with current point
+        state.current = [pt];
+        state.lastCrossMs = now;
+        state.state = 'inside';
+        state.canCountAgain = false;
+        return;
+      }
+    }
+
+    // Add point to current lap
+    state.current.push(pt);
+  }
+
+  private getLaps(key: string): MapPoint[][] {
+    const state = this.lapStateByKey[key];
+    if (!state) return [];
+    // Return completed laps + current lap (if has points)
+    const result = [...state.laps];
+    if (state.current.length > 0) {
+      result.push([...state.current]);
+    }
+    return result;
   }
 
 
@@ -2561,8 +2725,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const lats = all.map(p => p.lat);
     const lons = all.map(p => p.lon);
 
-    let minLat: number, maxLat: number, minLon: number, maxLon: number;
-    let padding: number;
+    let minLat: number = 0, maxLat: number = 0, minLon: number = 0, maxLon: number = 0;
+    let padding: number = 0;
+
+    // Optimize bounds calculation: use cached bounds if available (performance optimization)
+    // Only use cached bounds in else branch (non-bric fixed bounds case) to avoid conflicts
+    let useCachedBounds = false;
 
     // สำหรับ bric: ใช้ fixed bounds ถ้ามีแล้ว เพื่อไม่ให้แผนที่ปรับ scale ตลอดเวลา
     if (this.circuitName === 'bric' && this.fixedBoundsForBric) {
@@ -2599,10 +2767,39 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     } else {
       // สำหรับ bsc หรือ bric ที่ยังไม่มี fixed bounds: คำนวณจากข้อมูลจริง
-      minLat = Math.min(...lats);
-      maxLat = Math.max(...lats);
-      minLon = Math.min(...lons);
-      maxLon = Math.max(...lons);
+      // Optimize: use cached bounds if available and point count matches (performance optimization)
+      useCachedBounds = keys.length === 1 && this.cachedBoundsByKey[keys[0]]
+        && this.cachedBoundsByKey[keys[0]].pointCount === all.length;
+      if (useCachedBounds) {
+        const cached = this.cachedBoundsByKey[keys[0]];
+        // Use cached bounds (trust incremental updates - safe because we update incrementally in flushBatch)
+        // Simple sanity check: ensure min <= max
+        if (cached.minLat <= cached.maxLat && cached.minLon <= cached.maxLon) {
+          minLat = cached.minLat;
+          maxLat = cached.maxLat;
+          minLon = cached.minLon;
+          maxLon = cached.maxLon;
+        } else {
+          // Sanity check failed - recalculate
+          useCachedBounds = false;
+        }
+      }
+      if (!useCachedBounds) {
+        minLat = Math.min(...lats);
+        maxLat = Math.max(...lats);
+        minLon = Math.min(...lons);
+        maxLon = Math.max(...lons);
+        // Update cache for next time
+        if (keys.length === 1) {
+          const afrVals = all.map(p => p.afrValue).filter((v): v is number => Number.isFinite(v));
+          this.cachedBoundsByKey[keys[0]] = {
+            minLat, maxLat, minLon, maxLon,
+            minAfr: afrVals.length ? Math.min(...afrVals) : undefined,
+            maxAfr: afrVals.length ? Math.max(...afrVals) : undefined,
+            pointCount: all.length
+          };
+        }
+      }
 
       // สำหรับ bric: ตั้ง fixed bounds ครั้งแรก (ใช้ข้อมูลเริ่มต้น 10 จุดแรกขึ้นไป)
       if (this.circuitName === 'bric' && !this.fixedBoundsForBric && all.length >= 10) {
@@ -2632,9 +2829,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const SVG_W = 800, SVG_H = 660;
 
     // ---- ช่วง AFR (ถ้าไม่มีค่าเลย ใช้ค่า default)
-    const afrVals = all.map(p => p.afrValue).filter((v): v is number => Number.isFinite(v));
-    const afrMin = afrVals.length ? Math.min(...afrVals) : AFR_DEFAULT_MIN;
-    const afrMax = afrVals.length ? Math.max(...afrVals) : AFR_DEFAULT_MAX;
+    // Optimize: use cached AFR bounds if available (performance optimization)
+    let afrMin: number, afrMax: number;
+    if (useCachedBounds && keys.length === 1 && this.cachedBoundsByKey[keys[0]]?.minAfr !== undefined) {
+      const cached = this.cachedBoundsByKey[keys[0]];
+      afrMin = cached.minAfr!;
+      afrMax = cached.maxAfr!;
+    } else {
+      const afrVals = all.map(p => p.afrValue).filter((v): v is number => Number.isFinite(v));
+      afrMin = afrVals.length ? Math.min(...afrVals) : AFR_DEFAULT_MIN;
+      afrMax = afrVals.length ? Math.max(...afrVals) : AFR_DEFAULT_MAX;
+    }
 
     // ---- ค่าที่ต้องส่งออก
     const outPoints: Record<string, string> = {};
@@ -2782,6 +2987,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           // Clamp ให้อยู่ในขอบเขต SVG เพื่อป้องกันข้อมูลที่อยู่นอก bounds
           x = Math.max(0, Math.min(SVG_W, x));
           y = Math.max(0, Math.min(SVG_H, y));
+
+          if (this.routeFlipHorizontal) {
+            x = SVG_W - x;
+          }
         } else {
           // โหมดปกติ: คำนวณพิกัดแบบเดิม
           const normalizedX = paddedSpanLon > 0 ? (r.lon - paddedMinLon) / paddedSpanLon : 0.5;
@@ -3414,6 +3623,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
     this.wsSubscriptions.forEach(sub => sub.unsubscribe());
+    // performance: batched realtime UI flush - cleanup
+    this.rtBatchSubscription?.unsubscribe();
+    this.rtBatch$.complete();
     this.ro?.disconnect();
     this.map?.remove();
     // ปิด WebSocket ที่เปิดไว้ (ถ้ามี)
@@ -3717,6 +3929,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // bric และ sic: ไม่หมุนและไม่สลับด้าน
       this.svgRotation = 0;
       this.svgFlipHorizontal = false;
+      this.routeFlipHorizontal = true;
       this.svgFlipVertical = false;
     }
     this.applySvgTransform();
