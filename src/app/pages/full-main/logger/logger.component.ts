@@ -1395,10 +1395,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       .subscribe({
         next: (detail) => {
           this.loggerID     = detail.loggerId;
-          this.carNumber    = detail.carNumber;
-          this.firstName    = detail.firstName;
-          this.lastName     = detail.lastName;
-          this.classType    = detail.classType;
+          // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
+          if (this.parameterRaceId === 39) {
+            this.carNumber    = '';
+            this.firstName    = '';
+            this.lastName     = '';
+            this.classType    = '';
+          } else {
+            this.carNumber    = detail.carNumber;
+            this.firstName    = detail.firstName;
+            this.lastName     = detail.lastName;
+            this.classType    = detail.classType;
+          }
           this.segmentValue = detail.segmentValue;
           this.seasonID     = detail.seasonId;
           this.categoryName = detail.categoryName;
@@ -2598,7 +2606,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         // คำนวณ bounds จากข้อมูลทั้งหมด
         const lats = arr.map(p => p.lat);
         const lons = arr.map(p => p.lon);
-        
+
         realtimeMinLat = Math.min(...lats);
         realtimeMaxLat = Math.max(...lats);
         realtimeMinLon = Math.min(...lons);
