@@ -2701,7 +2701,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const src = this.allDataLogger?.[k] || this.mapraceDateList?.[k] || [];
       const arr: Raw[] = [];
       for (const p of src) {
-        const lat = parseFloat(p.lat);    // ปรับตามโครงสร้างจริงของคุณ
+        const lat = parseFloat(p.lat);
         const lon = parseFloat(p.lon);
         const afr = p.afrValue != null ? Number(p.afrValue) : NaN;
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
