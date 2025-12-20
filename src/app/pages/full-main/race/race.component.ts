@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
-import { CommonModule, DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {MatInputModule} from '@angular/material/input';
 import {MatFormFieldModule} from '@angular/material/form-field';
@@ -14,8 +14,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MaterialModule } from '../../../material.module';
 import { EventService } from '../../../service/event.service';
-import { distinctUntilChanged, map, Subscription } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { optionModel, RaceModel } from '../../../model/season-model';
+import { getQueryParamAsNumber } from '../../../utility/rxjs-utils';
 import { AddEventComponent } from '../add-event/add-event.component';
 import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
 import { ToastrService } from 'ngx-toastr';
@@ -53,15 +54,11 @@ export class RaceComponent implements OnInit {
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
   ngOnInit() {
-    this.sub = this.route.queryParamMap
-    .pipe(
-      map((p) => Number(p.get('eventId') ?? 0)),
-      distinctUntilChanged()
-    )
-    .subscribe((eventId) => {
-      this.loadRace(eventId);
-      this.CurrentEventId= eventId
-    });
+    this.sub = getQueryParamAsNumber(this.route, 'eventId', 0)
+      .subscribe((eventId) => {
+        this.loadRace(eventId);
+        this.CurrentEventId = eventId;
+      });
 
     this.allRace = [
       {

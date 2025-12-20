@@ -8,7 +8,8 @@
             <th class="text-center w-25">Event</th>
             <th class="text-center w-15">วันที่จัดการแข่ง</th>
             <th class="text-center ">สนาม</th>
-            <th class="text-center w-10">สถานะ</th>
+            <th class="text-center w-5"> </th>
+            <th class="text-center w-15">สถานะ</th>
             <th class="text-center">
               <button type="button" class="btn btn-secondary w-50" (click)="openAdd('0ms', '0ms')">เพิ่ม Event</button>
             </th>
@@ -17,13 +18,22 @@
         <tbody>
           @for (eventList of allEvent; track eventList) {
             <tr>
-              <td class="text-center" (click)="navigateToRace(eventList.event_id)">{{ eventList.event_name }}</td>
+              <td class="text-center" (click)="navigateToRace(eventList.event_id, 'live')">{{ eventList.event_name }}</td>
               <td class="text-center">
                 {{ eventList.event_start| dateRange:eventList.event_end }}
               </td>
               <!-- <td class="text-center" >2 - 6 Jun 2025</td> -->
               <td class="text-center">
                 {{ getCircuitName(eventList.circuit_name) }}
+              </td>
+              <td class="text-center">
+                <div class="col-12">
+                  <button
+                    type="button"
+                    class="w-100 p-0 btn btn-secondary" (click)="navigateToRace(eventList.event_id, 'history')">
+                    History
+                  </button>
+                </div>
               </td>
               <td class="text-center">
                 <div class="row d-flex justify-content-center">
@@ -43,9 +53,8 @@
                   <div class="row d-flex justify-content-center"
                     [class.pointer-events-none]="statusOf(eventList) === RaceStatus.Finished"
                     [class.opacity-50]="statusOf(eventList) === RaceStatus.Finished">
-
                     @if (statusOf(eventList) == RaceStatus.Live) {
-                      <div class="col-4">
+                      <div class="col-6">
                           <button type="button" class="btn btn-danger w-100 p-0" (click)="openEnd('0ms', '0ms', eventList.event_id)">จบ event</button>
                       </div>
                     }

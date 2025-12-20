@@ -18,9 +18,10 @@ import { ResetWarningLoggerComponent } from './reset-warning-logger/reset-warnin
 import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
-import { merge, startWith, Subscription, take } from 'rxjs';
+import { merge, Subscription, startWith} from 'rxjs';
 import { RACE_SEGMENT } from '../../../constants/race-data';
 import { parseClassQueryToCombined } from '../../../utility/race-param.util';
+import { getQueryParamsOnce, formControlWithInitial } from '../../../utility/rxjs-utils';
 import {MatSort, Sort, MatSortModule} from '@angular/material/sort';
 import {MatTableDataSource, MatTableModule} from '@angular/material/table';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
@@ -29,6 +30,7 @@ import { CommonModule } from '@angular/common';
 import { LoggerItem } from '../../../model/api-response-model';
 import { TimeService } from '../../../service/time.service';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
+import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
@@ -59,12 +61,14 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
 
-  // WebSocket สำหรับ logger status
+  private wsStatusConnection: WebSocketConnection | null = null;
+    // WebSocket สำหรับ logger status
   private wsStatus: WebSocket | null = null;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 5;
   private readonly reconnectDelay = 3000; // 3 seconds
   private reconnectTimeout: any = null;
+
 
 
   allLoggers: LoggerItem[] = [
@@ -242,7 +246,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         //   error: (e) => console.error(e),
         // });
     }else{
-      const qpSub = this.route.queryParamMap.pipe(take(1)).subscribe(qp => {
+      const qpSub = getQueryParamsOnce(this.route).subscribe(qp => {
         // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
         const classMulti = qp.getAll('class');
         const classSingle = qp.get('class');
@@ -280,8 +284,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
         // reactive UI เดิม
         const reactSub = merge(
-          this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
-          this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
+          formControlWithInitial(this.filterLogger),
+          formControlWithInitial(this.formGroup.get('sortType') as FormControl)
         ).subscribe(() => {
           this.updateView(this.allLoggers);
           this.cdr.markForCheck();
@@ -397,7 +401,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
         this.filterLogger.setValue('all', { emitEvent: true });
         this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
-        const qpSub = this.route.queryParamMap.pipe(take(1)).subscribe(qp => {
+        const qpSub = getQueryParamsOnce(this.route).subscribe(qp => {
           // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
           const classMulti = qp.getAll('class');
           const classSingle = qp.get('class');
@@ -591,20 +595,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
    * ปิดการเชื่อมต่อ WebSocket
    */
   private disconnectWebSocket(): void {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
+    if (this.wsStatusConnection) {
+      this.wsStatusConnection.disconnect();
+      this.wsStatusConnection = null;
     }
-
-    if (this.wsStatus) {
-      try {
-        this.wsStatus.close();
-      } catch (error) {
-        console.error('[WS Status] Error closing connection:', error);
-      }
-      this.wsStatus = null;
-    }
-    console.log('[WS Status] Disconnected');
   }
 
 }

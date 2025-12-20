@@ -122,45 +122,6 @@
               <small class="text-muted">💡 คลิกที่จุดบนแผนที่เพื่อตั้งจุดเริ่มต้น</small>
             </div>
           </div>
-          <!-- SVG Controls: การหมุนและกลับด้าน -->
-          <!-- <div class="card-body card-body--flush p-2" style="border-bottom: 1px solid #2B3035;">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="text-muted small">ควบคุม SVG:</span>
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="rotateSvg(-90)" title="หมุนทวนเข็มนาฬิกา 90°">
-                ↺ 90°
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="rotateSvg(90)" title="หมุนตามเข็มนาฬิกา 90°">
-                90° ↻
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="rotateSvg(-45)" title="หมุนทวนเข็มนาฬิกา 45°">
-                ↺ 45°
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="rotateSvg(45)" title="หมุนตามเข็มนาฬิกา 45°">
-                45° ↻
-              </button>
-              <div class="input-group input-group-sm" style="width: 120px;">
-                <input type="number" class="form-control" [(ngModel)]="svgRotation"
-                       (change)="setSvgRotation(svgRotation)"
-                       (keyup.enter)="setSvgRotation(svgRotation)"
-                       min="0" max="360" step="1"
-                       placeholder="องศา" title="ตั้งค่าการหมุน (0-360)">
-                <span class="input-group-text">°</span>
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-warning"
-                      [class.active]="svgFlipHorizontal"
-                      (click)="flipHorizontal()" title="สลับซ้ายขวา (Flip Horizontal)">
-                ↔️ สลับซ้ายขวา
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-warning"
-                      [class.active]="svgFlipVertical"
-                      (click)="flipVertical()" title="สลับบนล่าง (Flip Vertical)">
-                ↕️ สลับบนล่าง
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger" (click)="resetSvgTransform()" title="รีเซ็ตกลับค่า default ตามสนาม">
-                รีเซ็ต
-              </button>
-            </div>
-          </div> -->
           <div class="card-body card-body--flush">
             <div class="track-image-container">
               <svg #mapSvg viewBox="0 0 800 660" preserveAspectRatio="none" style="overflow: hidden; background: #fff;"
@@ -168,11 +129,11 @@
                 <!-- Group สำหรับการ transform ทั้งหมด (สะท้อน/หมุน) -->
                 <g [attr.transform]="getSvgTransformAttribute()">
                   @if(this.circuitName === 'bsc'){
-                    <image href="images/map-race/imgBGBangsan.png" width="100%" height="100%" />
+                    <image href="images/map-race/imgBGBangsan-real.png" width="100%" height="100%" />
                   } @else if (this.circuitName === 'bric') {
-                    <image href="images/map-race/Track-Chang-International-Circuit.png" width="100%" height="100%" />
+                    <image href="images/map-race/Track-Chang-International-Circuit-real.png" width="100%" height="100%" />
                   } @else if (this.circuitName === 'bic') {
-                    <image href="images/map-race/Bira-International-Circuit.jpg" width="100%" height="100%" />
+                    <image href="images/map-race/Bira-International-Circuit-real.jpg" width="100%" height="100%" />
                   }
                   <g>
                     @if (showRoutePath) {

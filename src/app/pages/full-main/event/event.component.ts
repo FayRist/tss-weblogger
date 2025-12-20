@@ -104,9 +104,9 @@ export class EventComponent implements OnInit {
     this.subscriptions.push(eventData);
   }
 
-  navigateToRace(eventId: number) {
+  navigateToRace(eventId: number, statusRace: string) {
     this.router.navigate(['/pages', 'race'], {
-      queryParams: { eventId }
+      queryParams: { eventId, statusRace }
     });
   }
 

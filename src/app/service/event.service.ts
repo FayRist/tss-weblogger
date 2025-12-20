@@ -2,6 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, map, Observable } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
+import { handleHttpError } from '../utility/http-error-handler.util';
 import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
@@ -149,10 +150,7 @@ export class EventService {
         console.log('Event added successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error adding Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('adding Event', error))
     );
   }
 
@@ -163,10 +161,7 @@ export class EventService {
           console.log('Event added/updated successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error adding/updating Event:', error);
-          throw error;
-        })
+      catchError(error => handleHttpError('adding/updating Event', error))
       );
     }
 
@@ -177,10 +172,7 @@ export class EventService {
           console.log('Event added/updated successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error adding/updating Event:', error);
-          throw error;
-        })
+      catchError(error => handleHttpError('adding/updating Event', error))
       );
     }
 
@@ -192,10 +184,7 @@ export class EventService {
         console.log('Event Delete successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error Delete Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('deleting Event', error))
     );
   }
 
@@ -206,10 +195,7 @@ export class EventService {
         console.log('Event Delete successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error Delete Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('deleting Event', error))
     );
   }
   // ------------Race-----------------------------
@@ -249,10 +235,7 @@ export class EventService {
         console.log('Event added successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error adding Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('adding Event', error))
     );
   }
 
@@ -263,10 +246,7 @@ export class EventService {
           console.log('Race added/updated successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Race adding/updating Event:', error);
-          throw error;
-        })
+      catchError(error => handleHttpError('adding/updating Race', error))
       );
     }
 
@@ -277,10 +257,7 @@ export class EventService {
         console.log('Event Delete successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error Delete Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('deleting Event', error))
     );
   }
 
@@ -291,10 +268,7 @@ export class EventService {
         console.log('Event Delete successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error Delete Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('deleting Event', error))
     );
   }
   // --------- Config -------------------------------
@@ -310,10 +284,7 @@ export class EventService {
         console.log('Event Delete successfully:', response);
         return response?.data;
       }),
-      catchError(error => {
-        console.error('Error Delete Event:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('deleting Event', error))
     );
   }
 
@@ -324,10 +295,7 @@ export class EventService {
         console.log('Config added successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error adding Config:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('adding Config', error))
     );
   }
 
@@ -338,10 +306,7 @@ export class EventService {
         console.log('UPDATE CONFIG  successfully:', response);
         return response;
       }),
-      catchError(error => {
-        console.error('Error UPDATE CONFIG:', error);
-        throw error;
-      })
+      catchError(error => handleHttpError('updating Config', error))
     );
   }
 
@@ -480,10 +445,7 @@ export class EventService {
           console.log('Loggers added/updated successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error adding/updating loggers:', error);
-          throw error;
-        })
+        catchError(error => handleHttpError('adding/updating loggers', error))
       );
     }
 
@@ -494,10 +456,7 @@ export class EventService {
           console.log('Loggers added/updated successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error adding/updating loggers:', error);
-          throw error;
-        })
+        catchError(error => handleHttpError('adding/updating loggers', error))
       );
     }
 
@@ -508,10 +467,7 @@ export class EventService {
           console.log('Loggers Delete successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error Delete loggers:', error);
-          throw error;
-        })
+        catchError(error => handleHttpError('deleting loggers', error))
       );
     }
 
@@ -563,10 +519,7 @@ export class EventService {
             offset: res.offset ?? opts?.offset ?? 0,
           };
         }),
-        catchError((error) => {
-          console.error('Error Get Logger by date:', error);
-          throw error;
-        })
+        catchError(error => handleHttpError('getting Logger by date', error))
       );
     }
 
@@ -585,10 +538,7 @@ export class EventService {
           console.log('Logger added/updated successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error adding/updating Logger:', error);
-          throw error;
-        })
+        catchError(error => handleHttpError('adding/updating Logger', error))
       );
       // return this.http.post<unknown>(url, { key });
     }
@@ -600,10 +550,7 @@ export class EventService {
           console.log('Loggers Delete successfully:', response);
           return response;
         }),
-        catchError(error => {
-          console.error('Error Delete loggers:', error);
-          throw error;
-        })
+        catchError(error => handleHttpError('deleting loggers', error))
       );
     }
 

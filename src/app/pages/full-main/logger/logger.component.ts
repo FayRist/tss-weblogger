@@ -9,8 +9,9 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
-import { delay, distinctUntilChanged, map, of, startWith, Subscription, Subject } from 'rxjs';
+import { Subscription, Subject } from 'rxjs';
 import { bufferTime, filter } from 'rxjs/operators';
+import { formControlWithInitial } from '../../../utility/rxjs-utils';
 import {
   ApexAxisChartSeries, ApexChart, ApexXAxis, ApexYAxis, ApexStroke, ApexDataLabels,
   ApexFill, ApexMarkers, ApexGrid, ApexLegend, ApexTooltip, ApexTheme,
@@ -45,7 +46,6 @@ interface LoggerPoint {
   speed: number;
 }
 
-// จุดบนแผนที่ (ใช้กับ Leaflet)
 type MapPoint = {
   ts: number;
   lat: any;
@@ -186,9 +186,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   // private currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
-  // ลบ private ออก (การไม่ระบุ access modifier จะถือว่าเป็น public โดยอัตโนมัติ)
-
-  // ตัวแปรสำหรับควบคุมการแสดงผลของจุดและ tooltip บนแผนที่
   hoverPoint = {
     visible: false,
     x: 0,
@@ -196,14 +193,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     afr: 0
   };
 
-  // ตัวแปรสำหรับเก็บ state ของจุดที่ถูกคลิก
   clickedPointState: {
     seriesIndex: number;
     dataPointIndex: number;
     timestamp: number;
   } | null = null;
 
-  // ตรวจสอบว่าเป็น touch device หรือไม่ (สำหรับ iPad/Tablet)
   get isTouchDevice(): boolean {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }
@@ -214,12 +209,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('chart') chart!: ChartComponent;
   chartsReady = false;
 
-  // เก็บ path/lastPoint แยก โดยไม่ไปแตะ type ของ allLogger
-  // private pathsByLoggerId: Record<string, MapPoint[]> = {};
-  // private lastPointByLoggerId: Record<string, MapPoint | undefined> = {};
-
-  // ====== เพิ่มฟิลด์/ยูทิล ======
-  // private isSyncingChart = false;
   private isSyncingRace  = false;
 
   @ViewChild('mapSvg') mapSvgEl!: ElementRef<SVGElement>;
@@ -240,7 +229,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     visibility: 'hidden' as 'hidden' | 'visible'
   };
 
-  // สำหรับเก็บ fixed bounds สำหรับ bric (เพื่อไม่ให้แผนที่ปรับ scale ตลอดเวลา)
   private fixedBoundsForBric: {
     minLat: number;
     maxLat: number;
@@ -248,8 +236,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     maxLon: number;
   } | null = null;
 
-  // Preset bounds สำหรับ realtime mode (ป้องกันการขยับไปมา)
-  // คำนวณจาก raw data ด้วยสูตรเดียวกับ initializeFixedBoundsForBric (เพิ่ม padding 10%)
   private presetBoundsForRealtime: {
     minLat: number;
     maxLat: number;
@@ -267,7 +253,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     rawMinLon: number,
     rawMaxLon: number
   ): { minLat: number; maxLat: number; minLon: number; maxLon: number } {
-    // ใช้ padding 10% เพื่อให้มีพื้นที่เพียงพอสำหรับการเดินทางต่อเนื่อง
     const padding = 0.10;
     const spanLat = Math.max(1e-9, rawMaxLat - rawMinLat);
     const spanLon = Math.max(1e-9, rawMaxLon - rawMinLon);
@@ -280,7 +265,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
   }
 
-  // ฟังก์ชันสำหรับตั้งค่า fixed bounds จากข้อมูลเริ่มต้น
   private initializeFixedBoundsForBric(all: Array<{lat: number; lon: number}>) {
     if (this.fixedBoundsForBric) return; // ถ้ามี bounds แล้ว ไม่ต้องตั้งใหม่
 
@@ -293,7 +277,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const minLon = Math.min(...lons);
     const maxLon = Math.max(...lons);
 
-    // ใช้ padding 10% เพื่อให้มีพื้นที่เพียงพอสำหรับการเดินทางต่อเนื่อง
     const padding = 0.10;
     const spanLat = Math.max(1e-9, maxLat - minLat);
     const spanLon = Math.max(1e-9, maxLon - minLon);
@@ -323,12 +306,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     { idMap: 'bsc', lat: 13.304051, lon: 100.9014779, zoom: 15 },
   ];
 
-  // จุด (x,y,lat,long,afr) ต่อ key สำหรับ hover
   svgPtsByKey: Record<string, Array<{ x:number; y:number; lat:number; long:number; afr?:number }>> = {};
 
-  // tooltip state
   tip = { visible: false, x: 0, y: 0, afr: NaN as number, lat: NaN as number, lon: NaN as number, key: '' };
-  // อ้างอิงกล่องห่อ SVG เพื่อคำนวณตำแหน่งเมาส์สัมพัทธ์
   @ViewChild('mapWrap', { static: true }) mapWrapEl!: { nativeElement: HTMLElement };
 
   onPointEnter(evt: MouseEvent, key: string, p: {x:number;y:number;lat:number;long:number;afr?:number}) {
@@ -351,7 +331,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.tip.visible = false;
   }
 
-  // พาเล็ตต์สีและแมปสีต่อ key (ใช้กับ legend/polyline)
   private palette = ['#007bff','#28a745','#dc3545','#ffc107','#6f42c1','#20c997','#17a2b8','#6610f2','#e83e8c','#795548'];
   colorByKey: Record<string, string> = {};
   private recomputeColors(keys: string[]) {
@@ -542,7 +521,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         max: 30,
         labels: {
           formatter: (val: number) => {
-            // แปลงให้เป็นจำนวนเต็ม
             return Math.round(val).toString();
           }
         }
@@ -584,7 +562,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         theme: 'dark',
         fillSeriesColor: false,
         custom: ({ series, seriesIndex, dataPointIndex, w }: any) => {
-          // สร้าง custom tooltip ที่แสดงพิกัดที่ถูก transform แล้ว
           if (dataPointIndex < 0 || seriesIndex < 0) {
             return '';
           }
@@ -609,12 +586,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
           , this.currentMapPoints?.[0] ?? { ts: timestamp, x: 0, y: 0, afr: 0 });
 
-          // ดึงค่า AFR จากค่า y ของ series (ตรงกับค่าที่แสดงในกราฟ)
           const afrFromSeries = pointOnChart.y !== null && pointOnChart.y !== undefined
             ? pointOnChart.y
             : null;
 
-          // สร้าง HTML สำหรับ tooltip
           const seriesName = seriesCfg?.name || `Series ${seriesIndex + 1}`;
           const value = series[seriesIndex]?.[dataPointIndex];
           const timeStr = new Date(timestamp).toLocaleTimeString();
@@ -626,7 +601,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           `;
 
           if (closestMapPoint && (closestMapPoint.x !== 0 || closestMapPoint.y !== 0)) {
-            // แปลงพิกัดให้สอดคล้องกับ transform
             const transformedPoint = this.applyTransform({ x: closestMapPoint.x, y: closestMapPoint.y });
 
             tooltipHTML += `
@@ -634,7 +608,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
               <div style="font-size: 11px; color: #4FC3F7;">Transformed: (${transformedPoint.x.toFixed(1)}, ${transformedPoint.y.toFixed(1)})</div>
             `;
 
-            // ใช้ค่า AFR จาก series (ตรงกับค่าที่แสดงในกราฟ)
             if (afrFromSeries !== null && !isNaN(afrFromSeries)) {
               tooltipHTML += `<div style="font-size: 11px; color: #00E5A8; margin-top: 4px;">AFR: ${afrFromSeries.toFixed(2)}</div>`;
             } else if (closestMapPoint.afr !== undefined) {
@@ -655,14 +628,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   startPoint = { x: 0, y: 0, lat: 0, long: 0 };
   endPoint = { x: 0, y: 0, lat: 0, long: 0 };
 
-  // สำหรับเก็บ SVG polyline ที่สร้างจาก telemetry points (first point centered)
   telemetrySvgPolyline: string = '';
 
   polyTransCsvform = '';
   startPointCsv: XY = { x: 0, y: 0 };
   endPointCsv: XY = { x: 0, y: 0 };
 
-  // สำหรับวาดแผนที่หลายเส้น
   selectedSvgSets: Array<{
     name: string;
     points: string;      // polyline points
@@ -1092,7 +1063,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // ฟังก์ชันสำหรับอัปเดตแผนที่ให้แสดงเฉพาะ lap ที่เลือก
   updateMapWithSelectedLap() {
     console.log('updateMapWithSelectedLap called');
     console.log('raceLab length:', this.raceLab?.length || 0);
@@ -1105,32 +1075,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     if (this.showOnlySelectedLap && this.selectedLapIndex < this.raceLab.length) {
-      // แสดงเฉพาะ lap ที่เลือก
       const selectedLap = this.raceLab[this.selectedLapIndex];
       console.log(`Displaying lap ${this.selectedLapIndex + 1} with ${selectedLap.length} points`);
 
-      // สร้างแผนที่จาก lap เดียว
       this.buildMapFromSingleLap(selectedLap, this.selectedRaceKey!);
-
-      // อัปเดตกราฟให้ใช้ข้อมูล lap เดียวกัน
       this.buildChartFromSingleLap(selectedLap);
     } else {
       console.log('Displaying all laps');
-      // แสดงทุก lap
       this.buildMapFromLaps(this.raceLab, this.selectedRaceKey!);
-
-      // อัปเดตกราฟให้ใช้ข้อมูลทุก lap
       this.buildChartsFromLaps(this.raceLab);
     }
   }
 
-  // เก็บ reference ไปยัง lap data ที่ใช้สร้าง chart เพื่อให้การ hover ตรงกัน
   private currentLapDataForChart: MapPoint[] | null = null;
   private currentLapsDataForChart: MapPoint[][] | null = null;
 
-  // ฟังก์ชันสำหรับสร้างแผนที่จาก lap เดียว
   private buildMapFromSingleLap(lap: MapPoint[], key: string) {
-    // เก็บ reference ไปยัง lap data
     this.currentLapDataForChart = lap;
     this.currentLapsDataForChart = null;
     const all = lap.map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
@@ -1410,11 +1370,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // ----- WORKFLOW หลัก (ตัวเดียว) -----
-    this.filterRace.valueChanges
-      .pipe(
-        startWith(this.filterRace.value ?? ''),
-        distinctUntilChanged()
-      )
+    formControlWithInitial(this.filterRace)
+      .pipe(filter((v): v is string => !!v))
       .subscribe(selectedValue => {
         if (this.isSyncingRace || !selectedValue) {
           return;
@@ -3920,18 +3877,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
    */
   private initializeSvgTransformForCircuit(): void {
-    if (this.circuitName === 'bsc') {
-      // bsc: หมุน 45° และสลับซ้ายขวา
-      this.svgRotation = 45;
-      this.svgFlipHorizontal = true;
-      this.svgFlipVertical = false;
-    } else {
-      // bric และ sic: ไม่หมุนและไม่สลับด้าน
-      this.svgRotation = 0;
-      this.svgFlipHorizontal = false;
-      this.routeFlipHorizontal = true;
-      this.svgFlipVertical = false;
-    }
+    this.svgRotation = 0;
+    this.svgFlipHorizontal = false;
+    this.routeFlipHorizontal = true;
+    this.svgFlipVertical = false;
     this.applySvgTransform();
   }
 
