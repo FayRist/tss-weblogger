@@ -71,34 +71,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
 
 
-  allLoggers: LoggerItem[] = [
-    // {
-    //   id: 1,
-    //   firstName: "ทดสอบ1",
-    //   lastName: "Test01",
-    //   carNumber: "1",
-    //   loggerId: "Client121",
-    //   createdDate: new Date(10/9/2025),
-    //   numberLimit: 2,
-    //   classType: 'PickupA',
-    //   warningDetector: false,
-    //   loggerStatus: 'offline',
-    //   afrAverage: 0,
-
-    // },{
-    //   id: 4,
-    //   firstName: "ทดสอบ4",
-    //   lastName: "Test04",
-    //   carNumber: "4",
-    //   loggerId: "Client124",
-    //   createdDate: new Date(10/9/2025),
-    //   numberLimit: 0,
-    //   classType: 'PickupA',
-    //   warningDetector: false,
-    //   loggerStatus: 'offline',
-    //   afrAverage: 0,
-    // },
-  ];
+  allLoggers: LoggerItem[] = [ ];
   readonly dialog = inject(MatDialog);
   onShowAllLoggers: LoggerItem[] = []
   countMax: number = 0;
@@ -263,16 +236,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           .subscribe({
           next: (loggerRes) => {
             this.allLoggers = loggerRes ?? [];
-            // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
-            if (this.parameterRaceId === 39) {
-              this.allLoggers = this.allLoggers.map(logger => ({
+            this.allLoggers = this.allLoggers.map(logger => ({
                 ...logger,
-                carNumber: '',
-                firstName: '',
-                lastName: '',
-                classType: ''
+                onlineTime: (logger.onlineTime && logger.disconnectTime && logger.onlineTime > logger.disconnectTime)? logger.onlineTime : logger.disconnectTime
               }));
-            }
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
             // เชื่อมต่อ WebSocket หลังจากโหลดข้อมูล loggers แล้ว
@@ -418,16 +385,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             .subscribe({
             next: (loggerRes) => {
               this.allLoggers = loggerRes ?? [];
-              // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
-              if (this.parameterRaceId === 39) {
-                this.allLoggers = this.allLoggers.map(logger => ({
-                  ...logger,
-                  carNumber: '',
-                  firstName: '',
-                  lastName: '',
-                  classType: ''
-                }));
-              }
               this.updateView(this.allLoggers);
               this.cdr.markForCheck();
             },

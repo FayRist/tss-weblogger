@@ -7,20 +7,45 @@
           <div class="card-body">
             <div class="row">
               <div class="col-12">
-                <form class="mat-input-form">
-                  <mat-form-field class="w-100">
-                  <mat-label>Count Max</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="countMax">
-                  </mat-form-field>
-                </form>
+
+                <div class="slider-label-container">
+                  <label id="slider-name-label" class="slider-name-label">Count Max</label>
+                  <label class="slider-value-label">{{countMax}}</label>
+                </div>
+                <mat-slider
+                    class="slider-margin"
+                    [max]="CountMaxSlider"
+                    [min]="CountMinSlider"
+                    [step]="CountStepSlider"
+                    [discrete]="CountThumbLabelSlider"
+                    [showTickMarks]="CountShowTicksSlider">
+                  <input matSliderThumb [(ngModel)]="countMax" #sliderMax>
+                </mat-slider>
+
+
               </div>
               <div class="col-12">
-                <form class="mat-input-form">
+                <!-- <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>AFR Limit</mat-label>
                     <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="afrLimit">
                   </mat-form-field>
-                </form>
+                </form> -->
+
+                <div class="slider-label-container">
+                  <label id="slider-name-label" class="slider-name-label">AFR Limit</label>
+                  <label class="slider-value-label">{{afrLimit}}</label>
+                </div>
+                <mat-slider
+                    class="slider-margin"
+                    [max]="LimitMaxSlider"
+                    [min]="LimitMinSlider"
+                    [step]="LimitStepSlider"
+                    [discrete]="LimitThumbLabelSlider"
+                    [showTickMarks]="LimitShowTicksSlider">
+                  <input matSliderThumb [(ngModel)]="afrLimit" #sliderLimit>
+                </mat-slider>
+
               </div>
 
               <!-- <div class="col-4">

@@ -68,6 +68,8 @@ export class EventService {
         afr: Number(data.afr ?? 0),
         afrAverage: Number(data.afrAverage ?? 0),
         status: String(data.status ?? ''),
+        onlineTime: data.onlineTime,
+        disconnectTime: data.disconnectTime,
       }))
     );
   }
@@ -80,12 +82,12 @@ export class EventService {
         map(response => {
           // Map API data to Match interface
           this.eventList = response.data.map((apiData) => ({
-              event_id: apiData.event_id,
-              season_id: apiData.season_id,
-              event_name: apiData.event_name,
-              circuit_name: apiData.circuit_name,
-              event_start: new Date(apiData.event_start),
-              event_end: new Date(apiData.event_end),
+              event_id: apiData.eventid,
+              season_id: apiData.seasonid,
+              event_name: apiData.eventname,
+              circuit_name: apiData.circuitname,
+              event_start: new Date(apiData.eventstart),
+              event_end: new Date(apiData.eventend),
               active: apiData.active
           }));
           return this.eventList;
@@ -116,6 +118,10 @@ export class EventService {
       return this.http.post<ApiDropDownResponse>(seasonURL, payload).pipe(
         map(response => {
           // Map API data to Match interface
+          if(!response.data){
+            return [];
+          }
+
           this.eventOption = response.data.map((apiData) => ({
               name: apiData.name,
               value: apiData.value,
@@ -134,6 +140,9 @@ export class EventService {
       return this.http.post<ApiDropDownResponse>(seasonURL, payload).pipe(
         map(response => {
           // Map API data to Match interface
+          if(!response.data){
+            return [];
+          }
           this.eventOption = response.data.map((apiData) => ({
               name: apiData.name,
               value: apiData.value,
@@ -200,14 +209,19 @@ export class EventService {
   }
   // ------------Race-----------------------------
 
-  getRace(eventId: any): Observable<RaceModel[]> {
+  getRace(eventId: any, statusRace: string): Observable<RaceModel[]> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_RACE);
-    let params = new HttpParams();
+    let httpParams = new HttpParams();
+
     if (eventId != null) {
-      params = params.set('eventId', eventId.toString());
+      httpParams = httpParams.set('eventId', eventId.toString());
     }
 
-    return this.http.get<ApiRaceResponse>(url, { params }).pipe(
+    if (statusRace != null && statusRace !== '') {
+      httpParams = httpParams.set('statusRace', statusRace);
+    }
+
+    return this.http.get<ApiRaceResponse>(url, { params: httpParams }).pipe(
           map(response => {
           // Map API data to Match interface
 
@@ -431,6 +445,9 @@ export class EventService {
           numberLimit: 0,
           warningDetector: false,
           loggerStatus: 'offline',
+          onlineTime: (api.online_time)? new Date(api.online_time) : null ,
+          disconnectTime: (api.disconnect_time)? new Date(api.disconnect_time) : null
+
         }));
         return items;
       })

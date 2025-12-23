@@ -1204,6 +1204,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   sessionValue = '';
   circuitName = '';
 
+  onlineLastTime: any;
 
   constructor(private router: Router, private route: ActivatedRoute, private cdr: ChangeDetectorRef
     , private toastr: ToastrService
@@ -1422,23 +1423,24 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       .subscribe({
         next: (detail) => {
           this.loggerID     = detail.loggerId;
-          // ถ้า raceId === 39 ให้แสดงค่าว่างสำหรับ Name, class และหมายเลขรถ
-          if (this.parameterRaceId === 39) {
-            this.carNumber    = '';
-            this.firstName    = '';
-            this.lastName     = '';
-            this.classType    = '';
-          } else {
-            this.carNumber    = detail.carNumber;
-            this.firstName    = detail.firstName;
-            this.lastName     = detail.lastName;
-            this.classType    = detail.classType;
-          }
+          this.carNumber    = detail.carNumber;
+          this.firstName    = detail.firstName;
+          this.lastName     = detail.lastName;
+          this.classType    = detail.classType;
           this.segmentValue = detail.segmentValue;
           this.seasonID     = detail.seasonId;
           this.categoryName = detail.categoryName;
           this.sessionValue = detail.sessionValue;
           this.circuitName = detail.circuitName;
+
+          if(!detail.onlineTime && !detail.disconnectTime){
+            this.onlineLastTime = ""
+          }else {
+            const selectedDate = (new Date(detail.onlineTime) <= new Date(detail.disconnectTime) || detail.onlineTime == "")? new Date(detail.onlineTime): new Date(detail.disconnectTime);
+            this.onlineLastTime = this.formatDateTime(selectedDate);
+          }
+
+
           // ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
           this.initializeSvgTransformForCircuit();
 
@@ -3940,5 +3942,26 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const selection = [this.selectedRaceKey];
       this.updateMapFromSelection(selection);
     }
+  }
+
+  /**
+   * จัดรูปแบบวันที่เป็น dd/mm/YYYY HH:MM:SS โดย mm เป็นตัวย่อเดือนภาษาอังกฤษ
+   * @param date - Date object ที่ต้องการจัดรูปแบบ
+   * @returns สตริงที่จัดรูปแบบแล้ว เช่น "15/Jan/2024 14:30:45"
+   */
+  private formatDateTime(date: Date): string {
+    if (!date || isNaN(date.getTime())) {
+      return '';
+    }
+
+    const day = String(date.getDate()).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${day} ${month}, ${year} ${hours}:${minutes}:${seconds}`;
   }
 }

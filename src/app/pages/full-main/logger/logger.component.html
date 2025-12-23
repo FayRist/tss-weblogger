@@ -13,27 +13,19 @@
       <div class="col-4 pt-2">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
-          <mat-label>Class</mat-label>
-            <input matInput disabled class="text-center" [value]="segmentValue">
+          <mat-label>Session</mat-label>
+            <input matInput disabled class="text-center" [value]="sessionValue">
           </mat-form-field>
         </form>
       </div>
       <div class="col-4 pt-2">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
-          <mat-label>Session</mat-label>
-            <input matInput disabled class="text-center" [value]="sessionValue">
+          <mat-label>Last Online</mat-label>
+            <input matInput disabled class="text-center" [value]="onlineLastTime">
           </mat-form-field>
         </form>
       </div>
-      <!-- <div class="col-3 pt-2">
-        <form class="mat-input-form">
-          <mat-form-field class="w-100">
-            <mat-label>ชื่อนักแข่ง</mat-label>
-            <input matInput disabled class="text-center" [value]="firstName +' '+ lastName">
-          </mat-form-field>
-        </form>
-      </div> -->
     </div>
 
   </mat-toolbar-row>
@@ -297,14 +289,18 @@
                       <form class="mat-input-form">
                         <mat-form-field class="w-100">
                           <mat-label>Session</mat-label>
-                            <mat-select [formControl]="filterRace">
-                              @for (racesDate of raceDateList; track racesDate.value) {
-                                <mat-option [value]="racesDate.value">{{racesDate.name}}</mat-option>
-                              }
-                            </mat-select>
+                          <mat-select [formControl]="filterRace">
+                            @for (racesDate of raceDateList; track racesDate.value) {
+                              <mat-option [value]="racesDate.value">{{racesDate.name}}</mat-option>
+                            }
+                          </mat-select>
                         </mat-form-field>
                       </form>
-                      <div class="form-check form-switch">
+
+                      <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
+                        Export Data
+                      </button>
+                      <div class="form-check form-switch" style="">
                         <button
                           #selectButton
                           type="button"

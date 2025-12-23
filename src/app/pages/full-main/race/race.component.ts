@@ -54,12 +54,11 @@ export class RaceComponent implements OnInit {
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
   ngOnInit() {
-    this.sub = getQueryParamAsNumber(this.route, 'eventId', 0)
-      .subscribe((eventId) => {
-        this.loadRace(eventId);
-        this.CurrentEventId = eventId;
-      });
+    let eventId = this.route.snapshot.queryParamMap.get('eventId') ?? '';
+    let statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
+    this.loadRace(eventId, statusRace);
 
+    this.CurrentEventId = eventId;
     this.allRace = [
       {
         id_list: 1,
@@ -92,7 +91,7 @@ export class RaceComponent implements OnInit {
         // this.dialogRef.close('success');
         this.toastr.success(`เริ่มการแข่ง ${this.getSessionName(sessionName)} `);
         // this.loadEvent();
-        this.loadRace(eventId);
+        this.loadRace(eventId, 'live');
 
       },
       error => {
@@ -137,7 +136,7 @@ export class RaceComponent implements OnInit {
   }
 
 
-  private loadRace(eventId: any): void {
+  private loadRace(eventId: any, statusRace: string): void {
     // อันดับตามที่ต้องการ
     const ORDER: Record<string, number> = {
       'practice': 0,
@@ -166,7 +165,7 @@ export class RaceComponent implements OnInit {
       return d ? d.getTime() : Number.MAX_SAFE_INTEGER; // ไม่มีเวลา → ท้ายในกลุ่มเดียวกัน
     };
 
-    const RaceSub = this.eventService.getRace(eventId).subscribe(
+    const RaceSub = this.eventService.getRace(eventId, statusRace).subscribe(
       race => {
         this.allRace = [...race].sort((a, b) =>
           (rank(a) - rank(b)) ||                  // 1) เรียงตาม session_value
@@ -242,7 +241,7 @@ export class RaceComponent implements OnInit {
       // console.log('The dialog was closed');
       if(result == 'success'){
         this.toastr.success('แก้ไข Event เรียบร้อย')
-        this.loadRace(this.CurrentEventId);
+        this.loadRace(this.CurrentEventId, 'live');
       }
     });
   }

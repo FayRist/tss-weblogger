@@ -19,3 +19,20 @@ button {
 p {
   font-family: Lato;
 }
+
+.slider-margin {
+  width: 100%;
+  margin: 8px;
+}
+
+.slider-label-container {
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  margin: 20px 10px 0;
+  width: 100%;
+}
+
+.slider-result-card .slider-value-label {
+  font-weight: 600;
+}

@@ -111,7 +111,7 @@
           *matHeaderCellDef mat-sort-header sortActionDescription="Sort by carNumber">&nbsp;&nbsp;
           NBR.
         </th>
-        <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)" > {{parameterRaceId === 39 ? '' : element.carNumber}} </td>
+        <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)" > {{element.carNumber}} </td>
       </ng-container>
 
       <!-- Status Online / Offline Column -->
@@ -125,6 +125,11 @@
             [ngClass]="(e.status + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
             {{ (((e.status ?? '').toString().trim()) || 'OFFLINE') | uppercase }}
           </span>
+          @if(e.onlineTime){
+            <span class="status-badge-time">
+              {{ e.onlineTime | date:'dd MMM, yyyy HH:mm:ss'  }}
+            </span>
+          }
         </td>
       </ng-container>
 
@@ -141,7 +146,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by firstName">
           Name
         </th>
-        <td  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"   > {{parameterRaceId === 39 ? '' : (element.firstName + ' ' + element.lastName)}} </td>
+        <td  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"   > {{ (element.firstName + ' ' + element.lastName)}} </td>
       </ng-container>
 
       <!-- classType Column -->
@@ -149,7 +154,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by classType">&nbsp;&nbsp;
           Class
         </th>
-        <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{parameterRaceId === 39 ? '' : element.classType}} </td>
+        <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.classType}} </td>
       </ng-container>
 
 
@@ -191,54 +196,6 @@
       <tr mat-row *matRowDef="let row; columns: displayedColumns;" ></tr>
     </table>
     <mat-paginator [pageSizeOptions]="[5,10,20,40, 50, 100]" [pageSize]="40" showFirstLastButtons></mat-paginator>
-    <!-- ////////////////////////////////// Old Vr.////////////////////////////////// -->
-    <!--
-    @for (logger of onShowAllLoggers; track logger) {
-      <div class="col-6 col-sm-4 col-lg-3 mt-3" (click)="navigateToLoggerDetail(logger.loggerId)">
-        <mat-card class="logger-card" appearance="outlined" class="logger-card"
-        [class.alert]="logger.warningDetector"
-        [class.warning]="logger.numberLimit <=3 && logger.numberLimit >= 1"
-        >
-          <mat-card-content>
-            <div class="row">
-              <div class="col-12">
-                <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">No.{{logger.carNumber}}</span></h3>
-              </div>
-              <div class="col-12 text-center">
-                <h3 style="margin: 0.5rem 0 0 0;">
-                  <span class="badge text-bg-secondary w-100 ellipsis-text" [title]="logger.firstName +'  '+ logger.lastName">{{logger.firstName}}   {{logger.lastName}}</span>
-                </h3>
-              </div>
-              <div class="col-12">
-                <h3 style="margin: 0.5rem 0 0 0;"><span class="badge text-bg-secondary w-100">Logger-{{logger.loggerId}}</span></h3>
-              </div>
-            </div>
-            <hr style="margin: 0.3rem 0;">
-            <div class="row justify-content-center">
-              <div class="col-6 mt-1 pe-0 d-flex justify-content-center">
-                <button type="button" class="btn btn-secondary w-100">
-                  Offline
-                </button>
-                @if(logger.numberLimit > 0){
-                  <div [matBadge]="logger.numberLimit" matBadgeOverlap="false" class="demo-section"  style="width: 27px;">
-                    <img style="border-radius: 0; height: 40px;" src="images/icon/image8.png">
-                  </div>
-                }
-                @else {
-                  <div matBadgeOverlap="false" class="demo-section"  style="width: 33px;">
-                    <img style="border-radius: 0; height: 40px; margin-left: 10px;" src="images/icon/image6.png">
-                  </div>
-                }
-
-              </div>
-            </div>
-
-          </mat-card-content>
-        </mat-card>
-      </div>
-    }
-    -->
-
   </div>
 </div>
 

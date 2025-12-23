@@ -82,7 +82,7 @@ td.mat-mdc-cell{
 }
 
 .mat-column-loggerId {
-  width: 15%;
+  width: 12%;
   border-right: 1px solid #343a40;
 }
 
@@ -92,11 +92,15 @@ td.mat-mdc-cell{
   border-right: 1px solid #343a40;
 }
 
-.mat-column-loggerStatus,
 .mat-column-classType,
 .mat-column-afr,
 .mat-column-countDetect {
   width: 10%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-loggerStatus {
+  width: 13%;
   border-right: 1px solid #343a40;
 }
 
@@ -119,6 +123,21 @@ td.mat-mdc-cell{
   border-radius: 4px;
   font-weight: 700;
   line-height: 1.4;
+}
+
+/* ป้ายสถานะ */
+:host ::ng-deep .status-badge-time {
+  display: inline-block;
+  min-width: 88px;
+  padding: 0px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin: 5px 0 0 0 ;
+  padding-top: 5px;
+  font-weight: 700;
+
+  background: #6c757d;
+  color: #ffffff;
 }
 
 

@@ -262,36 +262,36 @@ button[mat-raised-button] {
 // SVG Controls Styles
 .card-body.card-body--flush.p-2 {
   background: #212529;
-  
+
   .btn {
     border-color: #2B3035;
     color: #CFD8DC;
-    
+
     &:hover {
       background-color: #2B3035;
       border-color: #3B444D;
       color: #FFFFFF;
     }
-    
+
     &.active {
       background-color: #FFCA28;
       border-color: #FFCA28;
       color: #212529;
     }
   }
-  
+
   .btn-outline-danger:hover {
     background-color: #dc3545;
     border-color: #dc3545;
     color: #FFFFFF;
   }
-  
+
   .input-group {
     .form-control {
       background-color: #101414;
       border-color: #2B3035;
       color: #FFFFFF;
-      
+
       &:focus {
         background-color: #101414;
         border-color: #4FC3F7;
@@ -299,7 +299,7 @@ button[mat-raised-button] {
         box-shadow: 0 0 0 0.2rem rgba(79, 195, 247, 0.25);
       }
     }
-    
+
     .input-group-text {
       background-color: #212529;
       border-color: #2B3035;
@@ -307,3 +307,16 @@ button[mat-raised-button] {
     }
   }
 }
+
+
+.form-switch {
+    padding-left: 0;
+}
+
+.form-check {
+    display: block;
+    min-height: 1.5rem;
+    padding-left: 0;
+    margin-bottom: .125rem;
+}
+

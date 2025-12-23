@@ -19,6 +19,9 @@ import { MAT_FORM_FIELD_DEFAULT_OPTIONS, MatFormFieldModule } from '@angular/mat
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { Subscription } from 'rxjs';
+import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatSliderModule } from '@angular/material/slider';
 // import { ColorPickerModule } from "ngx-color-picker";
 // import { InputFieldColorComponent } from "./app/color-input.component/color-input.
 
@@ -40,6 +43,9 @@ export interface configAFRModel {
     // DemoMaterialModule,
     // MatNativeDateModule,
     // ColorPickerModule,
+    MatCardModule,
+    MatCheckboxModule,
+    MatSliderModule,
   ],
   templateUrl: './config-afr-modal.component.html',
   styleUrl: './config-afr-modal.component.scss',
@@ -62,6 +68,18 @@ export class ConfigAfrModalComponent  implements OnInit {
   countMax: number = 0;
   countMin: number = 0;
   afrLimit: number = 0;
+
+  CountMaxSlider = 30;
+  CountMinSlider = 0;
+  CountStepSlider = 1;
+  CountThumbLabelSlider = true;
+  CountShowTicksSlider = true;
+
+  LimitMaxSlider = 30;
+  LimitMinSlider = 0;
+  LimitStepSlider = 1;
+  LimitThumbLabelSlider = true;
+  LimitShowTicksSlider = true;
 
   configAFR: any;
   private subscriptions: Subscription[] = [];
@@ -94,8 +112,8 @@ export class ConfigAfrModalComponent  implements OnInit {
   }
 
   submitUpdateConfig(){
-    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value =this.afrLimit;
-    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value =this.countMax;
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value =this.afrLimit.toString();
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value =this.countMax.toString();
 
     this.eventService.updateConfig(this.configAFR).subscribe(
         response => {

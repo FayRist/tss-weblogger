@@ -24,12 +24,12 @@ export interface ApiEventResponse {
 }
 
 export interface ApiEventData {
-  event_id: number;
-  season_id: number;
-  event_name: string;
-  circuit_name: string;
-  event_start: Date;
-  event_end: Date;
+  eventid: number;
+  seasonid: number;
+  eventname: string;
+  circuitname: string;
+  eventstart: Date;
+  eventend: Date;
   active: number;
 }
 export interface ApiDropDownResponse {
@@ -97,6 +97,8 @@ export interface LoggerRaceDetailRes {
   afr?: number | null;
   afrAverage?: number | null;
   status?: string | null;
+  onlineTime: string;
+  disconnectTime: string;
 }
 
 export interface ApiLoggerRaceResponse {
@@ -121,6 +123,8 @@ export interface LoggerRaceDetailModel {
   afr: number;              // default 0
   afrAverage: number;       // default 0
   status: string;           // default ''
+  onlineTime: string;
+  disconnectTime: string;
 }
 
 
@@ -141,6 +145,8 @@ export interface ApiLoggerAFR {
   afr?: number | null;
   afr_average?: number | null;
   status?: string | null;
+  online_time: string;
+  disconnect_time: string;
 }
 
 export interface ApiLoggerAFRResponse {
@@ -171,6 +177,8 @@ export interface LoggerItem {
   numberLimit: number;
   warningDetector: boolean;
   loggerStatus: 'online' | 'offline';
+  onlineTime: Date| null;
+  disconnectTime: Date| null;
 }
 
 
