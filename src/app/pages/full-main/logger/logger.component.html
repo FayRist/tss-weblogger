@@ -115,8 +115,15 @@
             </div>
           </div>
           <div class="card-body card-body--flush">
-            <div class="track-image-container">
-              <svg #mapSvg viewBox="0 0 800 660" preserveAspectRatio="none" style="overflow: hidden; background: #fff;"
+            <div class="track-image-container" style="position: relative;">
+              <!-- Canvas for track rendering (replaces expensive SVG lines) -->
+              <canvas #trackCanvas
+                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"
+                (mousemove)="onCanvasMouseMove($event)"
+                (mouseleave)="onCanvasMouseLeave()">
+              </canvas>
+
+              <svg #mapSvg viewBox="0 0 800 660" preserveAspectRatio="none" style="overflow: hidden; background: #fff; position: relative; z-index: 0;"
                 (mouseleave)="onSvgMouseLeave()">
                 <!-- Group สำหรับการ transform ทั้งหมด (สะท้อน/หมุน) -->
                 <g [attr.transform]="getSvgTransformAttribute()">
@@ -128,7 +135,8 @@
                     <image href="images/map-race/Bira-International-Circuit-real.jpg" width="100%" height="100%" />
                   }
                   <g>
-                    @if (showRoutePath) {
+                    <!-- SVG line rendering disabled for performance - using Canvas instead -->
+                    <!-- @if (showRoutePath) {
                       <g>
                         @for (seg of segmentsByKey[selectedRaceKey]; track seg.i) {
                           <line
@@ -190,8 +198,8 @@
                         </text>
                       }
 
-                      <!-- วาดเส้นทางเท่านั้นเมื่อเป็น bsc; จุดสีแดงแยกวาดด้านนอก -->
-                    }
+                      <!-- SVG line rendering disabled -->
+                    <!-- } -->
                   </g>
 
                   @if (this.circuitName !== 'bsc' && !(this.circuitName === 'bric' && this.loggerID === 118)) {

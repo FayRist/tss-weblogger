@@ -29,9 +29,19 @@ import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
-import { convertTelemetryToSvgPolyline, TelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
+import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
+import { NgZone } from '@angular/core';
 
-
+// ===== Unified Telemetry Data Model =====
+type TelemetryPoint = {
+  loggerId: string;
+  ts: number;        // epoch ms
+  x: number; y: number;
+  afr?: number;
+  rpm?: number;
+  velocity?: number;
+  raw?: any;
+};
 
 type ChartKey = 'avgAfr' | 'realtimeAfr' | 'warningAfr' | 'speed'; // ใช้กับกราฟจริง
 type SelectKey = ChartKey | 'all';
@@ -1206,14 +1216,38 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   onlineLastTime: any;
 
-  constructor(private router: Router, private route: ActivatedRoute, private cdr: ChangeDetectorRef
-    , private toastr: ToastrService
-    // , private loggerData: LoggerDataService
-    , private http: HttpClient
-    , private eventService: EventService
-    , private webSocketService: WebSocketService
-    ,private dataProcessingService: DataProcessingService
+  // ===== Mode Detection =====
+  isHistoryMode: boolean = false;
+  isRealtimeMode: boolean = true;
 
+  // ===== Canvas Rendering =====
+  @ViewChild('trackCanvas') trackCanvas!: ElementRef<HTMLCanvasElement>;
+  private canvasCtx: CanvasRenderingContext2D | null = null;
+  private animationFrameId: number | null = null;
+  private pendingRender = false;
+  private backgroundImage: HTMLImageElement | null = null;
+
+  // ===== Realtime Buffering =====
+  private telemetryBuffer: TelemetryPoint[] = [];
+  private readonly MAX_BUFFER_SIZE = 10000; // ~2 minutes at 10Hz
+  private readonly MAX_BUFFER_TIME_MS = 120000; // 2 minutes
+  private chartUpdateThrottle = 200; // ms
+  private lastChartUpdate = 0;
+
+  // ===== History Data =====
+  private historyPoints: TelemetryPoint[] = [];
+  private historyDownsampled: TelemetryPoint[] = [];
+
+  constructor(
+    private router: Router,
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef,
+    private toastr: ToastrService,
+    private http: HttpClient,
+    private eventService: EventService,
+    private webSocketService: WebSocketService,
+    private dataProcessingService: DataProcessingService,
+    private ngZone: NgZone
   ) {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
@@ -1338,10 +1372,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ---------- ตั้งค่า DEFAULT ----------
 
   ngOnInit() {
+    // ===== Mode Detection from URL =====
+    const statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? 'realtime';
+    this.isHistoryMode = statusRace === 'history';
+    this.isRealtimeMode = !this.isHistoryMode;
+
     this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
     this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
-    this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? ''; // ใช้ชื่อแปรอื่นแทน class
+    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
+    this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? '';
 
     // performance: batched realtime UI flush - initialize batch subscription
     this.rtBatchSubscription = this.rtBatch$.pipe(
@@ -1444,6 +1483,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           // ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
           this.initializeSvgTransformForCircuit();
 
+          // โหลด background image สำหรับ canvas
+          this.loadCanvasBackgroundImage();
+
           // ตั้งค่า preset bounds สำหรับ realtime mode เฉพาะ circuitName ที่กำหนด
           // กำหนด circuitName ที่ต้องการใช้ preset bounds (เช่น 'bric', 'bsc', 'sic')
           const circuitsWithPreset = ['bric']; // เพิ่ม circuitName ที่ต้องการใช้ preset bounds ที่นี่
@@ -1451,11 +1493,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           if (this.circuitName == 'bic') {
             // ตั้งค่า preset bounds สำหรับ circuitName ที่กำหนด (ใช้ค่าจาก log ที่คำนวณแล้ว)
             // ค่าที่ log ได้: minLat: 775.016401, maxLat: 775.453781, minLon: -6060.806894, maxLon: -6060.276736
+            // หาร 60 เพื่อแปลงเป็นค่าจริงตามแผนที่โลก
             this.presetBoundsForRealtime = {
-              minLat: 775.016401,
-              maxLat: 775.453781,
-              minLon: -6060.806894,
-              maxLon: -6060.276736
+              minLat: 775.016401 / 60,
+              maxLat: 775.453781 / 60,
+              minLon: -6060.806894 / 60,
+              maxLon: -6060.276736 / 60
             };
             console.log(`Preset bounds for realtime set for circuit '${this.circuitName}':`, this.presetBoundsForRealtime);
           } else {
@@ -1472,6 +1515,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           // เริ่มโหลดข้อมูลหลังจากได้ข้อมูลจาก API แล้วเท่านั้น
           this.initializeDataLoading();
+
+          // Initialize canvas after view init
+          setTimeout(() => this.initializeCanvas(), 0);
         },
         error: (err) => console.error('getDetailLoggerInRace error:', err),
       });
@@ -1479,33 +1525,716 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initializeDataLoading(): void {
-
-    const cls = this.parameterClass ?? '';
-    if (this.circuitName === 'bsc') {
-
-      this.loadCsvAndDraw(`models/mock-data/practice_section_${cls}_test.csv`);
-      this.loadCsvAndDraw(`models/mock-data/qualifying_section_${cls}.csv`);
-      this.loadCsvAndDraw(`models/mock-data/race1_section_${cls}.csv`);
-      this.loadCsvAndDraw(`models/mock-data/race2_section_${cls}.csv`);
-      this.disconnectWebSocket();
-      this.clearWebSocketData(); // clear ข้อมูลที่เกี่ยวข้อง
-    } else if (this.circuitName === 'bric') {
-      // ถ้าเป็น bric และ loggerId = 118 ให้โหลด CSV และวาดเส้นเหมือน bsc
-      if (this.loggerID === 118) {
-        this.loadCsvAndDraw(`models/mock-data/practice_section_ab_test_bric.csv`);
-        this.disconnectWebSocket();
-        this.clearWebSocketData(); // clear ข้อมูลที่เกี่ยวข้อง
-      } else {
-        // ถ้าเป็น bric แต่ loggerId != 118 ให้รอรับค่าจาก webSocketService
-        this.initializeWebSocket(this.parameterLoggerID);
-      }
-    } else if (this.circuitName === 'sic'){
-      this.loadCsvAndDraw(`models/mock-data/practice_section_ab_test_bric.csv`);
-      // this.initializeWebSocket(this.parameterLoggerID);
+    if (this.isHistoryMode) {
+      this.loadHistoryData();
     } else {
-        this.initializeWebSocket(this.parameterLoggerID);
-
+      // Realtime mode with late join (2-minute backlog)
+      // Initialize empty chart series for realtime mode
+      this.initializeRealtimeChart();
+      this.initializeRealtimeWithBacklog();
     }
+  }
+
+  // Initialize chart series for realtime mode
+  private initializeRealtimeChart(): void {
+    console.log('[Chart] Initializing realtime chart');
+    this.detailOpts = {
+      ...this.detailOpts,
+      series: [{ name: 'AFR', type: 'line', data: [] }]
+    };
+    this.brushOpts = {
+      ...this.brushOpts,
+      series: [{ name: 'AFR', type: 'line', data: [] }]
+    };
+    this.cdr.markForCheck();
+  }
+
+  // ===== History Mode =====
+  private async loadHistoryData(): Promise<void> {
+    try {
+      // Try to load from WebSocket history endpoint first
+      const loggerId = this.parameterLoggerID || String(this.loggerID);
+      if (loggerId) {
+        this.webSocketService.connectHistory(`client_${loggerId}`, 0);
+        this.webSocketService.historyPoint$.subscribe(point => {
+          if (point) {
+            const tp: TelemetryPoint = {
+              loggerId: loggerId,
+              ts: point.ts,
+              x: Number(point.lat),
+              y: Number(point.lon),
+              afr: point.afrValue,
+              velocity: point.velocity,
+              raw: point
+            };
+            this.historyPoints.push(tp);
+            // Downsample for display
+            if (this.historyPoints.length % 10 === 0) {
+              this.downsampleHistory();
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load history:', err);
+    }
+  }
+
+  // ===== Realtime Mode with Late Join =====
+  private realtimeWS: WebSocket | null = null;
+  
+  private initializeRealtimeWithBacklog(): void {
+    const loggerId = this.parameterLoggerID || String(this.loggerID);
+    if (!loggerId) return;
+
+    // Connect with tail_ms=120000 for 2-minute backlog
+    // Use wrap=1 for standardized message format (batch type)
+    const base = typeof location !== 'undefined'
+      ? `${APP_CONFIG.API.URL_SOCKET_LOCAL}`
+      : APP_CONFIG.API.URL_SOCKET_SERVER.replace(/^http/, 'ws');
+    const url = `${base}/ws/realtime?logger=client_${loggerId}&tail_ms=120000&wrap=1`;
+
+    try {
+      const ws = new WebSocket(url);
+      this.realtimeWS = ws;
+      
+      ws.onopen = () => {
+        console.log('[Realtime] Connected with backlog:', url);
+        // Set status to Online when connected
+        if (this.loggerStatus !== 'Online') {
+          this.loggerStatus = 'Online';
+          this.cdr.detectChanges();
+          console.log('[Logger Status] Updated to Online (WebSocket connected)');
+        }
+        // Start status timeout monitoring
+        this.resetStatusTimeout();
+      };
+      ws.onmessage = (ev) => {
+        console.log('[Realtime] Received message, length:', ev.data?.length || 0);
+        this.handleRealtimeMessage(ev.data, loggerId);
+      };
+      ws.onclose = (e) => {
+        console.log('[Realtime] Closed:', e.code, e.reason);
+        this.realtimeWS = null;
+        // Set status to Offline when disconnected
+        if (this.loggerStatus !== 'Offline') {
+          this.loggerStatus = 'Offline';
+          this.cdr.detectChanges();
+          console.log('[Logger Status] Updated to Offline (WebSocket disconnected)');
+        }
+        this.clearStatusTimeout();
+        // Reconnect logic if needed
+        if (!this.isHistoryMode) {
+          setTimeout(() => this.initializeRealtimeWithBacklog(), 3000);
+        }
+      };
+      ws.onerror = (err) => {
+        console.error('[Realtime] Error:', err);
+        // Set status to Offline on error
+        if (this.loggerStatus !== 'Offline') {
+          this.loggerStatus = 'Offline';
+          this.cdr.detectChanges();
+          console.log('[Logger Status] Updated to Offline (WebSocket error)');
+        }
+      };
+    } catch (err) {
+      console.error('Failed to connect realtime:', err);
+      this.loggerStatus = 'Offline';
+      this.cdr.detectChanges();
+    }
+  }
+
+  // ===== Realtime Message Handler =====
+  private handleRealtimeMessage(data: string, loggerId: string): void {
+    try {
+      let payload: any = JSON.parse(data);
+      console.log('[Realtime] Message type:', payload.type, 'has items:', !!payload.items, 'has points:', !!payload.points);
+
+      // Update status to Online when receiving data
+      if (this.loggerStatus !== 'Online') {
+        this.loggerStatus = 'Online';
+        this.cdr.detectChanges();
+        console.log('[Logger Status] Updated to Online (data received)');
+      }
+      
+      // Reset status timeout when receiving data
+      this.resetStatusTimeout();
+
+      // Handle snapshot (backlog)
+      if (payload.type === 'snapshot' && Array.isArray(payload.items)) {
+        console.log('[Realtime] Processing snapshot with', payload.items.length, 'items');
+        payload.items.forEach((item: any) => {
+          this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
+        });
+        return;
+      }
+
+      // Handle batch (wrapped format)
+      if (payload.type === 'batch' && Array.isArray(payload.items)) {
+        console.log('[Realtime] Processing batch with', payload.items.length, 'items');
+        payload.items.forEach((item: any) => {
+          this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
+        });
+        return;
+      }
+
+      // Handle race_tick (backward compatible format)
+      if (payload.type === 'race_tick' && Array.isArray(payload.points)) {
+        console.log('[Realtime] Processing race_tick with', payload.points.length, 'points');
+        payload.points.forEach((item: any) => {
+          this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
+        });
+        return;
+      }
+
+      // Handle tick (single update)
+      if (payload.type === 'tick' && payload.item) {
+        console.log('[Realtime] Processing tick');
+        this.addTelemetryPoint(this.parseTelemetryPoint(payload.item, loggerId));
+        return;
+      }
+
+      // Handle batch array (raw array format)
+      if (Array.isArray(payload)) {
+        console.log('[Realtime] Processing array with', payload.length, 'items');
+        payload.forEach((item: any) => {
+          this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
+        });
+        return;
+      }
+
+      // Handle single object (fallback)
+      console.log('[Realtime] Processing single object');
+      this.addTelemetryPoint(this.parseTelemetryPoint(payload, loggerId));
+    } catch (err) {
+      console.error('Failed to parse realtime message:', err, 'Data:', data?.substring(0, 200));
+    }
+  }
+
+  private parseTelemetryPoint(payload: any, loggerId: string): TelemetryPoint {
+    const lat = Number(payload.lat ?? payload.latitude);
+    const lon = Number(payload.lon ?? payload.long ?? payload.longitude);
+    const afr = payload.AFR != null ? Number(payload.AFR) : (payload.afr != null ? Number(payload.afr) : undefined);
+    const rpm = payload.RPM != null ? Number(payload.RPM) : (payload.rpm != null ? Number(payload.rpm) : undefined);
+    const velocity = payload.velocity != null ? Number(payload.velocity) : undefined;
+    const timeVal = payload.timestamp ?? payload.time ?? Date.now();
+    const ts = typeof timeVal === 'number'
+      ? timeVal
+      : (Number.isFinite(Number(timeVal)) ? Number(timeVal) : Date.parse(String(timeVal)) || Date.now());
+
+    return {
+      loggerId,
+      ts,
+      x: lat, // lat/lon are actually XY coordinates
+      y: lon,
+      afr,
+      rpm,
+      velocity,
+      raw: payload
+    };
+  }
+
+  private addTelemetryPoint(point: TelemetryPoint): void {
+    // Update status to Online when receiving data (only in realtime mode)
+    if (this.isRealtimeMode && this.loggerStatus !== 'Online') {
+      this.loggerStatus = 'Online';
+      this.cdr.detectChanges();
+      console.log('[Logger Status] Updated to Online (telemetry point received)');
+    }
+    
+    // Reset status timeout when receiving data
+    if (this.isRealtimeMode) {
+      this.resetStatusTimeout();
+    }
+
+    // Add to ring buffer
+    this.telemetryBuffer.push(point);
+
+    // Trim buffer by size
+    if (this.telemetryBuffer.length > this.MAX_BUFFER_SIZE) {
+      this.telemetryBuffer.shift();
+    }
+
+    // Trim buffer by time (keep last 2 minutes)
+    const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
+    while (this.telemetryBuffer.length > 0 && this.telemetryBuffer[0].ts < cutoff) {
+      this.telemetryBuffer.shift();
+    }
+
+    // Schedule render (throttled) - for Canvas
+    this.scheduleRender();
+
+    // Update chart (throttled) - for ApexCharts
+    const now = Date.now();
+    const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
+    
+    // Force update chart immediately if it's the first point or every 10 points
+    const forceUpdate = this.telemetryBuffer.length === 1 || this.telemetryBuffer.length % 10 === 0;
+    
+    if (shouldUpdate || forceUpdate) {
+      this.updateChartIncremental();
+      this.lastChartUpdate = now;
+    }
+
+    // Debug log every 50 points
+    if (this.telemetryBuffer.length % 50 === 0) {
+      console.log(`[Telemetry] Buffer size: ${this.telemetryBuffer.length}, Latest AFR: ${point.afr ?? 'N/A'}`);
+    }
+  }
+
+  // ===== Canvas Rendering =====
+  private loadCanvasBackgroundImage(): void {
+    let imagePath = '';
+    
+    if (this.circuitName === 'bsc') {
+      imagePath = 'images/map-race/imgBGBangsan-real.png';
+    } else if (this.circuitName === 'bric') {
+      imagePath = 'images/map-race/Track-Chang-International-Circuit-real.png';
+    } else if (this.circuitName === 'bic') {
+      imagePath = 'images/map-race/Bira-International-Circuit-real.jpg';
+    }
+
+    if (imagePath) {
+      const img = new Image();
+      img.onload = () => {
+        this.backgroundImage = img;
+        this.scheduleRender();
+      };
+      img.onerror = () => {
+        console.warn(`[Canvas] Failed to load background image: ${imagePath}`);
+        this.backgroundImage = null;
+      };
+      img.src = imagePath;
+    } else {
+      this.backgroundImage = null;
+    }
+  }
+
+  private initializeCanvas(): void {
+    if (!this.trackCanvas?.nativeElement) {
+      console.warn('[Canvas] Canvas element not found, retrying...');
+      // Retry after a short delay
+      setTimeout(() => this.initializeCanvas(), 100);
+      return;
+    }
+
+    const canvas = this.trackCanvas.nativeElement;
+    this.canvasCtx = canvas.getContext('2d', { alpha: false });
+
+    if (!this.canvasCtx) {
+      console.error('[Canvas] Failed to get canvas context');
+      return;
+    }
+
+    // Set canvas size to match container
+    const container = canvas.parentElement;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width || 800;
+      canvas.height = rect.height || 600;
+      console.log(`[Canvas] Initialized with size: ${canvas.width}x${canvas.height}`);
+    } else {
+      // Fallback size
+      canvas.width = 800;
+      canvas.height = 600;
+      console.log('[Canvas] Using fallback size: 800x600');
+    }
+
+    // Initial render
+    this.scheduleRender();
+  }
+
+  private scheduleRender(): void {
+    if (this.pendingRender || !this.canvasCtx) return;
+
+    this.pendingRender = true;
+
+    // Render outside Angular zone for performance
+    this.ngZone.runOutsideAngular(() => {
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+      }
+
+      this.animationFrameId = requestAnimationFrame(() => {
+        this.renderTrack();
+        this.pendingRender = false;
+      });
+    });
+  }
+
+  private renderTrack(): void {
+    if (!this.canvasCtx) {
+      console.warn('[Canvas] No canvas context available');
+      return;
+    }
+
+    const ctx = this.canvasCtx;
+    const canvas = ctx.canvas;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw background image first (bottom layer)
+    if (this.backgroundImage && this.backgroundImage.complete) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(this.backgroundImage, 0, 0, canvas.width, canvas.height);
+    }
+
+    // Get points to render (use buffer for realtime, history for history mode)
+    const points = this.isHistoryMode ? this.historyDownsampled : this.telemetryBuffer;
+
+    if (points.length < 2) {
+      // Draw placeholder text if no data
+      ctx.fillStyle = '#666';
+      ctx.font = '16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Waiting for data... (${points.length} points)`, canvas.width / 2, canvas.height / 2);
+      return;
+    }
+
+    console.log(`[Canvas] Rendering ${points.length} points`);
+
+    // Ensure lines are drawn on top of background (top layer)
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Calculate bounds - use preset bounds for 'bic' if available, otherwise calculate from data
+    let minX: number, maxX: number, minY: number, maxY: number;
+    
+    if (this.circuitName === 'bic' && this.presetBoundsForRealtime) {
+      // Use preset bounds for 'bic' circuit
+      minX = this.presetBoundsForRealtime.minLat;  // x = lat
+      maxX = this.presetBoundsForRealtime.maxLat;
+      minY = this.presetBoundsForRealtime.minLon;  // y = lon
+      maxY = this.presetBoundsForRealtime.maxLon;
+      console.log(`[Canvas] Using preset bounds for 'bic':`, { minX, maxX, minY, maxY });
+    } else {
+      // Calculate bounds from actual data
+      const xs = points.map(p => p.x);
+      const ys = points.map(p => p.y);
+      minX = Math.min(...xs);
+      maxX = Math.max(...xs);
+      minY = Math.min(...ys);
+      maxY = Math.max(...ys);
+    }
+
+    const spanX = maxX - minX || 1;
+    const spanY = maxY - minY || 1;
+    const padding = 0.05;
+    const paddedSpanX = spanX * (1 + 2 * padding);
+    const paddedSpanY = spanY * (1 + 2 * padding);
+    const paddedMinX = minX - spanX * padding;
+    const paddedMinY = minY - spanY * padding;
+
+    // Helper to convert data coords to canvas coords
+    const toCanvasX = (dataX: number) => ((dataX - paddedMinX) / paddedSpanX) * canvas.width;
+    const toCanvasY = (dataY: number) => canvas.height - ((dataY - paddedMinY) / paddedSpanY) * canvas.height;
+
+    // Draw path with color gradient based on AFR (on top of background)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath();
+    let lastColor = '#808080';
+    let lastX = 0, lastY = 0;
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const x = toCanvasX(p.x);
+      const y = toCanvasY(p.y);
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+        lastX = x;
+        lastY = y;
+      } else {
+        // Get color for this segment
+        const color = p.afr != null ? this.getAfrColor(p.afr) : '#808080';
+
+        // If color changed, stroke previous segment and start new
+        if (color !== lastColor && i > 1) {
+          ctx.strokeStyle = lastColor;
+          ctx.lineWidth = 3; // Increased line width for better visibility
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(lastX, lastY);
+        }
+
+        ctx.lineTo(x, y);
+        lastColor = color;
+        lastX = x;
+        lastY = y;
+      }
+    }
+
+    // Stroke final segment
+    if (points.length > 0) {
+      ctx.strokeStyle = lastColor;
+      ctx.lineWidth = 3; // Increased line width for better visibility
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+
+    // Draw current position marker (on top layer)
+    if (points.length > 0) {
+      ctx.globalCompositeOperation = 'source-over';
+      const last = points[points.length - 1];
+      const x = toCanvasX(last.x);
+      const y = toCanvasY(last.y);
+
+      // Draw current position marker (larger, more visible)
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, 2 * Math.PI);
+      ctx.fillStyle = '#FF0000';
+      ctx.fill();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Draw info text near current position
+      if (last.afr != null) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`AFR: ${last.afr.toFixed(2)}`, x + 12, y - 12);
+      }
+    }
+
+    // Draw hover point if visible (on top layer)
+    if (this.hoverPoint.visible) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.beginPath();
+      ctx.arc(this.hoverPoint.x, this.hoverPoint.y, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fill();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  // ===== History Downsampling =====
+  private downsampleHistory(): void {
+    if (this.historyPoints.length === 0) return;
+
+    // Downsample for track (5k-20k points)
+    const trackMax = Math.min(20000, this.historyPoints.length);
+    this.historyDownsampled = this.downsampleTelemetry(this.historyPoints, trackMax);
+
+    // Trigger render
+    this.scheduleRender();
+  }
+
+  private downsampleTelemetry(points: TelemetryPoint[], threshold: number): TelemetryPoint[] {
+    if (threshold >= points.length || threshold === 0) return points;
+
+    const sampled: TelemetryPoint[] = [];
+    const every = (points.length - 2) / (threshold - 2);
+    let a = 0;
+
+    sampled.push(points[0]);
+
+    for (let i = 0; i < threshold - 2; i++) {
+      const avgRangeStart = Math.floor((i + 1) * every) + 1;
+      const avgRangeEnd = Math.floor((i + 2) * every) + 1;
+      const avgRangeLength = avgRangeEnd - avgRangeStart;
+
+      let avgX = 0, avgY = 0;
+      for (let j = avgRangeStart; j < avgRangeEnd && j < points.length; j++) {
+        avgX += points[j].x;
+        avgY += points[j].y;
+      }
+      avgX /= avgRangeLength;
+      avgY /= avgRangeLength;
+
+      const rangeOffs = Math.floor(i * every) + 1;
+      const rangeTo = Math.floor((i + 1) * every) + 1;
+
+      let maxArea = -1;
+      let maxAreaPoint: TelemetryPoint | null = null;
+      let nextA = rangeOffs;
+
+      for (let j = rangeOffs; j < rangeTo && j < points.length; j++) {
+        const area = Math.abs(
+          (points[a].x - avgX) * (points[j].y - points[a].y) -
+          (points[a].x - points[j].x) * (avgY - points[a].y)
+        ) * 0.5;
+        if (area > maxArea) {
+          maxArea = area;
+          maxAreaPoint = points[j];
+          nextA = j;
+        }
+      }
+
+      if (maxAreaPoint) {
+        sampled.push(maxAreaPoint);
+      }
+      a = nextA;
+    }
+
+    sampled.push(points[points.length - 1]);
+    return sampled;
+  }
+
+  // ===== Incremental Chart Update =====
+  private updateChartIncremental(): void {
+    const points = this.isHistoryMode ? this.historyPoints : this.telemetryBuffer;
+    if (points.length === 0) return;
+
+    // Initialize chart series if not exists
+    if (!this.detailOpts?.series || this.detailOpts.series.length === 0) {
+      console.log('[Chart] Initializing chart series with', points.length, 'points');
+      const data: Array<{x: number; y: number | null}> = points.map(p => ({
+        x: p.ts,
+        y: p.afr ?? null
+      }));
+
+      this.detailOpts = {
+        ...this.detailOpts,
+        series: [{ name: 'AFR', type: 'line', data }]
+      };
+
+      // Also update brush chart
+      this.brushOpts = {
+        ...this.brushOpts,
+        series: [{ name: 'AFR', type: 'line', data: data.slice(-1000) }] // Last 1000 points for brush
+      };
+
+      // Trigger change detection
+      this.ngZone.run(() => {
+        this.cdr.markForCheck();
+      });
+      return;
+    }
+
+    // Downsample for chart (2k-5k points)
+    const chartMax = 5000;
+    const chartPoints = points.length > chartMax
+      ? this.downsampleTelemetry(points, chartMax)
+      : points;
+
+    // Update series data (append only new points)
+    const series = this.detailOpts.series[0];
+    if (series && Array.isArray(series.data)) {
+      const existingCount = series.data.length;
+      const newPoints: Array<{x: number; y: number | null}> = chartPoints.slice(existingCount).map(p => ({
+        x: p.ts,
+        y: p.afr ?? null
+      }));
+
+      if (newPoints.length > 0) {
+        const updatedData = [...series.data, ...newPoints] as Array<{x: number; y: number | null}>;
+        series.data = updatedData;
+        
+        // Create new series array to trigger change detection
+        this.detailOpts = { 
+          ...this.detailOpts, 
+          series: [{ ...series, data: updatedData }]
+        };
+
+        // Update brush chart (keep last 1000 points)
+        const brushData = updatedData.slice(-1000);
+        this.brushOpts = {
+          ...this.brushOpts,
+          series: [{ name: 'AFR', type: 'line', data: brushData }]
+        };
+
+        console.log(`[Chart] Updated chart: ${updatedData.length} total points, added ${newPoints.length} new points`);
+
+        // Trigger change detection
+        this.ngZone.run(() => {
+          this.cdr.markForCheck();
+        });
+      } else {
+        // Even if no new points, update chart to ensure it's visible
+        this.detailOpts = { ...this.detailOpts, series: [...this.detailOpts.series] };
+        this.ngZone.run(() => {
+          this.cdr.markForCheck();
+        });
+      }
+    } else {
+      // Fallback: recreate series if data structure is invalid
+      console.log('[Chart] Recreating chart series due to invalid data structure');
+      const data: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
+        x: p.ts,
+        y: p.afr ?? null
+      }));
+
+      this.detailOpts = {
+        ...this.detailOpts,
+        series: [{ name: 'AFR', type: 'line', data }]
+      };
+
+      this.brushOpts = {
+        ...this.brushOpts,
+        series: [{ name: 'AFR', type: 'line', data: data.slice(-1000) }]
+      };
+
+      // Trigger change detection
+      this.ngZone.run(() => {
+        this.cdr.markForCheck();
+      });
+    }
+  }
+
+  // ===== History Text Parser =====
+  parseHistoryText(text: string): TelemetryPoint[] {
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (lines.length < 2) return [];
+
+    // Find [columnnames] and [data] sections
+    const colStart = lines.findIndex(l => /^\[columnnames\]/i.test(l));
+    const dataStart = lines.findIndex(l => /^\[data\]/i.test(l));
+
+    if (colStart === -1 || dataStart === -1) return [];
+
+    const headerLine = lines[colStart + 1];
+    const headers = headerLine.split(',').map(h => h.trim().toLowerCase());
+
+    const latIdx = headers.findIndex(h => ['lat', 'latitude', 'y'].includes(h));
+    const lonIdx = headers.findIndex(h => ['long', 'longitude', 'lon', 'x'].includes(h));
+    const afrIdx = headers.findIndex(h => ['afr', 'air-fuel ratio', 'afr_value'].includes(h));
+    const velIdx = headers.findIndex(h => ['velocity', 'speed', 'v'].includes(h));
+    const timeIdx = headers.findIndex(h => ['time', 'timestamp', 'gps_time', 'datetime'].includes(h));
+
+    if (latIdx === -1 || lonIdx === -1) return [];
+
+    const points: TelemetryPoint[] = [];
+    const loggerId = this.parameterLoggerID || String(this.loggerID);
+
+    for (let i = dataStart + 1; i < lines.length; i++) {
+      const cols = lines[i].split(',').map(c => c.trim());
+      if (cols.length < Math.max(latIdx, lonIdx) + 1) continue;
+
+      const lat = parseFloat(cols[latIdx] ?? '');
+      const lon = parseFloat(cols[lonIdx] ?? '');
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+      const afr = afrIdx !== -1 ? parseFloat(cols[afrIdx] ?? '') : undefined;
+      const velocity = velIdx !== -1 ? parseFloat(cols[velIdx] ?? '') : undefined;
+
+      let ts = Date.now();
+      if (timeIdx !== -1) {
+        const timeVal = cols[timeIdx];
+        if (timeVal) {
+          const parsed = Date.parse(timeVal);
+          if (Number.isFinite(parsed)) ts = parsed;
+        }
+      }
+
+      points.push({
+        loggerId,
+        ts,
+        x: lat,
+        y: lon,
+        afr,
+        velocity,
+        raw: { cols, headers }
+      });
+    }
+
+    return points;
   }
 
     clearWebSocketData(): void {
@@ -2476,7 +3205,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * @returns SVG string หรืออัปเดต this.telemetrySvgPolyline
    */
   generateTelemetrySvgPolyline(
-    points: TelemetryPoint[],
+    points: SvgTelemetryPoint[],
     width: number = 800,
     height: number = 660,
     margin: number = 40
@@ -2490,7 +3219,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       width,
       height,
       margin,
-      points
+      points: points as SvgTelemetryPoint[]
     };
 
     const svgString = convertTelemetryToSvgPolyline(input);
@@ -2499,7 +3228,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * แปลงข้อมูลจาก allDataLogger หรือ allLogger เป็น TelemetryPoint[]
+   * แปลงข้อมูลจาก allDataLogger หรือ allLogger เป็น SvgTelemetryPoint[]
    * และสร้าง SVG polyline
    *
    * @param key - Key ของ race/session (เช่น 'realtime', 'practice', etc.)
@@ -2520,8 +3249,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    // แปลง MapPoint[] เป็น TelemetryPoint[]
-    const telemetryPoints: TelemetryPoint[] = dataPoints.map((p: MapPoint) => ({
+    // แปลง MapPoint[] เป็น SvgTelemetryPoint[] (for utility function)
+    const telemetryPoints: SvgTelemetryPoint[] = dataPoints.map((p: MapPoint) => ({
       lat: Number.isFinite(p.lat) ? Number(p.lat) : 0,
       lon: Number.isFinite(p.lon) ? Number(p.lon) : 0,
       AFR: Number.isFinite(p.afrValue) ? Number(p.afrValue) : undefined,
@@ -3498,6 +4227,70 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.tooltipStyle.visibility = 'hidden';
   }
 
+  // ===== Canvas Mouse Events =====
+  onCanvasMouseMove(evt: MouseEvent): void {
+    if (!this.trackCanvas?.nativeElement) return;
+
+    const canvas = this.trackCanvas.nativeElement;
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+
+    // Find nearest point
+    const points = this.isHistoryMode ? this.historyDownsampled : this.telemetryBuffer;
+    if (points.length === 0) return;
+
+    // Convert canvas coordinates to data coordinates
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const spanX = maxX - minX || 1;
+    const spanY = maxY - minY || 1;
+    const padding = 0.05;
+    const paddedSpanX = spanX * (1 + 2 * padding);
+    const paddedSpanY = spanY * (1 + 2 * padding);
+    const paddedMinX = minX - spanX * padding;
+    const paddedMinY = minY - spanY * padding;
+
+    const dataX = paddedMinX + (x / canvas.width) * paddedSpanX;
+    const dataY = paddedMinY + ((canvas.height - y) / canvas.height) * paddedSpanY;
+
+    // Find nearest point
+    let nearest: TelemetryPoint | null = null;
+    let minDist = Infinity;
+
+    for (const p of points) {
+      const dist = Math.sqrt((p.x - dataX) ** 2 + (p.y - dataY) ** 2);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = p;
+      }
+    }
+
+    if (nearest && minDist < 50) { // 50 unit threshold
+      this.hoverPoint = {
+        visible: true,
+        x: ((nearest.x - paddedMinX) / paddedSpanX) * canvas.width,
+        y: canvas.height - ((nearest.y - paddedMinY) / paddedSpanY) * canvas.height,
+        afr: nearest.afr ?? 0
+      };
+
+      this.updateTooltipPositionFromMouse(evt);
+    } else {
+      this.hoverPoint.visible = false;
+      this.tooltipStyle.visibility = 'hidden';
+    }
+  }
+
+  onCanvasMouseLeave(): void {
+    this.hoverPoint.visible = false;
+    this.tooltipStyle.visibility = 'hidden';
+  }
+
   private calculateSvgScale() {
     const svg = this.mapSvgEl?.nativeElement;
     if (!svg) return;
@@ -3550,52 +4343,65 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private ro?: ResizeObserver;
   ngAfterViewInit(): void {
-    // this.initMap();
-    // this.generateSVGPoints(this.allDataLogger[this.loggerKey[0]]);
-
-    // this.ro = new ResizeObserver(() => this.map?.invalidateSize());
-    // this.ro.observe(this.raceMapRef.nativeElement);
-
-    setTimeout(() => this.map?.invalidateSize(true), 0);
-    const sample: RawRow[] = [];
-    // const points = this.transformRows(sample);
-    // this.setMapPoints(points);
-
     setTimeout(() => {
+      this.initializeCanvas();
       this.calculateSvgScale();
-      // ตั้งค่า transform เริ่มต้นตาม circuitName (ถ้ายังไม่ตั้งค่า)
       if (!this.circuitName) {
-        // ถ้ายังไม่มี circuitName ให้ใช้ค่าเริ่มต้นเป็น bsc
         this.initializeSvgTransformForCircuit();
       } else {
         this.initializeSvgTransformForCircuit();
       }
     }, 0);
 
-    const ro = new ResizeObserver(() => this.calculateSvgScale());
-    ro.observe(this.mapSvgEl.nativeElement);
-
-    // this.addRedDotSeries();
+    const ro = new ResizeObserver(() => {
+      this.calculateSvgScale();
+      if (this.trackCanvas?.nativeElement) {
+        const canvas = this.trackCanvas.nativeElement;
+        const container = canvas.parentElement;
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+          this.scheduleRender();
+        }
+      }
+    });
+    if (this.mapSvgEl?.nativeElement) {
+      ro.observe(this.mapSvgEl.nativeElement);
+    }
   }
 
   ngOnDestroy(): void {
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
     this.wsSubscriptions.forEach(sub => sub.unsubscribe());
-    // performance: batched realtime UI flush - cleanup
     this.rtBatchSubscription?.unsubscribe();
     this.rtBatch$.complete();
+    
+    // Close realtime WebSocket connection
+    if (this.realtimeWS) {
+      this.realtimeWS.close();
+      this.realtimeWS = null;
+    }
     this.ro?.disconnect();
     this.map?.remove();
-    // ปิด WebSocket ที่เปิดไว้ (ถ้ามี)
+
+    // Cancel animation frame
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+    }
+
+    // Close WebSockets
     this.webSocketService.disconnectRealtime();
     this.webSocketService.disconnectHistory();
     this.webSocketService.disconnectStatus();
     this.disconnectWebSocket();
-    // ล้าง status timeout
     this.clearStatusTimeout();
 
-    // this.addRedDotSeries();
+    // Clear buffers
+    this.telemetryBuffer = [];
+    this.historyPoints = [];
+    this.historyDownsampled = [];
   }
 
   //////////// RACE /////////////////////////////////

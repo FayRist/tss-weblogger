@@ -79,7 +79,8 @@ export const APP_CONFIG = {
       WEB_SOCKET: '/ws/logger',
       WEB_SOCKET_BY_CARNUMBER: '/ws/logger-by-carnumber',
       WEB_LOGGER_STATUS: '/ws/logger-status',
-      WEB_SOCKET_REAL_TIME: '/ws/logger-realtime'
+      WEB_SOCKET_LOGGER_REAL_TIME: '/ws/logger-realtime',
+      WEB_SOCKET_REAL_TIME: '/ws/realtime'
     }
   },
 
