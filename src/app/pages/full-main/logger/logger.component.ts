@@ -442,6 +442,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         foreColor: PAL.text,
         toolbar: { show: true },
         selection: { enabled: true }, // เปิดใช้งานการเลือกช่วง (สำหรับ brush)
+        zoom: { enabled: true, type: 'x', autoScaleYaxis: true }, // เปิดใช้งาน zoom
+        // @ts-expect-error - pan property exists in ApexCharts but not in TypeScript types
+        pan: { enabled: true, type: 'x' }, // เปิดใช้งานการลากกราฟ (panning)
         events: {
           mouseMove: (event, chartContext, config) => {
             // บน touch device (iPad/Tablet) ไม่มี mouseMove event - ใช้เฉพาะ dataPointSelection
@@ -664,6 +667,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         height: 120,
         brush: { enabled: true, target: 'detailChart' },
         selection: { enabled: true },       // ลากเลือกช่วง
+        zoom: { enabled: false },            // ปิด zoom ใน brush chart
+        // @ts-expect-error - pan property exists in ApexCharts but not in TypeScript types
+        pan: { enabled: true, type: 'x' },  // เปิดใช้งานการลากกราฟ (panning)
         background: 'transparent',
         foreColor: PAL.text
       },
@@ -1221,10 +1227,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ===== Realtime Buffering =====
   private telemetryBuffer: TelemetryPoint[] = [];
-  private readonly MAX_BUFFER_SIZE = 10000; // ~2 minutes at 10Hz
-  private readonly MAX_BUFFER_TIME_MS = 120000; // 2 minutes
+  // private readonly MAX_BUFFER_SIZE = 10000; // ~2 minutes at 10Hz
+  // private readonly MAX_BUFFER_TIME_MS = 120000; // 2 minutes
+  private readonly MAX_BUFFER_SIZE = 1200000; // ~20 minutes at 10Hz
+  private readonly MAX_BUFFER_TIME_MS = 1200000; // 20 minutes
   private chartUpdateThrottle = 200; // ms
   private lastChartUpdate = 0;
+
+
 
   // ===== History Data =====
   private historyPoints: TelemetryPoint[] = [];
