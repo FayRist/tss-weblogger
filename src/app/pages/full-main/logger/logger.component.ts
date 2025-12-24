@@ -196,12 +196,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   // private currentMapPoints: Array<{ ts: number; x: number; y: number; afr: number }> = [];
-  hoverPoint = {
-    visible: false,
-    x: 0,
-    y: 0,
-    afr: 0
-  };
 
   clickedPointState: {
     seriesIndex: number;
@@ -478,7 +472,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             if (this.clickedPointState) {
               return;
             }
-            this.hoverPoint.visible = false;
             this.tooltipStyle.visibility = 'hidden';
             this.cdr.detectChanges();
           },
@@ -502,7 +495,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                     this.clickedPointState.dataPointIndex === dataPointIndex) {
                   // คลิก/tap ซ้ำ -> ยกเลิกการเลือก
                   this.clickedPointState = null;
-                  this.hoverPoint.visible = false;
                   this.tooltipStyle.visibility = 'hidden';
                 } else {
                   // คลิก/tap ที่จุดใหม่ -> แสดง hover และเก็บ state
@@ -1493,12 +1485,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           if (this.circuitName == 'bic') {
             // ตั้งค่า preset bounds สำหรับ circuitName ที่กำหนด (ใช้ค่าจาก log ที่คำนวณแล้ว)
             // ค่าที่ log ได้: minLat: 775.016401, maxLat: 775.453781, minLon: -6060.806894, maxLon: -6060.276736
-            // หาร 60 เพื่อแปลงเป็นค่าจริงตามแผนที่โลก
+            // สูตร: lat ÷ 60, lon: abs(lon) ÷ 60
             this.presetBoundsForRealtime = {
-              minLat: 775.016401 / 60,
-              maxLat: 775.453781 / 60,
-              minLon: -6060.806894 / 60,
-              maxLon: -6060.276736 / 60
+              minLat: 775.020401 / 60,
+              maxLat: 775.457781 / 60,
+              minLon: Math.abs(-6060.806894) / 60,
+              maxLon: Math.abs(-6060.276736) / 60
             };
             console.log(`Preset bounds for realtime set for circuit '${this.circuitName}':`, this.presetBoundsForRealtime);
           } else {
@@ -1558,11 +1550,27 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.webSocketService.connectHistory(`client_${loggerId}`, 0);
         this.webSocketService.historyPoint$.subscribe(point => {
           if (point) {
+            let lat = Number(point.lat);
+            let lon = Number(point.lon);
+
+            // แปลงค่าที่ผิดปกติด้วยสูตร: lat ÷ 60, lon: abs(lon) ÷ 60
+            // เช็คว่าค่า lat/lon ผิดปกติหรือไม่ (ค่าปกติ: lat อยู่ระหว่าง -90 ถึง 90, lon อยู่ระหว่าง -180 ถึง 180)
+            if (lat > 90 || lat < -90) {
+              // ค่าผิดปกติ ให้หาร 60 ตรงๆ
+              lat = lat / 60;
+            }
+
+            if (lon > 180 || lon < -180) {
+              // ค่าผิดปกติ ให้ใช้ abs() ก่อน แล้วค่อยหาร 60
+              // ตัวอย่าง: abs(-6060.505452) ÷ 60 = 101.008424
+              lon = Math.abs(lon) / 60;
+            }
+
             const tp: TelemetryPoint = {
               loggerId: loggerId,
               ts: point.ts,
-              x: Number(point.lat),
-              y: Number(point.lon),
+              x: lat,
+              y: lon,
               afr: point.afrValue,
               velocity: point.velocity,
               raw: point
@@ -1582,7 +1590,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ===== Realtime Mode with Late Join =====
   private realtimeWS: WebSocket | null = null;
-  
+
   private initializeRealtimeWithBacklog(): void {
     const loggerId = this.parameterLoggerID || String(this.loggerID);
     if (!loggerId) return;
@@ -1597,7 +1605,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     try {
       const ws = new WebSocket(url);
       this.realtimeWS = ws;
-      
+
       ws.onopen = () => {
         console.log('[Realtime] Connected with backlog:', url);
         // Set status to Online when connected
@@ -1656,7 +1664,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.cdr.detectChanges();
         console.log('[Logger Status] Updated to Online (data received)');
       }
-      
+
       // Reset status timeout when receiving data
       this.resetStatusTimeout();
 
@@ -1712,8 +1720,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private parseTelemetryPoint(payload: any, loggerId: string): TelemetryPoint {
-    const lat = Number(payload.lat ?? payload.latitude);
-    const lon = Number(payload.lon ?? payload.long ?? payload.longitude);
+    let lat = Number(payload.lat ?? payload.latitude);
+    let lon = Number(payload.lon ?? payload.long ?? payload.longitude);
+
+    // แปลงค่าที่ผิดปกติด้วยสูตร: lat ÷ 60, lon: abs(lon) ÷ 60
+    // เช็คว่าค่า lat/lon ผิดปกติหรือไม่ (ค่าปกติ: lat อยู่ระหว่าง -90 ถึง 90, lon อยู่ระหว่าง -180 ถึง 180)
+    if (lat > 90 || lat < -90) {
+      // ค่าผิดปกติ ให้หาร 60 ตรงๆ
+      lat = lat / 60;
+    }
+
+    if (lon > 180 || lon < -180) {
+      // ค่าผิดปกติ ให้ใช้ abs() ก่อน แล้วค่อยหาร 60
+      // ตัวอย่าง: abs(-6060.505452) ÷ 60 = 101.008424
+      lon = Math.abs(lon) / 60;
+    }
+
     const afr = payload.AFR != null ? Number(payload.AFR) : (payload.afr != null ? Number(payload.afr) : undefined);
     const rpm = payload.RPM != null ? Number(payload.RPM) : (payload.rpm != null ? Number(payload.rpm) : undefined);
     const velocity = payload.velocity != null ? Number(payload.velocity) : undefined;
@@ -1725,7 +1747,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return {
       loggerId,
       ts,
-      x: lat, // lat/lon are actually XY coordinates
+      x: lat, // lat/lon are actually XY coordinates (converted if needed)
       y: lon,
       afr,
       rpm,
@@ -1741,7 +1763,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.cdr.detectChanges();
       console.log('[Logger Status] Updated to Online (telemetry point received)');
     }
-    
+
     // Reset status timeout when receiving data
     if (this.isRealtimeMode) {
       this.resetStatusTimeout();
@@ -1767,10 +1789,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Update chart (throttled) - for ApexCharts
     const now = Date.now();
     const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
-    
+
     // Force update chart immediately if it's the first point or every 10 points
     const forceUpdate = this.telemetryBuffer.length === 1 || this.telemetryBuffer.length % 10 === 0;
-    
+
     if (shouldUpdate || forceUpdate) {
       this.updateChartIncremental();
       this.lastChartUpdate = now;
@@ -1785,7 +1807,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Canvas Rendering =====
   private loadCanvasBackgroundImage(): void {
     let imagePath = '';
-    
+
     if (this.circuitName === 'bsc') {
       imagePath = 'images/map-race/imgBGBangsan-real.png';
     } else if (this.circuitName === 'bric') {
@@ -1899,14 +1921,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Calculate bounds - use preset bounds for 'bic' if available, otherwise calculate from data
     let minX: number, maxX: number, minY: number, maxY: number;
-    
+
     if (this.circuitName === 'bic' && this.presetBoundsForRealtime) {
       // Use preset bounds for 'bic' circuit
-      minX = this.presetBoundsForRealtime.minLat;  // x = lat
-      maxX = this.presetBoundsForRealtime.maxLat;
-      minY = this.presetBoundsForRealtime.minLon;  // y = lon
-      maxY = this.presetBoundsForRealtime.maxLon;
+      // minX = this.presetBoundsForRealtime.minLat;  // x = lat
+      // maxX = this.presetBoundsForRealtime.maxLat;
+      // minY = this.presetBoundsForRealtime.minLon;  // y = lon
+      // maxY = this.presetBoundsForRealtime.maxLon;
+      minX = 12.917735650000001;
+      maxX = 12.923567383333332;
+      minY = 101.01256463666667;
+      maxY = 101.00549586333332;
       console.log(`[Canvas] Using preset bounds for 'bic':`, { minX, maxX, minY, maxY });
+
+      // 12.9197441
+      // 101.0091022
+      // minX: 12.917006683333334, maxX: 12.924296349999999, minY: 101.01344823333334, maxY: 101.00461226666667
+
     } else {
       // Calculate bounds from actual data
       const xs = points.map(p => p.x);
@@ -1928,6 +1959,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Helper to convert data coords to canvas coords
     const toCanvasX = (dataX: number) => ((dataX - paddedMinX) / paddedSpanX) * canvas.width;
     const toCanvasY = (dataY: number) => canvas.height - ((dataY - paddedMinY) / paddedSpanY) * canvas.height;
+
+    // Save context state before rotation (for 'bic' circuit only)
+    ctx.save();
+
+    // หมุน canvas -93 องศาสำหรับ 'bic' circuit (เฉพาะเส้นทาง ไม่หมุน background)
+    if (this.circuitName === 'bic') {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      ctx.translate(centerX, centerY);
+      ctx.rotate(-93 * Math.PI / 180);
+      ctx.translate(-centerX, -centerY);
+    }
 
     // Draw path with color gradient based on AFR (on top of background)
     ctx.globalCompositeOperation = 'source-over';
@@ -1975,8 +2018,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ctx.stroke();
     }
 
+    // Restore context state (undo rotation)
+    ctx.restore();
+
     // Draw current position marker (on top layer)
     if (points.length > 0) {
+      ctx.save();
+
+      // หมุน canvas -93 องศาสำหรับ 'bic' circuit (เหมือนกับเส้นทาง)
+      if (this.circuitName === 'bic') {
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        ctx.translate(centerX, centerY);
+        ctx.rotate(-93 * Math.PI / 180);
+        ctx.translate(-centerX, -centerY);
+      }
+
       ctx.globalCompositeOperation = 'source-over';
       const last = points[points.length - 1];
       const x = toCanvasX(last.x);
@@ -1998,18 +2055,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         ctx.textAlign = 'left';
         ctx.fillText(`AFR: ${last.afr.toFixed(2)}`, x + 12, y - 12);
       }
-    }
 
-    // Draw hover point if visible (on top layer)
-    if (this.hoverPoint.visible) {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.beginPath();
-      ctx.arc(this.hoverPoint.x, this.hoverPoint.y, 7, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.fill();
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -2125,10 +2172,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (newPoints.length > 0) {
         const updatedData = [...series.data, ...newPoints] as Array<{x: number; y: number | null}>;
         series.data = updatedData;
-        
+
         // Create new series array to trigger change detection
-        this.detailOpts = { 
-          ...this.detailOpts, 
+        this.detailOpts = {
+          ...this.detailOpts,
           series: [{ ...series, data: updatedData }]
         };
 
@@ -2206,10 +2253,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const cols = lines[i].split(',').map(c => c.trim());
       if (cols.length < Math.max(latIdx, lonIdx) + 1) continue;
 
-      const lat = parseFloat(cols[latIdx] ?? '');
-      const lon = parseFloat(cols[lonIdx] ?? '');
+      let lat = parseFloat(cols[latIdx] ?? '');
+      let lon = parseFloat(cols[lonIdx] ?? '');
 
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+      // แปลงค่าที่ผิดปกติด้วยสูตร: lat ÷ 60, lon: abs(lon) ÷ 60
+      // เช็คว่าค่า lat/lon ผิดปกติหรือไม่ (ค่าปกติ: lat อยู่ระหว่าง -90 ถึง 90, lon อยู่ระหว่าง -180 ถึง 180)
+      if (lat > 90 || lat < -90) {
+        // ค่าผิดปกติ ให้หาร 60 ตรงๆ
+        lat = lat / 60;
+      }
+
+      if (lon > 180 || lon < -180) {
+        // ค่าผิดปกติ ให้ใช้ abs() ก่อน แล้วค่อยหาร 60
+        // ตัวอย่าง: abs(-6060.505452) ÷ 60 = 101.008424
+        lon = Math.abs(lon) / 60;
+      }
 
       const afr = afrIdx !== -1 ? parseFloat(cols[afrIdx] ?? '') : undefined;
       const velocity = velIdx !== -1 ? parseFloat(cols[velIdx] ?? '') : undefined;
@@ -3921,23 +3981,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
 
       if (closestMapPoint) {
-        // ใช้ค่า AFR จาก series (ตรงกับค่าที่แสดงในกราฟ) แทนค่า AFR จาก closestMapPoint
-        this.hoverPoint = {
-          visible: true,
-          x: closestMapPoint.x,
-          y: closestMapPoint.y,
-          afr: afrFromSeries !== null && !isNaN(afrFromSeries) ? afrFromSeries : closestMapPoint.afr
-        };
-
         // ใช้ updateTooltipPosition เพื่อคำนวณตำแหน่งโดยคำนึงถึง transform
-        this.updateTooltipPosition(this.hoverPoint.x, this.hoverPoint.y);
+        this.updateTooltipPosition(closestMapPoint.x, closestMapPoint.y);
       }
     }
   }
 
   // Method นี้จะถูกเรียกเมื่อเมาส์เข้าสู่พื้นที่ของจุดบนแผนที่
   onMapPointEnter(point: { x: number; y: number; afr: number }) {
-    this.hoverPoint = { visible: true, x: point.x, y: point.y, afr: point.afr };
     this.updateTooltipPosition(point.x, point.y);
   }
 
@@ -3953,16 +4004,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // ตรวจสอบว่า hover อยู่บนเส้นหรือใกล้เส้น
     const distance = this.distanceToSegment(local, seg);
     if (distance < 15) { // ระยะห่างที่ยอมรับได้ (เพิ่มขึ้นเพื่อให้ hover ได้ง่ายขึ้น)
-      // หาจุดบนเส้นที่ใกล้ที่สุดเพื่อแสดง circle indicator
-      const closestPoint = this.closestPointOnSegment(local, seg);
-
-      this.hoverPoint = {
-        visible: true,
-        x: closestPoint.x, // ใช้จุดบนเส้นที่ใกล้ที่สุดสำหรับแสดง circle
-        y: closestPoint.y,
-        afr: seg.afr || 0
-      };
-
       // แสดง tooltip ที่ตำแหน่งเมาส์จริงๆ เพื่อให้ตามเมาส์ไปด้วย
       this.updateTooltipPositionFromMouse(evt);
     } else {
@@ -3983,7 +4024,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * เมื่อเมาส์ออกจาก SVG element ทั้งหมด
    */
   onSvgMouseLeave() {
-    this.hoverPoint.visible = false;
     this.tooltipStyle.visibility = 'hidden';
   }
 
@@ -4223,71 +4263,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Method นี้จะถูกเรียกเมื่อเมาส์ออกจากพื้นที่ของจุดบนแผนที่
   onMapPointLeave() {
-    this.hoverPoint.visible = false;
-    this.tooltipStyle.visibility = 'hidden';
-  }
-
-  // ===== Canvas Mouse Events =====
-  onCanvasMouseMove(evt: MouseEvent): void {
-    if (!this.trackCanvas?.nativeElement) return;
-
-    const canvas = this.trackCanvas.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-    const x = evt.clientX - rect.left;
-    const y = evt.clientY - rect.top;
-
-    // Find nearest point
-    const points = this.isHistoryMode ? this.historyDownsampled : this.telemetryBuffer;
-    if (points.length === 0) return;
-
-    // Convert canvas coordinates to data coordinates
-    const xs = points.map(p => p.x);
-    const ys = points.map(p => p.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-
-    const spanX = maxX - minX || 1;
-    const spanY = maxY - minY || 1;
-    const padding = 0.05;
-    const paddedSpanX = spanX * (1 + 2 * padding);
-    const paddedSpanY = spanY * (1 + 2 * padding);
-    const paddedMinX = minX - spanX * padding;
-    const paddedMinY = minY - spanY * padding;
-
-    const dataX = paddedMinX + (x / canvas.width) * paddedSpanX;
-    const dataY = paddedMinY + ((canvas.height - y) / canvas.height) * paddedSpanY;
-
-    // Find nearest point
-    let nearest: TelemetryPoint | null = null;
-    let minDist = Infinity;
-
-    for (const p of points) {
-      const dist = Math.sqrt((p.x - dataX) ** 2 + (p.y - dataY) ** 2);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = p;
-      }
-    }
-
-    if (nearest && minDist < 50) { // 50 unit threshold
-      this.hoverPoint = {
-        visible: true,
-        x: ((nearest.x - paddedMinX) / paddedSpanX) * canvas.width,
-        y: canvas.height - ((nearest.y - paddedMinY) / paddedSpanY) * canvas.height,
-        afr: nearest.afr ?? 0
-      };
-
-      this.updateTooltipPositionFromMouse(evt);
-    } else {
-      this.hoverPoint.visible = false;
-      this.tooltipStyle.visibility = 'hidden';
-    }
-  }
-
-  onCanvasMouseLeave(): void {
-    this.hoverPoint.visible = false;
     this.tooltipStyle.visibility = 'hidden';
   }
 
@@ -4377,7 +4352,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.wsSubscriptions.forEach(sub => sub.unsubscribe());
     this.rtBatchSubscription?.unsubscribe();
     this.rtBatch$.complete();
-    
+
     // Close realtime WebSocket connection
     if (this.realtimeWS) {
       this.realtimeWS.close();

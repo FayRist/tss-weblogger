@@ -118,9 +118,7 @@
             <div class="track-image-container" style="position: relative;">
               <!-- Canvas for track rendering (replaces expensive SVG lines) -->
               <canvas #trackCanvas
-                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"
-                (mousemove)="onCanvasMouseMove($event)"
-                (mouseleave)="onCanvasMouseLeave()">
+                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
               </canvas>
 
               <svg #mapSvg viewBox="0 0 800 660" preserveAspectRatio="none" style="overflow: hidden; background: #fff; position: relative; z-index: 0;"
@@ -133,6 +131,7 @@
                     <image href="images/map-race/Track-Chang-International-Circuit-real.png" width="100%" height="100%" />
                   } @else if (this.circuitName === 'bic') {
                     <image href="images/map-race/Bira-International-Circuit-real.jpg" width="100%" height="100%" />
+                    <!-- <image href="images/map-race/Circuit-black.jpg" width="100%" height="100%" /> -->
                   }
                   <g>
                     <!-- SVG line rendering disabled for performance - using Canvas instead -->
@@ -163,18 +162,6 @@
                         />
                       } -->
 
-                      @if (hoverPoint.visible) {
-                        <circle
-                          #hoverCircle
-                          [attr.cx]="hoverPoint.x"
-                          [attr.cy]="hoverPoint.y"
-                          r="7"
-                          fill="none"
-                          stroke="#FFFFFF"
-                          stroke-width="3"
-                          style="pointer-events: none;"
-                        />
-                      }
 
                       <!-- จุดเริ่มต้นปัจจุบัน -->
                       @if (startLatLongPoint && (this.circuitName === 'bsc' || (this.circuitName === 'bric' && this.loggerID === 118))) {
@@ -221,16 +208,6 @@
                 </g>
               </svg>
 
-              @if (hoverPoint.visible) {
-                <div
-                  class="map-tooltip"
-                  [style.left]="tooltipStyle.left"
-                  [style.top]="tooltipStyle.top"
-                  [style.visibility]="tooltipStyle.visibility"
-                  (mouseleave)="onSegmentLeave()">
-                  AFR: {{ hoverPoint.afr | number:'1.0-1' }}
-                </div>
-              }
             </div>
 
             <!-- ควบคุมการแสดง Lap -->
