@@ -27,7 +27,7 @@ import { EventService } from '../../../service/event.service';
 import { ResetWarningLoggerComponent } from '../dashboard/reset-warning-logger/reset-warning-logger.component';
 import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
-import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
+import { APP_CONFIG, getApiWebSocket, getMapCenterForCircuit } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
@@ -433,6 +433,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private deckMap: MapLibreMap | null = null;
   private deckOverlay: MapboxOverlay | null = null;
   @ViewChild('raceMapDeck') raceMapDeckRef!: ElementRef<HTMLDivElement>;
+  @ViewChild('raceMapCanvas') raceMapCanvasRef!: ElementRef<HTMLCanvasElement>;
+  private raceMapCanvasCtx: CanvasRenderingContext2D | null = null;
+  useCanvasMode = false; // true = canvas (no map), false = deck.gl map (exposed for template)
 
   // Ring buffer for high-performance data storage (typed arrays)
   private ringBufferHead = 0; // Current write position
@@ -1437,6 +1440,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
     this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
     this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? '';
+    this.circuitName   = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
 
     // performance: batched realtime UI flush - initialize batch subscription
     this.rtBatchSubscription = this.rtBatch$.pipe(
@@ -1541,29 +1545,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           // โหลด background image สำหรับ canvas
           this.loadCanvasBackgroundImage();
-
-          // ตั้งค่า preset bounds สำหรับ realtime mode เฉพาะ circuitName ที่กำหนด
-          // กำหนด circuitName ที่ต้องการใช้ preset bounds (เช่น 'bric', 'bsc', 'sic')
-          const circuitsWithPreset = ['bric']; // เพิ่ม circuitName ที่ต้องการใช้ preset bounds ที่นี่
-
-          if (this.circuitName == 'bic') {
-            // ตั้งค่า preset bounds สำหรับ circuitName ที่กำหนด (ใช้ค่าจาก log ที่คำนวณแล้ว)
-            // ค่าที่ log ได้: minLat: 775.016401, maxLat: 775.453781, minLon: -6060.806894, maxLon: -6060.276736
-            // สูตร: lat ÷ 60, lon: abs(lon) ÷ 60
-            this.presetBoundsForRealtime = {
-              minLat: 775.020401 / 60,
-              maxLat: 775.457781 / 60,
-              minLon: Math.abs(-6060.806894) / 60,
-              maxLon: Math.abs(-6060.276736) / 60
-            };
-            console.log(`Preset bounds for realtime set for circuit '${this.circuitName}':`, this.presetBoundsForRealtime);
-          } else {
-            // ไม่ตั้งค่า preset bounds สำหรับ circuitName อื่นๆ (ให้คำนวณจากข้อมูลจริง)
-            this.presetBoundsForRealtime = null;
-            console.log(`No preset bounds for circuit '${this.circuitName}', will calculate from actual data`);
-          }
-
-          // ใหม่
           this.countDetect  = detail.countDetect;
           this.afr          = detail.afr;
           this.afrAverage   = detail.afrAverage;
@@ -1852,8 +1833,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.scheduleRender();
 
     // Ingest point into deck.gl ring buffer (separate from render, O(1) operation)
-    if (this.isRealtimeMode) {
+    // Only if using deck.gl map mode (not canvas mode)
+    if (this.isRealtimeMode && !this.useCanvasMode) {
       this.deckIngestPoint(point);
+    } else if (this.isRealtimeMode && this.useCanvasMode) {
+      // For canvas mode, draw directly on canvas
+      this.drawPointOnCanvas(point);
     }
 
     // Update chart (throttled) - for ApexCharts
@@ -4393,44 +4378,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // private addRedDotSeries() {
-  //   if (!this.detailOpts?.series?.length) return;
-
-  //   const afrLimit = this.afrLimit ?? 14;
-  //   const afr = this.detailOpts.series[0] as any;
-  //   const afrData: any[] = afr.data ?? [];
-
-  //   const redDotData = afrData.reduce(
-  //     (acc: { x: any; y: number }[], pt: any) => {
-  //       const x = Array.isArray(pt) ? pt[0] : (pt?.x ?? pt?.t ?? pt?.time);
-  //       const y = Array.isArray(pt) ? pt[1] : (pt?.y ?? pt?.value);
-  //       if (typeof y === 'number' && y > afrLimit) acc.push({ x, y });
-  //       return acc;
-  //     },
-  //     []
-  //   );
-
-  //   const redDotSeries: ApexAxisChartSeries[number] = {
-  //     name: 'AFR High Points',
-  //     type: 'scatter' as const,
-  //     data: redDotData
-  //   };
-
-  //   const base = (this.detailOpts.series as ApexAxisChartSeries).filter(
-  //     (s: any) => s.name !== 'AFR High Points'
-  //   ) as ApexAxisChartSeries;
-
-  //   this.detailOpts.series = [...base, redDotSeries] as ApexAxisChartSeries;
-
-  //   const existingColors = (this.detailOpts.colors as string[]) ?? [];
-  //   this.detailOpts.colors = [...existingColors.filter(c => c !== '#ff3b30'), '#ff3b30'];
-
-  //   this.detailOpts.markers = {
-  //     ...(this.detailOpts.markers || {}),
-  //     size: 0,
-  //   };
-  // }
-
   // ===== deck.gl Methods =====
   /**
    * Ingest a new telemetry point into the ring buffer (O(1) operation, no rendering)
@@ -4513,9 +4460,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Uses same color logic as existing afrToColor function
    */
   private afrToColorUint8(afr: number): [number, number, number] {
-    const AFR_LIMIT = 13.5;
-    const AFR_MIN = 10;
-    const AFR_MAX = 20;
+    const AFR_LIMIT = this.afrLimit ?? 14;
+    const AFR_MIN = 30;
+    const AFR_MAX = 0;
 
     if (afr < AFR_LIMIT) {
       // Red for low AFR
@@ -4702,7 +4649,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         getPosition: (d: any) => d.position,
         getRadius: this.MARKER_RADIUS_PX,
         radiusUnits: 'pixels',
-        getFillColor: [0, 255, 163, 255], // #00FFA3
+        getFillColor: [255, 59, 48, 255], // #FF3B30
+        stroked: true,
+        getLineColor: [255, 255, 255, 255], // ขาว
+        lineWidthMinPixels: 2,
         pickable: false,
         parameters: { depthTest: false }
       }));
@@ -4714,9 +4664,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Initialize MapLibre map with deck.gl overlay
+   * Initialize MapLibre map with deck.gl overlay or canvas (if no circuit match)
    */
   private initializeDeckMap(): void {
+    // Get center for current circuit
+    const center = getMapCenterForCircuit(this.circuitName);
+
+    // If no circuit match, use canvas mode (empty area for drawing lines)
+    if (!center) {
+      this.useCanvasMode = true;
+      this.initializeCanvasMap();
+      return;
+    }
+
+    // Use deck.gl map mode
+    this.useCanvasMode = false;
+
     if (!this.raceMapDeckRef?.nativeElement) {
       console.warn('[deck.gl] Map container not found, retrying...');
       setTimeout(() => this.initializeDeckMap(), 100);
@@ -4724,15 +4687,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     const mapApiKey = APP_CONFIG.MAP.API_KEY;
-    const center = APP_CONFIG.MAP.CENTER;
 
     try {
       // Initialize MapLibre map
       this.deckMap = new MapLibreMap({
         container: this.raceMapDeckRef.nativeElement,
-        style: `https://api.maptiler.com/maps/streets/style.json?key=${mapApiKey}`,
-        center: [center.LNG, center.LAT], // [lng, lat]
-        zoom: 16,
+        style: `https://api.maptiler.com/maps/satellite/style.json?key=${mapApiKey}`,
+        center: [center.lng, center.lat], // [lng, lat]
+        zoom: 15.3,
         pitch: 0,
         bearing: 0
       });
@@ -4748,10 +4710,140 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // Start render loop
       this.scheduleDeckRender();
 
-      console.log('[deck.gl] Map initialized successfully');
+      console.log(`[deck.gl] Map initialized successfully for circuit: ${this.circuitName}`);
     } catch (error) {
       console.error('[deck.gl] Failed to initialize map:', error);
+      // Fallback to canvas mode on error
+      this.useCanvasMode = true;
+      this.initializeCanvasMap();
     }
+  }
+
+  /**
+   * Initialize canvas for drawing lines (when no circuit match)
+   */
+  private initializeCanvasMap(): void {
+    if (!this.raceMapCanvasRef?.nativeElement) {
+      console.warn('[Canvas Map] Canvas element not found, retrying...');
+      setTimeout(() => this.initializeCanvasMap(), 100);
+      return;
+    }
+
+    const canvas = this.raceMapCanvasRef.nativeElement;
+    this.raceMapCanvasCtx = canvas.getContext('2d', { alpha: false });
+
+    if (!this.raceMapCanvasCtx) {
+      console.error('[Canvas Map] Failed to get canvas context');
+      return;
+    }
+
+    // Set canvas size to match container
+    const container = canvas.parentElement;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+
+    // Clear canvas with background color
+    if (this.raceMapCanvasCtx) {
+      this.raceMapCanvasCtx.fillStyle = '#0e1113';
+      this.raceMapCanvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Reset canvas drawing state
+    this.canvasLastPoint = null;
+
+    console.log('[Canvas Map] Canvas initialized for drawing lines (no circuit match)');
+  }
+
+  // Canvas drawing state (for non-map mode)
+  private canvasLastPoint: { x: number; y: number; color: string } | null = null;
+
+  /**
+   * Draw point on canvas (for non-map mode)
+   */
+  private drawPointOnCanvas(point: TelemetryPoint): void {
+    if (!this.raceMapCanvasCtx || !this.raceMapCanvasRef?.nativeElement) return;
+
+    const canvas = this.raceMapCanvasRef.nativeElement;
+    const afr = point.afr ?? 14.0;
+
+    // Convert lat/lon to canvas coordinates (simple scaling - adjust as needed)
+    // Note: This is a simple mapping, you may need to adjust based on your data range
+    const scaleX = canvas.width / 360; // Assuming full longitude range
+    const scaleY = canvas.height / 180; // Assuming full latitude range
+
+    // Center at canvas middle (adjust offset as needed)
+    const offsetX = canvas.width / 2;
+    const offsetY = canvas.height / 2;
+
+    const x = offsetX + (point.y * scaleX); // y is longitude
+    const y = offsetY - (point.x * scaleY); // x is latitude (inverted)
+
+    // Get color based on AFR
+    const color = this.afrToColorHex(afr);
+
+    // Draw line from last point to current point
+    if (this.canvasLastPoint) {
+      this.raceMapCanvasCtx.beginPath();
+      this.raceMapCanvasCtx.moveTo(this.canvasLastPoint.x, this.canvasLastPoint.y);
+      this.raceMapCanvasCtx.lineTo(x, y);
+      this.raceMapCanvasCtx.strokeStyle = color;
+      this.raceMapCanvasCtx.lineWidth = 2;
+      this.raceMapCanvasCtx.stroke();
+    }
+
+    // Draw current point marker
+    this.raceMapCanvasCtx.beginPath();
+    this.raceMapCanvasCtx.arc(x, y, 4, 0, Math.PI * 2);
+    this.raceMapCanvasCtx.fillStyle = '#00FFA3'; // Latest position color
+    this.raceMapCanvasCtx.fill();
+
+    // Update last point
+    this.canvasLastPoint = { x, y, color };
+  }
+
+  /**
+   * Convert AFR to hex color (for canvas)
+   */
+  private afrToColorHex(afr: number): string {
+    const AFR_LIMIT = 13.5;
+    const AFR_MIN = 10;
+    const AFR_MAX = 20;
+
+    if (afr < AFR_LIMIT) {
+      return '#FF0000'; // Red for low AFR
+    }
+
+    // Green scale for normal AFR
+    const t = Math.max(0, Math.min(1, (afr - AFR_MIN) / (AFR_MAX - AFR_MIN)));
+    const hue = 120 * (1 - t); // 120 (green) to 0 (red)
+    return this.hslToHex(hue, 1, 0.5);
+  }
+
+  /**
+   * Convert HSL to hex (for canvas)
+   */
+  private hslToHex(h: number, s: number, l: number): string {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = h / 60;
+    const x = c * (1 - Math.abs((hp % 2) - 1));
+    let r = 0, g = 0, b = 0;
+
+    if (hp < 1) { r = c; g = x; b = 0; }
+    else if (hp < 2) { r = x; g = c; b = 0; }
+    else if (hp < 3) { r = 0; g = c; b = x; }
+    else if (hp < 4) { r = 0; g = x; b = c; }
+    else if (hp < 5) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+
+    const m = l - c / 2;
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 
   private ro?: ResizeObserver;
@@ -4783,6 +4875,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // Resize deck.gl map
       if (this.deckMap) {
         this.deckMap.resize();
+      }
+      // Resize canvas map
+      if (this.useCanvasMode && this.raceMapCanvasRef?.nativeElement) {
+        const canvas = this.raceMapCanvasRef.nativeElement;
+        const container = canvas.parentElement;
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+          // Redraw canvas
+          if (this.raceMapCanvasCtx) {
+            this.raceMapCanvasCtx.fillStyle = '#0e1113';
+            this.raceMapCanvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+          this.canvasLastPoint = null; // Reset to redraw path
+        }
       }
     });
     if (this.mapSvgEl?.nativeElement) {
@@ -4818,6 +4926,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.deckMap.remove();
       this.deckMap = null;
     }
+    // Cleanup canvas
+    this.raceMapCanvasCtx = null;
+    this.canvasLastPoint = null;
 
     // Cancel animation frame
     if (this.animationFrameId) {

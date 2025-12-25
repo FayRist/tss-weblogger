@@ -11,9 +11,10 @@ API Key ถูกตั้งค่าใน `src/app/app.config.ts`:
 ```typescript
 MAP: {
   API_KEY: 'uA8Sp5KU2WAOHVMJEYqJ', // Default key from .env
-  CENTER: {
-    LAT: 12.921342,
-    LNG: 101.009823
+  CIRCUITS: {
+    bic: { LAT: 12.921067, LNG: 101.008893 },   // Bira Circuit
+    bric: { LAT: 14.962671, LNG: 103.084393 },  // Chang International Circuit
+    bsc: { LAT: 13.305132, LNG: 100.901529 }    // Bangsaen Street Circuit
   }
 }
 ```
@@ -24,6 +25,11 @@ MAP: {
   1. **Build-time replacement**: สร้าง `environment.ts` และใช้ Angular's file replacement
   2. **Runtime config**: อ่านจาก environment variable หรือ API config service
   3. **.env file**: ใช้ build tool ที่รองรับ (เช่น dotenv-webpack)
+
+**การตั้งค่า Circuit Centers:**
+ระบบจะดึง center ตาม `circuitName` (bic, bric, bsc) จาก `APP_CONFIG.MAP.CIRCUITS`
+- **ถ้ามี circuitName ที่ตรงกัน** → แสดง MapLibre map พร้อม deck.gl overlay
+- **ถ้าไม่มี circuitName ที่ตรงกัน** → แสดงพื้นที่เปล่า (canvas) สำหรับลากเส้น
 
 **Style URL ที่ใช้:**
 - MapTiler Streets: `https://api.maptiler.com/maps/streets/style.json?key=${MAP_API_KEY}`
@@ -52,11 +58,20 @@ private readonly MARKER_RADIUS_PX = 4;               // Marker radius in pixels
 - ใช้ `Float64Array` สำหรับ timestamps (สำหรับ trim 30 นาที)
 - Ring buffer ขนาด: `MAX_POINTS ≈ INPUT_HZ * 1800 = 108,000` (+ 20% headroom)
 
-### Rendering
+### Rendering Modes
+
+**Map Mode (deck.gl + MapLibre):**
+- ใช้เมื่อมี `circuitName` ที่ตรงกับ `APP_CONFIG.MAP.CIRCUITS`
 - **LineLayer**: แสดงเส้นทางย้อนหลัง 30 นาทีล่าสุด
 - **ScatterplotLayer**: แสดง marker ตำแหน่งล่าสุด
 - ใช้ `interleaved: true` mode สำหรับ WebGL2 performance
 - ไม่มี interaction (`pickable: false`)
+
+**Canvas Mode (Empty Area):**
+- ใช้เมื่อไม่มี `circuitName` ที่ตรงกัน
+- แสดงพื้นที่เปล่าสีเข้ม (#0e1113) สำหรับลากเส้น
+- วาดเส้นและ marker บน HTML5 Canvas
+- ใช้ coordinate transformation แบบง่าย (ปรับได้ตามต้องการ)
 
 ## Key Features
 
@@ -65,7 +80,9 @@ private readonly MARKER_RADIUS_PX = 4;               // Marker radius in pixels
 ✅ **Rolling 30-minute Window**: แสดงเฉพาะข้อมูล 30 นาทีล่าสุด  
 ✅ **Memory Bounded**: หน่วยความจำคงที่ (bounded by MAX_POINTS)  
 ✅ **No GC Pressure**: ใช้ typed arrays และ reusable object arrays  
-✅ **Separated Concerns**: แยก ingestion ออกจาก rendering
+✅ **Separated Concerns**: แยก ingestion ออกจาก rendering  
+✅ **Circuit-based Configuration**: ดึง center ตาม circuitName อัตโนมัติ  
+✅ **Fallback Canvas Mode**: แสดงพื้นที่เปล่าสำหรับลากเส้นเมื่อไม่มี circuit match
 
 ## Files Modified
 

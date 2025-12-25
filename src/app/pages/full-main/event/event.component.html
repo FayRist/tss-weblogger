@@ -18,7 +18,7 @@
         <tbody>
           @for (eventList of allEvent; track eventList) {
             <tr>
-              <td class="text-center" (click)="navigateToRace(eventList.event_id, 'live', eventList.active)">{{ eventList.event_name }}</td>
+              <td class="text-center" (click)="navigateToRace(eventList.event_id, 'live', eventList.active, eventList.circuit_name)">{{ eventList.event_name }}</td>
               <td class="text-center">
                 {{ eventList.event_start| dateRange:eventList.event_end }}
               </td>
@@ -30,7 +30,7 @@
                 <div class="col-12">
                   <button
                     type="button"
-                    class="w-100 p-0 btn btn-secondary" (click)="navigateToRace(eventList.event_id, 'history', eventList.active)">
+                    class="w-100 p-0 btn btn-secondary" (click)="navigateToRace(eventList.event_id, 'history', eventList.active, eventList.circuit_name)">
                     History
                   </button>
                 </div>

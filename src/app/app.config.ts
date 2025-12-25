@@ -112,12 +112,45 @@ export const APP_CONFIG = {
     // MapTiler API Key - Set via environment variable MAP_API_KEY or use default
     // For production, configure via build-time replacement or environment service
     API_KEY: 'uA8Sp5KU2WAOHVMJEYqJ', // Default key from .env
-    CENTER: {
-      LAT: 12.921342,
-      LNG: 101.009823
+    
+    // Circuit centers - can be overridden via environment variables
+    // Format: MAP_CENTER_{CIRCUIT}_LAT and MAP_CENTER_{CIRCUIT}_LON
+    CIRCUITS: {
+      // Bira Circuit (bic)
+      bic: {
+        LAT: 12.921067,
+        LNG: 101.008893
+      },
+      // Chang International Circuit (bric)
+      bric: {
+        LAT: 14.962671,
+        LNG: 103.084393
+      },
+      // Bangsaen Street Circuit (bsc)
+      bsc: {
+        LAT: 13.305132,
+        LNG: 100.901529
+      }
     }
   }
 };
+
+/**
+ * Get map center for a specific circuit
+ * @param circuitName Circuit name (bic, bric, bsc)
+ * @returns Center coordinates or null if circuit not found
+ */
+export function getMapCenterForCircuit(circuitName: string | null | undefined): { lat: number; lng: number } | null {
+  if (!circuitName) return null;
+  
+  const circuit = APP_CONFIG.MAP.CIRCUITS[circuitName.toLowerCase() as keyof typeof APP_CONFIG.MAP.CIRCUITS];
+  if (!circuit) return null;
+  
+  return {
+    lat: circuit.LAT,
+    lng: circuit.LNG
+  };
+}
 
 /**
  * Helper function สำหรับสร้าง API URL

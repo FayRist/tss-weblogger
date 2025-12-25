@@ -41,6 +41,7 @@ export class RaceComponent implements OnInit {
   private subscriptions: Subscription[] = [];
   private sub!: Subscription;
 
+  circuitName: string = '';
   CurrentEventId: any = null;
   sessionList = SESSION_LIST;
   raceSegment = RACE_SEGMENT;
@@ -56,6 +57,7 @@ export class RaceComponent implements OnInit {
   ngOnInit() {
     let eventId = this.route.snapshot.queryParamMap.get('eventId') ?? '';
     let statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
+    this.circuitName = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
     this.loadRace(eventId, statusRace);
 
     this.CurrentEventId = eventId;
@@ -184,7 +186,7 @@ export class RaceComponent implements OnInit {
 
   navigateToDashboard(raceId: number, segmentType: string, classType: string) {
     this.router.navigate(['/pages', 'dashboard'], {
-      queryParams: { eventId: this.CurrentEventId, raceId, segment: segmentType, class: classType }   // ➜ /pages/dashboard?raceId=10&class=c
+      queryParams: { eventId: this.CurrentEventId, raceId, segment: segmentType, class: classType, circuitName: this.circuitName }   // ➜ /pages/dashboard?raceId=10&class=c
     });
   }
 

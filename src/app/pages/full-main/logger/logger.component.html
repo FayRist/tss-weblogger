@@ -115,8 +115,14 @@
             </div>
           </div>
           <div class="card-body card-body--flush">
-            <!-- deck.gl Map Container (WebGL) -->
-            <div #raceMapDeck class="race-map-deck"></div>
+            <!-- deck.gl Map Container (WebGL) - shown when circuit has map center -->
+            <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"></div>
+            
+            <!-- Canvas for drawing lines (shown when no circuit match) -->
+            <canvas #raceMapCanvas 
+              class="race-map-canvas" 
+              [style.display]="useCanvasMode ? 'block' : 'none'">
+            </canvas>
             
             <!-- Legacy SVG+Canvas (hidden when using deck.gl) -->
             <div class="track-image-container" style="position: relative; display: none;">
