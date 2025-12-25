@@ -40,7 +40,7 @@ type TelemetryPoint = {
   afr?: number;
   rpm?: number;
   velocity?: number;
-  raw?: any;
+  // Note: raw payloads are NOT stored to keep memory usage low
 };
 
 type ChartKey = 'avgAfr' | 'realtimeAfr' | 'warningAfr' | 'speed'; // ใช้กับกราฟจริง
@@ -1225,14 +1225,29 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private pendingRender = false;
   private backgroundImage: HTMLImageElement | null = null;
 
-  // ===== Realtime Buffering =====
-  private telemetryBuffer: TelemetryPoint[] = [];
-  // private readonly MAX_BUFFER_SIZE = 10000; // ~2 minutes at 10Hz
-  // private readonly MAX_BUFFER_TIME_MS = 120000; // 2 minutes
-  private readonly MAX_BUFFER_SIZE = 1200000; // ~20 minutes at 10Hz
-  private readonly MAX_BUFFER_TIME_MS = 1200000; // 20 minutes
+  // ===== Realtime Buffering Configuration =====
+  // Retention window: how long to keep data in memory (default: 1 hour)
+  // This controls how much historical data is available for display/analysis
+  private readonly REALTIME_RETENTION_MS = 60 * 60 * 1000; // 1 hour (configurable, e.g., 60 minutes)
+
+  // Maximum buffer size: computed from expected Hz * retention time + headroom
+  // Default: 60Hz * 3600s = 216,000 points, with 20% headroom = 259,200
+  // This ensures we can handle 60Hz input for the full retention window
+  private readonly REALTIME_EXPECTED_HZ = 60; // Expected input frequency
+  private readonly REALTIME_MAX_BUFFER_POINTS = Math.ceil(
+    this.REALTIME_EXPECTED_HZ * (this.REALTIME_RETENTION_MS / 1000) * 1.2 // 20% headroom
+  ); // ~259,200 points for 60Hz * 1 hour
+
+  // Legacy constants (mapped to new config for backward compatibility)
+  private readonly MAX_BUFFER_SIZE = this.REALTIME_MAX_BUFFER_POINTS;
+  private readonly MAX_BUFFER_TIME_MS = this.REALTIME_RETENTION_MS;
+
+  // Chart update throttling to prevent excessive renders
   private chartUpdateThrottle = 200; // ms
   private lastChartUpdate = 0;
+
+  // ===== Realtime Buffering =====
+  private telemetryBuffer: TelemetryPoint[] = [];
 
 
 
@@ -1582,8 +1597,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
               x: lat,
               y: lon,
               afr: point.afrValue,
-              velocity: point.velocity,
-              raw: point
+              velocity: point.velocity
+              // Note: raw payload is NOT stored to keep memory usage low
             };
             this.historyPoints.push(tp);
             // Downsample for display
@@ -1761,8 +1776,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       y: lon,
       afr,
       rpm,
-      velocity,
-      raw: payload
+      velocity
+      // Note: raw payload is NOT stored to keep memory usage low
     };
   }
 
@@ -1782,12 +1797,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Add to ring buffer
     this.telemetryBuffer.push(point);
 
-    // Trim buffer by size
+    // Trim buffer by size (safety limit based on expected Hz * retention)
     if (this.telemetryBuffer.length > this.MAX_BUFFER_SIZE) {
       this.telemetryBuffer.shift();
     }
 
-    // Trim buffer by time (keep last 2 minutes)
+    // Trim buffer by time (keep data within retention window)
+    // This ensures we don't keep data older than REALTIME_RETENTION_MS
     const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
     while (this.telemetryBuffer.length > 0 && this.telemetryBuffer[0].ts < cutoff) {
       this.telemetryBuffer.shift();
@@ -2004,7 +2020,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         // If color changed, stroke previous segment and start new
         if (color !== lastColor && i > 1) {
           ctx.strokeStyle = lastColor;
-          ctx.lineWidth = 3; // Increased line width for better visibility
+          ctx.lineWidth = 1.5; // Increased line width for better visibility
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.stroke();
@@ -2051,11 +2067,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Draw current position marker (larger, more visible)
       ctx.beginPath();
-      ctx.arc(x, y, 8, 0, 2 * Math.PI);
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
       ctx.fillStyle = '#FF0000';
       ctx.fill();
       ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 1;
       ctx.stroke();
 
       // Draw info text near current position
@@ -2134,14 +2150,33 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   // ===== Incremental Chart Update =====
+  /**
+   * Updates the chart with new telemetry data.
+   *
+   * IMPORTANT: When downsampling is applied (points.length > chartMax), we MUST rebuild
+   * the entire series.data because the downsampled set changes over time. Appending
+   * based on existingCount would cause data to disappear or freeze.
+   *
+   * Only use append-incremental mode when points.length <= chartMax (no downsampling).
+   */
   private updateChartIncremental(): void {
     const points = this.isHistoryMode ? this.historyPoints : this.telemetryBuffer;
     if (points.length === 0) return;
 
+    // Maximum points to render in chart (performance limit)
+    const chartMax = 5000;
+
+    // Determine if downsampling is needed
+    const needsDownsampling = points.length > chartMax;
+    const chartPoints = needsDownsampling
+      ? this.downsampleTelemetry(points, chartMax)
+      : points;
+
     // Initialize chart series if not exists
     if (!this.detailOpts?.series || this.detailOpts.series.length === 0) {
-      console.log('[Chart] Initializing chart series with', points.length, 'points');
-      const data: Array<{x: number; y: number | null}> = points.map(p => ({
+      console.log('[Chart] Initializing chart series with', points.length, 'points',
+        needsDownsampling ? `(downsampled to ${chartPoints.length})` : '');
+      const data: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
         x: p.ts,
         y: p.afr ?? null
       }));
@@ -2164,52 +2199,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    // Downsample for chart (2k-5k points)
-    const chartMax = 5000;
-    const chartPoints = points.length > chartMax
-      ? this.downsampleTelemetry(points, chartMax)
-      : points;
-
-    // Update series data (append only new points)
     const series = this.detailOpts.series[0];
-    if (series && Array.isArray(series.data)) {
-      const existingCount = series.data.length;
-      const newPoints: Array<{x: number; y: number | null}> = chartPoints.slice(existingCount).map(p => ({
-        x: p.ts,
-        y: p.afr ?? null
-      }));
-
-      if (newPoints.length > 0) {
-        const updatedData = [...series.data, ...newPoints] as Array<{x: number; y: number | null}>;
-        series.data = updatedData;
-
-        // Create new series array to trigger change detection
-        this.detailOpts = {
-          ...this.detailOpts,
-          series: [{ ...series, data: updatedData }]
-        };
-
-        // Update brush chart (keep last 1000 points)
-        const brushData = updatedData.slice(-1000);
-        this.brushOpts = {
-          ...this.brushOpts,
-          series: [{ name: 'AFR', type: 'line', data: brushData }]
-        };
-
-        console.log(`[Chart] Updated chart: ${updatedData.length} total points, added ${newPoints.length} new points`);
-
-        // Trigger change detection
-        this.ngZone.run(() => {
-          this.cdr.markForCheck();
-        });
-      } else {
-        // Even if no new points, update chart to ensure it's visible
-        this.detailOpts = { ...this.detailOpts, series: [...this.detailOpts.series] };
-        this.ngZone.run(() => {
-          this.cdr.markForCheck();
-        });
-      }
-    } else {
+    if (!series || !Array.isArray(series.data)) {
       // Fallback: recreate series if data structure is invalid
       console.log('[Chart] Recreating chart series due to invalid data structure');
       const data: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
@@ -2231,6 +2222,76 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.ngZone.run(() => {
         this.cdr.markForCheck();
       });
+      return;
+    }
+
+    // CRITICAL FIX: When downsampling, we MUST rebuild the entire series.data
+    // because the downsampled set changes over time. The indices don't match
+    // between the old downsampled set and the new one.
+    if (needsDownsampling) {
+      // Rebuild entire series data from downsampled points
+      const updatedData: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
+        x: p.ts,
+        y: p.afr ?? null
+      }));
+
+      this.detailOpts = {
+        ...this.detailOpts,
+        series: [{ ...series, data: updatedData }]
+      };
+
+      // Update brush chart (keep last 1000 points from full dataset, not downsampled)
+      const brushSourcePoints = points.slice(-1000);
+      const brushData: Array<{x: number; y: number | null}> = brushSourcePoints.map(p => ({
+        x: p.ts,
+        y: p.afr ?? null
+      }));
+      this.brushOpts = {
+        ...this.brushOpts,
+        series: [{ name: 'AFR', type: 'line', data: brushData }]
+      };
+
+      console.log(`[Chart] Rebuilt chart (downsampling): ${updatedData.length} points from ${points.length} source points`);
+
+      // Trigger change detection
+      this.ngZone.run(() => {
+        this.cdr.markForCheck();
+      });
+    } else {
+      // No downsampling: safe to use incremental append
+      const existingCount = series.data.length;
+      const newPoints: Array<{x: number; y: number | null}> = chartPoints.slice(existingCount).map(p => ({
+        x: p.ts,
+        y: p.afr ?? null
+      }));
+
+      if (newPoints.length > 0) {
+        const updatedData = [...series.data, ...newPoints] as Array<{x: number; y: number | null}>;
+        this.detailOpts = {
+          ...this.detailOpts,
+          series: [{ ...series, data: updatedData }]
+        };
+
+        // Update brush chart (keep last 1000 points)
+        const brushData = updatedData.slice(-1000);
+        this.brushOpts = {
+          ...this.brushOpts,
+          series: [{ name: 'AFR', type: 'line', data: brushData }]
+        };
+
+        console.log(`[Chart] Incremental update: ${updatedData.length} total points, added ${newPoints.length} new points`);
+
+        // Trigger change detection
+        this.ngZone.run(() => {
+          this.cdr.markForCheck();
+        });
+      } else {
+        // Even if no new points, update chart to ensure it's visible
+        this.detailOpts = { ...this.detailOpts, series: [...this.detailOpts.series] };
+        this.ngZone.run(() => {
+          this.cdr.markForCheck();
+        });
+      }
     }
   }
 
@@ -2299,8 +2360,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         x: lat,
         y: lon,
         afr,
-        velocity,
-        raw: { cols, headers }
+        velocity
+        // Note: raw payload is NOT stored to keep memory usage low
       });
     }
 
