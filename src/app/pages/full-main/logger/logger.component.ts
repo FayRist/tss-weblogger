@@ -1687,6 +1687,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const loggerId = this.parameterLoggerID || String(this.loggerID);
     if (!loggerId) return;
 
+    // Reset WebSocket statistics when starting new connection
+    this.resetWebSocketStats();
+
     // Connect with tail_ms=120000 for 2-minute backlog
     // Use wrap=1 for standardized message format (batch type)
     const base = typeof location !== 'undefined'
@@ -1700,14 +1703,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       ws.onopen = () => {
         console.log('[Realtime] Connected with backlog:', url);
-        // Set status to Online when connected
-        if (this.loggerStatus !== 'Online') {
-          this.loggerStatus = 'Offline';
-          this.cdr.detectChanges();
-          console.log('[Logger Status] Updated to Online (WebSocket connected)');
-        }
+        // Set status to Online when connected (but wait for actual data)
+        // Don't set to Online immediately, wait for first data message
         // Start status timeout monitoring
         this.resetStatusTimeout();
+        // Reset stats on reconnect
+        this.resetWebSocketStats();
       };
       ws.onmessage = (ev) => {
         console.log('[Realtime] Received message, length:', ev.data?.length || 0);
@@ -1747,12 +1748,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Realtime Message Handler =====
   private handleRealtimeMessage(data: string, loggerId: string): void {
     try {
+      // Calculate WebSocket statistics from raw data
+      this.updateWebSocketStats(data, Date.now());
+
       let payload: any = JSON.parse(data);
       console.log('[Realtime] Message type:', payload.type, 'has items:', !!payload.items, 'has points:', !!payload.points);
 
       // Update status to Online when receiving data
       if (this.loggerStatus !== 'Online') {
-        this.loggerStatus = 'Offline';
+        this.loggerStatus = 'Online';
         this.cdr.detectChanges();
         console.log('[Logger Status] Updated to Online (data received)');
       }
@@ -1851,7 +1855,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private addTelemetryPoint(point: TelemetryPoint): void {
     // Update status to Online when receiving data (only in realtime mode)
     if (this.isRealtimeMode && this.loggerStatus !== 'Online') {
-      this.loggerStatus = 'Offline';
+      this.loggerStatus = 'Online';
       this.cdr.detectChanges();
       console.log('[Logger Status] Updated to Online (telemetry point received)');
     }
@@ -2609,7 +2613,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   isWebSocketEnabled = false;
   private wsSubscriptions: Subscription[] = [];
 
-  // เริ่มต้น WebSocket connection
+  // ===== WebSocket Statistics =====
+  wsStats = {
+    mbps: 0,
+    latency: 0, // ms
+    packetRate: 0, // packets per second
+    totalBytes: 0,
+    totalPackets: 0,
+    lastUpdateTime: Date.now(),
+    firstReceiveTime: Date.now(),
+    lastReceiveTime: Date.now(),
+    statusColor: 'red' as 'red' | 'yellow' | 'orange' | 'green'
+  };
+  private wsStatsWindow: Array<{ bytes: number; timestamp: number }> = [];
+  private readonly WS_STATS_WINDOW_MS = 1000; // 1 second rolling window
+  private wsStatsUpdateInterval: any = null;
+
+  // เริ่มต้น WebSocket connection (Legacy - may not be used anymore)
   private initializeWebSocket(loggerId: string): void {
     console.log('MatchDetail: Initializing WebSocket connection for loggerId:', loggerId);
 
@@ -2665,6 +2685,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     /**
    * ประมวลผลข้อมูล WebSocket และส่งไปยัง generateSVGPoints()
+   * (Legacy - may not be used anymore, realtime data comes from handleRealtimeMessage)
    */
   private processWebSocketMessage(message: WebSocketMessage): void {
     try {
@@ -2673,6 +2694,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // ตรวจสอบว่าเป็นข้อมูล sensor_data ของ loggerId ที่เลือก
       if (message.type === 'sensor_data:' + this.currentLoggerId && message.data) {
         const data = message.data as string;
+
         const parsedData = JSON.parse(data);
 
         // อัปเดต status ถ้ามีในข้อมูล
@@ -5135,12 +5157,124 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  // ===== WebSocket Statistics Methods =====
+  private resetWebSocketStats(): void {
+    this.wsStats = {
+      mbps: 0,
+      latency: 0,
+      packetRate: 0,
+      totalBytes: 0,
+      totalPackets: 0,
+      lastUpdateTime: Date.now(),
+      firstReceiveTime: Date.now(),
+      lastReceiveTime: Date.now(),
+      statusColor: 'red'
+    };
+    this.wsStatsWindow = [];
+  }
+
+  private updateWebSocketStats(data: string, receiveTimestamp: number): void {
+    const now = Date.now(); // Client receive time
+    const dataBytes = new Blob([data]).size; // Calculate actual byte size
+
+    // Try to parse server timestamp from message if available
+    let serverTimestamp: number | null = null;
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.timestamp) {
+        serverTimestamp = typeof parsed.timestamp === 'number'
+          ? parsed.timestamp
+          : new Date(parsed.timestamp).getTime();
+      }
+    } catch {}
+
+    // Update window
+    this.wsStatsWindow.push({ bytes: dataBytes, timestamp: now });
+
+    // Remove old entries (outside 1 second window)
+    const cutoffTime = now - this.WS_STATS_WINDOW_MS;
+    this.wsStatsWindow = this.wsStatsWindow.filter(entry => entry.timestamp > cutoffTime);
+
+    // Calculate latency (time between server send and client receive)
+    let latency = 0;
+    if (serverTimestamp && serverTimestamp > 0) {
+      latency = now - serverTimestamp;
+    } else {
+      // Fallback: use message timestamp if available
+      latency = receiveTimestamp > 0 ? now - receiveTimestamp : 0;
+    }
+
+    // Calculate Mbps: (total bytes in window * 8) / (time window in seconds) / 1_000_000
+    const oldestTimestamp = this.wsStatsWindow.length > 0
+      ? this.wsStatsWindow[0].timestamp
+      : now;
+    const windowDuration = Math.max(100, now - oldestTimestamp); // At least 100ms
+    const totalBytesInWindow = this.wsStatsWindow.reduce((sum, entry) => sum + entry.bytes, 0);
+    const mbps = windowDuration > 0
+      ? (totalBytesInWindow * 8) / (windowDuration / 1000) / 1_000_000
+      : 0;
+
+    // Calculate packet rate (packets per second)
+    const packetRate = windowDuration > 0
+      ? (this.wsStatsWindow.length / (windowDuration / 1000))
+      : 0;
+
+    // Update stats
+    this.wsStats.totalBytes += dataBytes;
+    this.wsStats.totalPackets++;
+    this.wsStats.lastReceiveTime = now;
+    this.wsStats.mbps = mbps;
+    this.wsStats.latency = Math.max(0, latency);
+    this.wsStats.packetRate = packetRate;
+    this.wsStats.lastUpdateTime = now;
+
+    // Update status color based on Mbps
+    this.wsStats.statusColor = this.getStatusColor(mbps);
+
+    // Initialize first receive time
+    if (this.wsStats.firstReceiveTime === 0 || this.wsStats.firstReceiveTime === this.wsStats.lastUpdateTime) {
+      this.wsStats.firstReceiveTime = now;
+    }
+  }
+
+  private getStatusColor(mbps: number): 'red' | 'yellow' | 'orange' | 'green' {
+    if (mbps >= 0.5) return 'green';      // >= 0.5 Mbps = เขียว
+    if (mbps >= 0.2) return 'orange';     // >= 0.2 Mbps = ส้ม
+    if (mbps >= 0.05) return 'yellow';    // >= 0.05 Mbps = เหลือง
+    return 'red';                          // < 0.05 Mbps = แดง
+  }
+
+  getFormattedSpeed(): string {
+    const mbps = this.wsStats.mbps;
+    if (mbps >= 1) {
+      return `${mbps.toFixed(2)} Mbps`;
+    } else if (mbps >= 0.001) {
+      return `${(mbps * 1000).toFixed(2)} Kbps`;
+    } else {
+      return `${(mbps * 1000000).toFixed(0)} bps`;
+    }
+  }
+
+  getFormattedPacketRate(): string {
+    return `${this.wsStats.packetRate.toFixed(1)} pkt/s`;
+  }
+
+  getFormattedLatency(): string {
+    return `${this.wsStats.latency.toFixed(0)} ms`;
+  }
+
   ngOnDestroy(): void {
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
     this.wsSubscriptions.forEach(sub => sub.unsubscribe());
     this.rtBatchSubscription?.unsubscribe();
     this.rtBatch$.complete();
+
+    // Clear WebSocket stats interval
+    if (this.wsStatsUpdateInterval) {
+      clearInterval(this.wsStatsUpdateInterval);
+      this.wsStatsUpdateInterval = null;
+    }
 
     // Close realtime WebSocket connection
     if (this.realtimeWS) {

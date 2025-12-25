@@ -342,3 +342,79 @@ button[mat-raised-button] {
     margin-bottom: .125rem;
 }
 
+// ===== WebSocket Statistics Styles =====
+.ws-stats-container {
+  padding: 4px 8px;
+  background: rgba(33, 37, 41, 0.8);
+  border-radius: 6px;
+  border: 1px solid #2B3035;
+  font-size: 0.75rem;
+  
+  .ws-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    
+    small {
+      font-size: 0.65rem;
+      opacity: 0.7;
+    }
+    
+    .fw-bold {
+      font-size: 0.8rem;
+      color: #FFFFFF;
+    }
+  }
+}
+
+// Status Indicator Light
+.ws-status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  
+  .status-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+    transition: all 0.3s ease;
+    animation: pulse 2s infinite;
+  }
+  
+  &.status-red .status-light {
+    background-color: #dc3545;
+    color: #dc3545;
+    box-shadow: 0 0 8px #dc3545;
+  }
+  
+  &.status-yellow .status-light {
+    background-color: #ffc107;
+    color: #ffc107;
+    box-shadow: 0 0 8px #ffc107;
+  }
+  
+  &.status-orange .status-light {
+    background-color: #fd7e14;
+    color: #fd7e14;
+    box-shadow: 0 0 8px #fd7e14;
+  }
+  
+  &.status-green .status-light {
+    background-color: #28a745;
+    color: #28a745;
+    box-shadow: 0 0 8px #28a745;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
