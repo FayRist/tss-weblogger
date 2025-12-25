@@ -1270,9 +1270,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Canvas Rendering =====
   @ViewChild('trackCanvas') trackCanvas!: ElementRef<HTMLCanvasElement>;
   private canvasCtx: CanvasRenderingContext2D | null = null;
+
+  private offscreenCanvas: HTMLCanvasElement | null = null;
+  private offscreenCtx: CanvasRenderingContext2D | null = null;
+
   private animationFrameId: number | null = null;
-  private pendingRender = false;
+  private renderScheduled = false;
+  private renderNeeded = false;
+
   private backgroundImage: HTMLImageElement | null = null;
+
+
+  // Canvas render throttling and incremental drawing
+  private readonly CANVAS_RENDER_FPS = 30; // 30fps for smooth rendering
+  private readonly CANVAS_RENDER_MS = 1000 / this.CANVAS_RENDER_FPS; // ~33ms per update
+  private lastCanvasRender = 0;
+  private lastRenderedIndex = 0; // Track last rendered point index for incremental drawing
+  private canvasBounds: { minX: number; maxX: number; minY: number; maxY: number; spanX: number; spanY: number; paddedMinX: number; paddedMinY: number; paddedSpanX: number; paddedSpanY: number } | null = null; // Cached bounds for incremental drawing
 
   // ===== Realtime Buffering Configuration =====
   // Retention window: how long to keep data in memory (default: 1 hour)
@@ -1966,6 +1980,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const img = new Image();
       img.onload = () => {
         this.backgroundImage = img;
+        // Reset render state when background image loads (force full redraw)
+        this.lastRenderedIndex = 0;
+        this.canvasBounds = null;
         this.scheduleRender();
       };
       img.onerror = () => {
@@ -1989,55 +2006,60 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const canvas = this.trackCanvas.nativeElement;
     this.canvasCtx = canvas.getContext('2d', { alpha: false });
 
-    if (!this.canvasCtx) {
-      console.error('[Canvas] Failed to get canvas context');
-      return;
-    }
+    if (!this.canvasCtx) return;
 
-    // Set canvas size to match container
-    const container = canvas.parentElement;
-    if (container) {
-      const rect = container.getBoundingClientRect();
-      canvas.width = rect.width || 800;
-      canvas.height = rect.height || 600;
-      console.log(`[Canvas] Initialized with size: ${canvas.width}x${canvas.height}`);
-    } else {
-      // Fallback size
-      canvas.width = 800;
-      canvas.height = 600;
-      console.log('[Canvas] Using fallback size: 800x600');
-    }
+  // Set canvas size to match container
+  const container = canvas.parentElement;
+  if (container) {
+    const rect = container.getBoundingClientRect();
+    const w = Math.max(1, Math.round(rect.width || 800));
+    const h = Math.max(1, Math.round(rect.height || 600));
+    canvas.width = w;
+    canvas.height = h;
+  } else {
+    canvas.width = 800;
+    canvas.height = 600;
+  }
 
-    // Initial render
-    this.scheduleRender();
+  this.offscreenCanvas = document.createElement('canvas');
+  this.offscreenCanvas.width = canvas.width;
+  this.offscreenCanvas.height = canvas.height;
+  this.offscreenCtx = this.offscreenCanvas.getContext('2d', { alpha: false });
+
+  // Initial render
+  this.scheduleRender();
   }
 
   /**
    * Schedule canvas render (legacy, only for canvas mode)
    * Disabled when using deck.gl map mode to avoid unnecessary rendering
+   * Throttled to 30fps for smooth rendering without flickering
    */
   private scheduleRender(): void {
-    // Skip if using deck.gl map mode (not canvas mode)
-    if (this.isRealtimeMode && !this.useCanvasMode) {
-      return;
-    }
-    if (this.pendingRender || !this.canvasCtx) return;
+    if (!this.canvasCtx) return;
 
-    this.pendingRender = true;
+    this.renderNeeded = true;
+    if (this.renderScheduled) return;
 
-    // Render outside Angular zone for performance
-    this.ngZone.runOutsideAngular(() => {
-      if (this.animationFrameId) {
-        cancelAnimationFrame(this.animationFrameId);
-      }
+      this.renderScheduled = true;
 
+      this.ngZone.runOutsideAngular(() => {
       this.animationFrameId = requestAnimationFrame(() => {
+        this.animationFrameId = null;
+        this.renderScheduled = false;
+
+        if (!this.renderNeeded) return;
+        this.renderNeeded = false;
+
         this.renderTrack();
-        this.pendingRender = false;
       });
     });
   }
 
+  /**
+   * Render track on canvas with incremental drawing for smooth rendering
+   * Only redraws new points instead of clearing and redrawing everything
+   */
   private renderTrack(): void {
     if (!this.canvasCtx) {
       console.warn('[Canvas] No canvas context available');
@@ -2047,52 +2069,85 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const ctx = this.canvasCtx;
     const canvas = ctx.canvas;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw background image first (bottom layer)
-    if (this.backgroundImage && this.backgroundImage.complete) {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(this.backgroundImage, 0, 0, canvas.width, canvas.height);
-    }
-
     // Get points to render (use buffer for realtime, history for history mode)
     // Note: For realtime mode, telemetryBuffer is now a ring buffer - need to extract valid points
     const points = this.isHistoryMode ? this.historyDownsampled : this.getTelemetryBufferPoints();
 
     if (points.length < 2) {
-      // Draw placeholder text if no data
+      // console.warn('[Canvas] points < 2', points.length);
+      // Clear and draw placeholder text if no data
+      // NEW: draw everything to offscreen first (prevents flicker)
+      const workCtx = this.offscreenCtx ?? ctx;
+      const workCanvas = (this.offscreenCanvas ?? canvas);
+
+      // Clear work canvas (not the on-screen canvas)
+      workCtx.clearRect(0, 0, workCanvas.width, workCanvas.height);
+
+      if (this.backgroundImage && this.backgroundImage.complete) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(this.backgroundImage, 0, 0, canvas.width, canvas.height);
+      }
       ctx.fillStyle = '#666';
       ctx.font = '16px Arial';
       ctx.textAlign = 'center';
       ctx.fillText(`Waiting for data... (${points.length} points)`, canvas.width / 2, canvas.height / 2);
+      this.lastRenderedIndex = 0;
+      this.canvasBounds = null;
       return;
     }
 
-    console.log(`[Canvas] Rendering ${points.length} points`);
+    // Check if we need to recalculate bounds (first render or data changed significantly)
+    const needsFullRedraw = this.canvasBounds === null ||
+                           this.lastRenderedIndex === 0 ||
+                           points.length < this.lastRenderedIndex ||
+                           (points.length - this.lastRenderedIndex) > points.length * 0.1; // More than 10% new data
 
-    // Ensure lines are drawn on top of background (top layer)
-    ctx.globalCompositeOperation = 'source-over';
+    if (needsFullRedraw) {
+      // Full redraw: clear canvas and redraw everything
+      // NEW: draw everything to offscreen first (prevents flicker)
+      const workCtx = this.offscreenCtx ?? ctx;
+      const workCanvas = (this.offscreenCanvas ?? canvas);
 
-    // Calculate bounds - use preset bounds for 'bic' if available, otherwise calculate from data
+      // Clear work canvas (not the on-screen canvas)
+      workCtx.clearRect(0, 0, workCanvas.width, workCanvas.height);
+
+      // Draw background image first (bottom layer)
+      if (this.backgroundImage && this.backgroundImage.complete) {
+        workCtx.globalCompositeOperation = 'source-over';
+        workCtx.drawImage(this.backgroundImage, 0, 0, workCanvas.width, workCanvas.height);
+      }
+
+      // Recalculate bounds
+      this.calculateCanvasBounds(points);
+      this.lastRenderedIndex = 0;
+    }
+
+    // Incremental drawing: only draw new points (smooth, no flickering)
+    this.drawIncrementalPath(ctx, canvas, points, this.lastRenderedIndex);
+
+    // Update last rendered index
+    this.lastRenderedIndex = points.length;
+
+    // NEW: blit offscreen -> onscreen in one operation (prevents "wub")
+    if (this.offscreenCanvas) {
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(this.offscreenCanvas, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  /**
+   * Calculate canvas bounds from points (cached for performance)
+   */
+  private calculateCanvasBounds(points: TelemetryPoint[]): void {
     let minX: number, maxX: number, minY: number, maxY: number;
 
     if (this.circuitName === 'bic' && this.presetBoundsForRealtime) {
       // Use preset bounds for 'bic' circuit
-      // minX = this.presetBoundsForRealtime.minLat;  // x = lat
-      // maxX = this.presetBoundsForRealtime.maxLat;
-      // minY = this.presetBoundsForRealtime.minLon;  // y = lon
-      // maxY = this.presetBoundsForRealtime.maxLon;
       minX = 12.917735650000001;
       maxX = 12.923567383333332;
       minY = 101.01256463666667;
       maxY = 101.00549586333332;
-      console.log(`[Canvas] Using preset bounds for 'bic':`, { minX, maxX, minY, maxY });
-
-      // 12.9197441
-      // 101.0091022
-      // minX: 12.917006683333334, maxX: 12.924296349999999, minY: 101.01344823333334, maxY: 101.00461226666667
-
     } else {
       // Calculate bounds from actual data
       const xs = points.map(p => p.x);
@@ -2111,9 +2166,30 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const paddedMinX = minX - spanX * padding;
     const paddedMinY = minY - spanY * padding;
 
+    this.canvasBounds = {
+      minX, maxX, minY, maxY,
+      spanX, spanY,
+      paddedMinX, paddedMinY,
+      paddedSpanX, paddedSpanY
+    };
+  }
+
+  /**
+   * Draw incremental path (only new points) for smooth rendering
+   */
+  private drawIncrementalPath(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    points: TelemetryPoint[],
+    startIndex: number
+  ): void {
+    if (!this.canvasBounds || points.length < 2 || startIndex >= points.length) return;
+
     // Helper to convert data coords to canvas coords
-    const toCanvasX = (dataX: number) => ((dataX - paddedMinX) / paddedSpanX) * canvas.width;
-    const toCanvasY = (dataY: number) => canvas.height - ((dataY - paddedMinY) / paddedSpanY) * canvas.height;
+    const toCanvasX = (dataX: number) =>
+      ((dataX - this.canvasBounds!.paddedMinX) / this.canvasBounds!.paddedSpanX) * canvas.width;
+    const toCanvasY = (dataY: number) =>
+      canvas.height - ((dataY - this.canvasBounds!.paddedMinY) / this.canvasBounds!.paddedSpanY) * canvas.height;
 
     // Save context state before rotation (for 'bic' circuit only)
     ctx.save();
@@ -2127,47 +2203,65 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ctx.translate(-centerX, -centerY);
     }
 
-    // Draw path with color gradient based on AFR (on top of background)
+    // Draw path with color gradient based on AFR (incremental)
     ctx.globalCompositeOperation = 'source-over';
-    ctx.beginPath();
-    let lastColor = '#808080';
+
+    // If starting from beginning, move to first point
+    if (startIndex === 0) {
+      ctx.beginPath();
+      const firstPoint = points[0];
+      const x = toCanvasX(firstPoint.x);
+      const y = toCanvasY(firstPoint.y);
+      ctx.moveTo(x, y);
+    } else {
+      // Continue from last rendered point
+      ctx.beginPath();
+      const lastRenderedPoint = points[startIndex - 1];
+      const x = toCanvasX(lastRenderedPoint.x);
+      const y = toCanvasY(lastRenderedPoint.y);
+      ctx.moveTo(x, y);
+    }
+
+    let lastColor = startIndex > 0 && points[startIndex - 1]?.afr != null
+      ? this.getAfrColor(points[startIndex - 1].afr!)
+      : '#808080';
     let lastX = 0, lastY = 0;
 
-    for (let i = 0; i < points.length; i++) {
+    // Draw only new points (incremental)
+    for (let i = startIndex; i < points.length; i++) {
       const p = points[i];
       const x = toCanvasX(p.x);
       const y = toCanvasY(p.y);
 
-      if (i === 0) {
-        ctx.moveTo(x, y);
-        lastX = x;
-        lastY = y;
-      } else {
-        // Get color for this segment
-        const color = p.afr != null ? this.getAfrColor(p.afr) : '#808080';
-
-        // If color changed, stroke previous segment and start new
-        if (color !== lastColor && i > 1) {
-          ctx.strokeStyle = lastColor;
-          ctx.lineWidth = 1.5; // Increased line width for better visibility
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(lastX, lastY);
-        }
-
-        ctx.lineTo(x, y);
-        lastColor = color;
+      if (i === startIndex) {
         lastX = x;
         lastY = y;
       }
+
+      // Get color for this segment
+      const color = p.afr != null ? this.getAfrColor(p.afr) : '#808080';
+
+      // If color changed, stroke previous segment and start new
+      if (color !== lastColor && i > startIndex) {
+        ctx.strokeStyle = lastColor;
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+      }
+
+      ctx.lineTo(x, y);
+      lastColor = color;
+      lastX = x;
+      lastY = y;
     }
 
     // Stroke final segment
-    if (points.length > 0) {
+    if (points.length > startIndex) {
       ctx.strokeStyle = lastColor;
-      ctx.lineWidth = 3; // Increased line width for better visibility
+      ctx.lineWidth = 1.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.stroke();
@@ -2176,8 +2270,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Restore context state (undo rotation)
     ctx.restore();
 
-    // Draw current position marker (on top layer)
-    if (points.length > 0) {
+    // Draw current position marker (on top layer) - only if new points added
+    if (points.length > 0 && points.length > startIndex) {
       ctx.save();
 
       // หมุน canvas -93 องศาสำหรับ 'bic' circuit (เหมือนกับเส้นทาง)
@@ -2222,6 +2316,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Downsample for track (5k-20k points)
     const trackMax = Math.min(20000, this.historyPoints.length);
     this.historyDownsampled = this.downsampleTelemetry(this.historyPoints, trackMax);
+
+    // Reset render state for full redraw (history mode)
+    this.lastRenderedIndex = 0;
+    this.canvasBounds = null;
 
     // Trigger render
     this.scheduleRender();
@@ -2490,7 +2588,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.webSocketService.clearLoggerData();
     this.wsLoggerData = [];
     this.allLogger = [];
-    
+
     // Reset ring buffers
     this.telemetryBufferHead = 0;
     this.telemetryBufferTail = 0;
@@ -2499,7 +2597,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.chartDisplayTail = 0;
     this.chartDisplayCount = 0;
     this.currentBucket = null;
-    
+
     console.log('Cleared all WebSocket data and ring buffers');
   }
 
@@ -4614,10 +4712,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         if (shouldUpdatePath) {
           this.deckRender();
           this.lastPathUpdate = now;
-        } else {
-          // Update only marker (frequent, lightweight)
-          this.deckRenderMarkerOnly();
         }
+        // else {
+        //   // Update only marker (frequent, lightweight)
+        //   this.deckRenderMarkerOnly();
+        // }
       }
     });
   }
@@ -5001,41 +5100,35 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.initializeDeckMap();
     }, 0);
 
-    const ro = new ResizeObserver(() => {
+    this.ro = new ResizeObserver(() => {
       this.calculateSvgScale();
-      if (this.trackCanvas?.nativeElement) {
-        const canvas = this.trackCanvas.nativeElement;
-        const container = canvas.parentElement;
-        if (container) {
-          const rect = container.getBoundingClientRect();
-          canvas.width = rect.width;
-          canvas.height = rect.height;
-          this.scheduleRender();
+
+      const canvas = this.trackCanvas?.nativeElement;
+      const container = canvas?.parentElement;
+      if (!canvas || !container) return;
+
+      const rect = container.getBoundingClientRect();
+      const nextW = Math.max(1, Math.round(rect.width));
+      const nextH = Math.max(1, Math.round(rect.height));
+
+      // IMPORTANT: only resize if changed (resizing clears the canvas!)
+      if (canvas.width !== nextW || canvas.height !== nextH) {
+        canvas.width = nextW;
+        canvas.height = nextH;
+
+        if (this.offscreenCanvas) {
+          this.offscreenCanvas.width = nextW;
+          this.offscreenCanvas.height = nextH;
         }
-      }
-      // Resize deck.gl map
-      if (this.deckMap) {
-        this.deckMap.resize();
-      }
-      // Resize canvas map
-      if (this.useCanvasMode && this.raceMapCanvasRef?.nativeElement) {
-        const canvas = this.raceMapCanvasRef.nativeElement;
-        const container = canvas.parentElement;
-        if (container) {
-          const rect = container.getBoundingClientRect();
-          canvas.width = rect.width;
-          canvas.height = rect.height;
-          // Redraw canvas
-          if (this.raceMapCanvasCtx) {
-            this.raceMapCanvasCtx.fillStyle = '#0e1113';
-            this.raceMapCanvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-          }
-          this.canvasLastPoint = null; // Reset to redraw path
-        }
+        // render next frame
+        this.scheduleRender();
       }
     });
-    if (this.mapSvgEl?.nativeElement) {
-      ro.observe(this.mapSvgEl.nativeElement);
+
+    // Observe the canvas container (more stable than observing svg)
+    const canvas = this.trackCanvas?.nativeElement;
+    if (canvas?.parentElement) {
+      this.ro.observe(canvas.parentElement);
     }
   }
 
