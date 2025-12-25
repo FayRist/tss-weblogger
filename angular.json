@@ -32,7 +32,8 @@
               "@angular/material/prebuilt-themes/cyan-orange.css",
               "src/styles.scss",
               "node_modules/ngx-toastr/toastr.css",
-              "node_modules/leaflet/dist/leaflet.css"
+              "node_modules/leaflet/dist/leaflet.css",
+              "node_modules/maplibre-gl/dist/maplibre-gl.css"
             ],
             "scripts": [
             ]
@@ -87,8 +88,8 @@
               "@angular/material/prebuilt-themes/cyan-orange.css",
               "src/styles.scss",
               "node_modules/ngx-toastr/toastr.css",
-              "node_modules/leaflet/dist/leaflet.css"
-
+              "node_modules/leaflet/dist/leaflet.css",
+              "node_modules/maplibre-gl/dist/maplibre-gl.css"
             ],
             "scripts": []
           }

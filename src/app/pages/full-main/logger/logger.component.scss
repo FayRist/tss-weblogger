@@ -103,6 +103,18 @@ button[mat-raised-button] {
   background: #0e1113;   /* เผื่อโหลด tile ช้า */
 }
 
+/* deck.gl Map Container */
+.race-map-deck {
+  width: 100%;
+  height: 500px;
+  min-height: 400px;
+  background: #0e1113;
+  position: relative;
+  z-index: 1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 /* ให้ control ของ Leaflet กลืนธีม */
 :host ::ng-deep .leaflet-control-layers,
 :host ::ng-deep .leaflet-bar {

@@ -115,7 +115,11 @@
             </div>
           </div>
           <div class="card-body card-body--flush">
-            <div class="track-image-container" style="position: relative;">
+            <!-- deck.gl Map Container (WebGL) -->
+            <div #raceMapDeck class="race-map-deck"></div>
+            
+            <!-- Legacy SVG+Canvas (hidden when using deck.gl) -->
+            <div class="track-image-container" style="position: relative; display: none;">
               <!-- Canvas for track rendering (replaces expensive SVG lines) -->
               <canvas #trackCanvas
                 style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">

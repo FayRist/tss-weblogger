@@ -105,6 +105,17 @@ export const APP_CONFIG = {
       DURATION: 300,
       EASING: 'ease-in-out'
     }
+  },
+
+  // Map Configuration
+  MAP: {
+    // MapTiler API Key - Set via environment variable MAP_API_KEY or use default
+    // For production, configure via build-time replacement or environment service
+    API_KEY: 'uA8Sp5KU2WAOHVMJEYqJ', // Default key from .env
+    CENTER: {
+      LAT: 12.921342,
+      LNG: 101.009823
+    }
   }
 };
 

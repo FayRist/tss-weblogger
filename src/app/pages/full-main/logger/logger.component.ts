@@ -31,6 +31,11 @@ import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
+// deck.gl imports
+import { Map as MapLibreMap } from 'maplibre-gl';
+import { MapboxOverlay } from '@deck.gl/mapbox';
+import { LineLayer, ScatterplotLayer } from '@deck.gl/layers';
+import type { Layer } from '@deck.gl/core';
 
 // ===== Unified Telemetry Data Model =====
 type TelemetryPoint = {
@@ -414,6 +419,34 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private warnLayer = L.layerGroup();
   private liveMarker?: L.Marker;
   //--- Race ------
+
+  // ===== deck.gl + MapLibre GL JS Configuration =====
+  // Constants for performance tuning
+  private readonly WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window
+  private readonly INPUT_HZ = 60; // Expected input frequency
+  private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~108,000 points with 20% headroom
+  private readonly MAX_SEGS = this.MAX_POINTS - 1; // Segments = points - 1
+  private readonly LINE_WIDTH_PX = 2; // Adjustable line width
+  private readonly MARKER_RADIUS_PX = 4; // Adjustable marker radius
+
+  // deck.gl map and overlay
+  private deckMap: MapLibreMap | null = null;
+  private deckOverlay: MapboxOverlay | null = null;
+  @ViewChild('raceMapDeck') raceMapDeckRef!: ElementRef<HTMLDivElement>;
+
+  // Ring buffer for high-performance data storage (typed arrays)
+  private ringBufferHead = 0; // Current write position
+  private ringBufferTail = 0; // Oldest valid position (for 30min window)
+  private ringBufferCount = 0; // Number of valid points in buffer
+  private sourcePositions: Float32Array; // [lng, lat, lng, lat, ...] for segment sources
+  private targetPositions: Float32Array; // [lng, lat, lng, lat, ...] for segment targets
+  private segmentColors: Uint8Array; // [r, g, b, a, r, g, b, a, ...] RGBA per segment
+  private pointTimestamps: Float64Array; // Timestamps for each point (for trimming)
+  private latestMarkerLngLat: [number, number] | null = null; // Latest position for marker
+
+  // Render state
+  private deckDirty = false; // Flag to indicate data changed
+  private deckRafId: number | null = null; // requestAnimationFrame ID
 
   // ////////////////////////
   // ===== กราฟหลัก (Detail) =====
@@ -1271,6 +1304,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.setstartLatLongPoint(798.451662,-6054.358584);
     this.loadAndApplyConfig();
     // this.setCurrentPoints(this.buildMock(180));
+
+    // Initialize deck.gl ring buffer typed arrays
+    this.sourcePositions = new Float32Array(this.MAX_SEGS * 2);
+    this.targetPositions = new Float32Array(this.MAX_SEGS * 2);
+    this.segmentColors = new Uint8Array(this.MAX_SEGS * 4);
+    this.pointTimestamps = new Float64Array(this.MAX_POINTS);
   }
 
   downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
@@ -1811,6 +1850,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Schedule render (throttled) - for Canvas
     this.scheduleRender();
+
+    // Ingest point into deck.gl ring buffer (separate from render, O(1) operation)
+    if (this.isRealtimeMode) {
+      this.deckIngestPoint(point);
+    }
 
     // Update chart (throttled) - for ApexCharts
     const now = Date.now();
@@ -4387,6 +4431,329 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   //   };
   // }
 
+  // ===== deck.gl Methods =====
+  /**
+   * Ingest a new telemetry point into the ring buffer (O(1) operation, no rendering)
+   * This is called from addTelemetryPoint for realtime mode
+   */
+  private deckIngestPoint(point: TelemetryPoint): void {
+    if (!this.isRealtimeMode) return;
+
+    const lng = point.y; // Note: y is actually longitude
+    const lat = point.x; // Note: x is actually latitude
+    const ts = point.ts;
+    const afr = point.afr ?? 14.0; // Default AFR if missing
+
+    // Check if we need to wrap around (ring buffer full)
+    if (this.ringBufferCount >= this.MAX_POINTS) {
+      // Advance tail to make room (oldest point removed)
+      this.ringBufferTail = (this.ringBufferTail + 1) % this.MAX_POINTS;
+      this.ringBufferCount--;
+    }
+
+    const writeIdx = this.ringBufferHead;
+
+    // Store timestamp for this point
+    this.pointTimestamps[writeIdx] = ts;
+
+    // Store current point position
+    this.targetPositions[writeIdx * 2] = lng;
+    this.targetPositions[writeIdx * 2 + 1] = lat;
+
+    // If this is not the first point, create a segment from previous point to current
+    if (this.ringBufferCount > 0) {
+      const prevIdx = (writeIdx - 1 + this.MAX_POINTS) % this.MAX_POINTS;
+      const segIdx = prevIdx; // Segment index = index of source point
+
+      // Update segment: source = previous point position, target = current point position (already stored above)
+      this.sourcePositions[segIdx * 2] = this.targetPositions[prevIdx * 2];
+      this.sourcePositions[segIdx * 2 + 1] = this.targetPositions[prevIdx * 2 + 1];
+      // Note: target for this segment is already stored in targetPositions[writeIdx] above
+
+      // Set color based on AFR (RGBA)
+      const color = this.afrToColorUint8(afr);
+      this.segmentColors[segIdx * 4] = color[0];
+      this.segmentColors[segIdx * 4 + 1] = color[1];
+      this.segmentColors[segIdx * 4 + 2] = color[2];
+      this.segmentColors[segIdx * 4 + 3] = 255; // Alpha
+    }
+
+    // Update latest marker position
+    this.latestMarkerLngLat = [lng, lat];
+
+    // Advance head
+    this.ringBufferHead = (this.ringBufferHead + 1) % this.MAX_POINTS;
+    this.ringBufferCount++;
+
+    // Trim old points outside 30-minute window
+    this.trimOldPoints(ts);
+
+    // Mark as dirty for render
+    this.deckDirty = true;
+    this.scheduleDeckRender();
+  }
+
+  /**
+   * Trim points older than 30 minutes from the rolling window
+   */
+  private trimOldPoints(currentTs: number): void {
+    const cutoff = currentTs - this.WINDOW_MS;
+    while (this.ringBufferCount > 0 && this.ringBufferTail !== this.ringBufferHead) {
+      const tailTs = this.pointTimestamps[this.ringBufferTail];
+      if (tailTs >= cutoff) break; // Still within window
+
+      // Advance tail (remove oldest point)
+      this.ringBufferTail = (this.ringBufferTail + 1) % this.MAX_POINTS;
+      this.ringBufferCount--;
+    }
+  }
+
+  /**
+   * Convert AFR value to RGBA color (Uint8Array)
+   * Uses same color logic as existing afrToColor function
+   */
+  private afrToColorUint8(afr: number): [number, number, number] {
+    const AFR_LIMIT = 13.5;
+    const AFR_MIN = 10;
+    const AFR_MAX = 20;
+
+    if (afr < AFR_LIMIT) {
+      // Red for low AFR
+      return [255, 0, 0];
+    }
+
+    // Green scale for normal AFR
+    const t = Math.max(0, Math.min(1, (afr - AFR_MIN) / (AFR_MAX - AFR_MIN)));
+    const hue = 120 * (1 - t); // 120 (green) to 0 (red)
+    return this.hslToRgbUint8(hue, 1, 0.5);
+  }
+
+  /**
+   * Convert HSL to RGB (Uint8)
+   */
+  private hslToRgbUint8(h: number, s: number, l: number): [number, number, number] {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = h / 60;
+    const x = c * (1 - Math.abs((hp % 2) - 1));
+    let r = 0, g = 0, b = 0;
+
+    if (hp < 1) { r = c; g = x; b = 0; }
+    else if (hp < 2) { r = x; g = c; b = 0; }
+    else if (hp < 3) { r = 0; g = c; b = x; }
+    else if (hp < 4) { r = 0; g = x; b = c; }
+    else if (hp < 5) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+
+    const m = l - c / 2;
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+
+    return [r, g, b];
+  }
+
+  /**
+   * Schedule deck.gl render (throttled via requestAnimationFrame)
+   */
+  private scheduleDeckRender(): void {
+    if (this.deckRafId !== null) return; // Already scheduled
+
+    this.deckRafId = requestAnimationFrame(() => {
+      this.deckRafId = null;
+      if (this.deckDirty) {
+        this.deckRender();
+      }
+    });
+  }
+
+  // Reusable segment data array (to avoid GC pressure)
+  private segmentDataArray: Array<{ source: [number, number]; target: [number, number]; color: [number, number, number, number] }> = [];
+
+  /**
+   * Render deck.gl layers (only called when dirty)
+   * Uses typed arrays internally but converts to minimal objects for deck.gl API
+   */
+  private deckRender(): void {
+    if (!this.deckOverlay || this.ringBufferCount < 2) {
+      this.deckDirty = false;
+      return; // Need at least 2 points for a segment
+    }
+
+    const layers: Layer[] = [];
+
+    // Calculate valid segment range
+    const segCount = this.ringBufferCount - 1; // Segments = points - 1
+    if (segCount <= 0) {
+      this.deckDirty = false;
+      return;
+    }
+
+    // Resize reusable array if needed (grow only, never shrink to avoid GC)
+    if (this.segmentDataArray.length < segCount) {
+      this.segmentDataArray.length = segCount;
+      for (let i = 0; i < segCount; i++) {
+        this.segmentDataArray[i] = {
+          source: [0, 0],
+          target: [0, 0],
+          color: [0, 0, 0, 255]
+        };
+      }
+    }
+
+    // Populate segment data from typed arrays (efficient conversion)
+    if (this.ringBufferTail < this.ringBufferHead) {
+      // No wrap: single contiguous segment
+      for (let i = 0; i < segCount; i++) {
+        const segIdx = this.ringBufferTail + i;
+        const targetIdx = (segIdx + 1) % this.MAX_POINTS; // Target is next point
+        const data = this.segmentDataArray[i];
+        data.source[0] = this.sourcePositions[segIdx * 2];
+        data.source[1] = this.sourcePositions[segIdx * 2 + 1];
+        data.target[0] = this.targetPositions[targetIdx * 2];
+        data.target[1] = this.targetPositions[targetIdx * 2 + 1];
+        data.color[0] = this.segmentColors[segIdx * 4];
+        data.color[1] = this.segmentColors[segIdx * 4 + 1];
+        data.color[2] = this.segmentColors[segIdx * 4 + 2];
+        data.color[3] = this.segmentColors[segIdx * 4 + 3];
+      }
+
+      layers.push(new LineLayer({
+        id: 'track-line',
+        data: this.segmentDataArray.slice(0, segCount),
+        getSourcePosition: (d: any) => d.source,
+        getTargetPosition: (d: any) => d.target,
+        getColor: (d: any) => d.color,
+        getWidth: this.LINE_WIDTH_PX,
+        widthUnits: 'pixels',
+        pickable: false,
+        parameters: { depthTest: false }
+      }));
+    } else {
+      // Wrap-around: two segments (before and after wrap)
+      const partALength = this.MAX_POINTS - this.ringBufferTail;
+      const partBLength = this.ringBufferHead;
+
+      // Part A: from tail to end of array
+      if (partALength > 1) {
+        const segCountA = partALength - 1;
+        for (let i = 0; i < segCountA; i++) {
+          const segIdx = this.ringBufferTail + i;
+          const targetIdx = segIdx + 1; // Target is next point (no wrap in part A)
+          const data = this.segmentDataArray[i];
+          data.source[0] = this.sourcePositions[segIdx * 2];
+          data.source[1] = this.sourcePositions[segIdx * 2 + 1];
+          data.target[0] = this.targetPositions[targetIdx * 2];
+          data.target[1] = this.targetPositions[targetIdx * 2 + 1];
+          data.color[0] = this.segmentColors[segIdx * 4];
+          data.color[1] = this.segmentColors[segIdx * 4 + 1];
+          data.color[2] = this.segmentColors[segIdx * 4 + 2];
+          data.color[3] = this.segmentColors[segIdx * 4 + 3];
+        }
+
+        layers.push(new LineLayer({
+          id: 'track-line-a',
+          data: this.segmentDataArray.slice(0, segCountA),
+          getSourcePosition: (d: any) => d.source,
+          getTargetPosition: (d: any) => d.target,
+          getColor: (d: any) => d.color,
+          getWidth: this.LINE_WIDTH_PX,
+          widthUnits: 'pixels',
+          pickable: false,
+          parameters: { depthTest: false }
+        }));
+      }
+
+      // Part B: from start of array to head
+      if (partBLength > 1) {
+        const segCountB = partBLength - 1;
+        for (let i = 0; i < segCountB; i++) {
+          const segIdx = i;
+          const targetIdx = i + 1; // Target is next point (no wrap in part B)
+          const data = this.segmentDataArray[i];
+          data.source[0] = this.sourcePositions[segIdx * 2];
+          data.source[1] = this.sourcePositions[segIdx * 2 + 1];
+          data.target[0] = this.targetPositions[targetIdx * 2];
+          data.target[1] = this.targetPositions[targetIdx * 2 + 1];
+          data.color[0] = this.segmentColors[segIdx * 4];
+          data.color[1] = this.segmentColors[segIdx * 4 + 1];
+          data.color[2] = this.segmentColors[segIdx * 4 + 2];
+          data.color[3] = this.segmentColors[segIdx * 4 + 3];
+        }
+
+        layers.push(new LineLayer({
+          id: 'track-line-b',
+          data: this.segmentDataArray.slice(0, segCountB),
+          getSourcePosition: (d: any) => d.source,
+          getTargetPosition: (d: any) => d.target,
+          getColor: (d: any) => d.color,
+          getWidth: this.LINE_WIDTH_PX,
+          widthUnits: 'pixels',
+          pickable: false,
+          parameters: { depthTest: false }
+        }));
+      }
+    }
+
+    // Add marker for latest position
+    if (this.latestMarkerLngLat) {
+      layers.push(new ScatterplotLayer({
+        id: 'track-marker',
+        data: [{ position: this.latestMarkerLngLat }],
+        getPosition: (d: any) => d.position,
+        getRadius: this.MARKER_RADIUS_PX,
+        radiusUnits: 'pixels',
+        getFillColor: [0, 255, 163, 255], // #00FFA3
+        pickable: false,
+        parameters: { depthTest: false }
+      }));
+    }
+
+    // Update overlay layers
+    this.deckOverlay.setProps({ layers });
+    this.deckDirty = false;
+  }
+
+  /**
+   * Initialize MapLibre map with deck.gl overlay
+   */
+  private initializeDeckMap(): void {
+    if (!this.raceMapDeckRef?.nativeElement) {
+      console.warn('[deck.gl] Map container not found, retrying...');
+      setTimeout(() => this.initializeDeckMap(), 100);
+      return;
+    }
+
+    const mapApiKey = APP_CONFIG.MAP.API_KEY;
+    const center = APP_CONFIG.MAP.CENTER;
+
+    try {
+      // Initialize MapLibre map
+      this.deckMap = new MapLibreMap({
+        container: this.raceMapDeckRef.nativeElement,
+        style: `https://api.maptiler.com/maps/streets/style.json?key=${mapApiKey}`,
+        center: [center.LNG, center.LAT], // [lng, lat]
+        zoom: 16,
+        pitch: 0,
+        bearing: 0
+      });
+
+      // Initialize deck.gl overlay with interleaved mode (WebGL2)
+      this.deckOverlay = new MapboxOverlay({
+        interleaved: true,
+        layers: []
+      });
+
+      this.deckMap.addControl(this.deckOverlay);
+
+      // Start render loop
+      this.scheduleDeckRender();
+
+      console.log('[deck.gl] Map initialized successfully');
+    } catch (error) {
+      console.error('[deck.gl] Failed to initialize map:', error);
+    }
+  }
+
   private ro?: ResizeObserver;
   ngAfterViewInit(): void {
     setTimeout(() => {
@@ -4397,6 +4764,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       } else {
         this.initializeSvgTransformForCircuit();
       }
+      // Initialize deck.gl map
+      this.initializeDeckMap();
     }, 0);
 
     const ro = new ResizeObserver(() => {
@@ -4410,6 +4779,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           canvas.height = rect.height;
           this.scheduleRender();
         }
+      }
+      // Resize deck.gl map
+      if (this.deckMap) {
+        this.deckMap.resize();
       }
     });
     if (this.mapSvgEl?.nativeElement) {
@@ -4431,6 +4804,20 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     this.ro?.disconnect();
     this.map?.remove();
+
+    // Cleanup deck.gl
+    if (this.deckRafId !== null) {
+      cancelAnimationFrame(this.deckRafId);
+      this.deckRafId = null;
+    }
+    if (this.deckOverlay) {
+      this.deckOverlay.finalize();
+      this.deckOverlay = null;
+    }
+    if (this.deckMap) {
+      this.deckMap.remove();
+      this.deckMap = null;
+    }
 
     // Cancel animation frame
     if (this.animationFrameId) {
