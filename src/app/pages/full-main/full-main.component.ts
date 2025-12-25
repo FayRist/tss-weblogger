@@ -151,7 +151,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
             if(isDashboardPage){
               this.router.navigate(['/pages', 'dashboard'], {
-                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue }   // ➜ /pages/dashboard?raceId=10&class=c
+                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName}   // ➜ /pages/dashboard?raceId=10&class=c
               });
             }
             // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));

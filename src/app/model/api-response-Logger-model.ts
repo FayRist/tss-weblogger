@@ -16,6 +16,7 @@ export interface ApiLoggerRow {
   IDList: number;
   SegmentValue: string;
   ClassValue: string;
+  CircuitName: string;
 }
 
 export interface ApiGetLoggerDateResponse {
@@ -43,4 +44,5 @@ export interface LoggerByDateItem {
   idList: number;
   segmentValue: string;
   classValue: string;
+  circuitName: string;
 }

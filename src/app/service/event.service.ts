@@ -527,6 +527,7 @@ export class EventService {
             idList: r.IDList,
             segmentValue: r.SegmentValue,
             classValue: r.ClassValue,
+            circuitName: r.CircuitName
           }));
 
           return {
