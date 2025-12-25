@@ -463,6 +463,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // Render state
   private deckDirty = false; // Flag to indicate data changed
   private deckRafId: number | null = null; // requestAnimationFrame ID
+  private cachedPathLayers: any[] = [];
 
   // ////////////////////////
   // ===== กราฟหลัก (Detail) =====
@@ -4712,11 +4713,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         if (shouldUpdatePath) {
           this.deckRender();
           this.lastPathUpdate = now;
+        } else {
+          // Update only marker (frequent, lightweight)
+          this.deckRenderMarkerOnly();
         }
-        // else {
-        //   // Update only marker (frequent, lightweight)
-        //   this.deckRenderMarkerOnly();
-        // }
       }
     });
   }
@@ -4727,22 +4727,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private deckRenderMarkerOnly(): void {
     if (!this.deckOverlay || !this.latestMarkerLngLat) return;
 
-    const layers: Layer[] = [
-      new ScatterplotLayer({
-        id: 'track-marker',
-        data: [{ position: this.latestMarkerLngLat }],
-        getPosition: (d: any) => d.position,
-        getRadius: this.MARKER_RADIUS_PX,
-        radiusUnits: 'pixels',
-        getFillColor: [255, 59, 48, 255], // #FF3B30
-        stroked: true,
-        getLineColor: [255, 255, 255, 255], // White
-        lineWidthMinPixels: 2,
-        pickable: false,
-        parameters: { depthTest: false }
-      })
-    ];
+    const markerLayer = new ScatterplotLayer({
+      id: 'track-marker',
+      data: [{ position: this.latestMarkerLngLat }],
+      getPosition: (d: any) => d.position,
+      getRadius: this.MARKER_RADIUS_PX,
+      radiusUnits: 'pixels',
+      getFillColor: [255, 59, 48, 255],
+      stroked: true,
+      getLineColor: [255, 255, 255, 255],
+      lineWidthMinPixels: 2,
+      pickable: false,
+      parameters: { depthTest: false }
+    });
 
+    // IMPORTANT: keep path layers, only swap marker
+    const layers = [...this.cachedPathLayers, markerLayer];
     this.deckOverlay.setProps({ layers });
   }
 
@@ -4899,6 +4899,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // Update overlay layers (single setProps call, batched for performance)
+    // Cache path layers so marker-only updates won't wipe the track line
+    this.cachedPathLayers = layers.filter((l: any) => l?.id !== 'track-marker');
+
     this.deckOverlay.setProps({ layers });
     this.deckDirty = false;
   }
