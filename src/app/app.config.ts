@@ -112,24 +112,31 @@ export const APP_CONFIG = {
     // MapTiler API Key - Set via environment variable MAP_API_KEY or use default
     // For production, configure via build-time replacement or environment service
     API_KEY: 'uA8Sp5KU2WAOHVMJEYqJ', // Default key from .env
-    
+
     // Circuit centers - can be overridden via environment variables
     // Format: MAP_CENTER_{CIRCUIT}_LAT and MAP_CENTER_{CIRCUIT}_LON
     CIRCUITS: {
       // Bira Circuit (bic)
       bic: {
         LAT: 12.921067,
-        LNG: 101.008893
+        LNG: 101.008893,
+        MAP_ZOOM: 15.3,
+        ROTATION: 0
       },
       // Chang International Circuit (bric)
       bric: {
-        LAT: 14.962671,
-        LNG: 103.084393
+        LAT: 14.963283,
+        LNG: 103.084855,
+        MAP_ZOOM: 14.8,
+        ROTATION: -78
       },
+
       // Bangsaen Street Circuit (bsc)
       bsc: {
-        LAT: 13.305132,
-        LNG: 100.901529
+        LAT: 13.304227,
+        LNG: 100.903282,
+        MAP_ZOOM: 14.8,
+        ROTATION: -60
       }
     }
   }
@@ -140,15 +147,17 @@ export const APP_CONFIG = {
  * @param circuitName Circuit name (bic, bric, bsc)
  * @returns Center coordinates or null if circuit not found
  */
-export function getMapCenterForCircuit(circuitName: string | null | undefined): { lat: number; lng: number } | null {
+export function getMapCenterForCircuit(circuitName: string | null | undefined): { lat: number; lng: number, zoom: number, rotation: number} | null {
   if (!circuitName) return null;
-  
+
   const circuit = APP_CONFIG.MAP.CIRCUITS[circuitName.toLowerCase() as keyof typeof APP_CONFIG.MAP.CIRCUITS];
   if (!circuit) return null;
-  
+
   return {
     lat: circuit.LAT,
-    lng: circuit.LNG
+    lng: circuit.LNG,
+    zoom: circuit.MAP_ZOOM,
+    rotation: circuit.ROTATION
   };
 }
 
