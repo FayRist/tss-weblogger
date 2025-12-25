@@ -429,6 +429,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly LINE_WIDTH_PX = 2; // Adjustable line width
   private readonly MARKER_RADIUS_PX = 4; // Adjustable marker radius
 
+  // ===== Chart Performance Constants =====
+  // Chart resampling: 5Hz display (200ms buckets) for smooth rendering
+  private readonly CHART_BUCKET_MS = 200; // 200ms = 5Hz display rate
+  private readonly CHART_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for chart
+  private readonly CHART_UPDATE_MS = 150; // Chart update throttle (100-200ms range)
+  // Expected chart points: 30min * 60s * 5Hz = 9,000 points
+  private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
+
+  // ===== Map Performance Constants =====
+  private readonly MAP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for map
+  private readonly MAP_PATH_FPS = 25; // Path layer update rate (20-30fps range)
+  private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
+
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;
   private deckOverlay: MapboxOverlay | null = null;
@@ -1279,11 +1292,26 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly MAX_BUFFER_TIME_MS = this.REALTIME_RETENTION_MS;
 
   // Chart update throttling to prevent excessive renders
-  private chartUpdateThrottle = 200; // ms
+  private chartUpdateThrottle = this.CHART_UPDATE_MS; // Use constant
   private lastChartUpdate = 0;
+  private lastPathUpdate = 0; // For map path layer throttling
 
-  // ===== Realtime Buffering =====
+  // ===== Realtime Buffering (Ring Buffer) =====
+  // Ring buffer for telemetry points (O(1) operations, no shift())
   private telemetryBuffer: TelemetryPoint[] = [];
+  private telemetryBufferHead = 0; // Current write position
+  private telemetryBufferTail = 0; // Oldest valid position
+  private telemetryBufferCount = 0; // Number of valid points
+  private readonly TELEMETRY_BUFFER_SIZE = Math.ceil(this.INPUT_HZ * (this.REALTIME_RETENTION_MS / 1000) * 1.2); // ~216,000 with 20% headroom
+
+  // ===== Chart Display Buffer (5Hz Resampled) =====
+  // Separate buffer for chart display (resampled to 5Hz)
+  private chartDisplayBuffer: Array<{ ts: number; afr: number | null; avgAfr?: number; realtimeAfr?: number; warningAfr?: number; speed?: number }> = [];
+  private chartDisplayHead = 0; // Current write position
+  private chartDisplayTail = 0; // Oldest valid position
+  private chartDisplayCount = 0; // Number of valid points
+  private lastBucketTime = 0; // Last bucket timestamp for resampling
+  private currentBucket: { ts: number; points: TelemetryPoint[] } | null = null; // Current 200ms bucket (5Hz)
 
 
 
@@ -1313,6 +1341,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.targetPositions = new Float32Array(this.MAX_SEGS * 2);
     this.segmentColors = new Uint8Array(this.MAX_SEGS * 4);
     this.pointTimestamps = new Float64Array(this.MAX_POINTS);
+
+    // Initialize telemetry ring buffer
+    this.telemetryBuffer = new Array(this.TELEMETRY_BUFFER_SIZE);
+    this.chartDisplayBuffer = new Array(this.CHART_MAX_DISPLAY_POINTS);
   }
 
   downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
@@ -1655,7 +1687,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         console.log('[Realtime] Connected with backlog:', url);
         // Set status to Online when connected
         if (this.loggerStatus !== 'Online') {
-          this.loggerStatus = 'Online';
+          this.loggerStatus = 'Offline';
           this.cdr.detectChanges();
           console.log('[Logger Status] Updated to Online (WebSocket connected)');
         }
@@ -1705,7 +1737,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Update status to Online when receiving data
       if (this.loggerStatus !== 'Online') {
-        this.loggerStatus = 'Online';
+        this.loggerStatus = 'Offline';
         this.cdr.detectChanges();
         console.log('[Logger Status] Updated to Online (data received)');
       }
@@ -1804,7 +1836,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private addTelemetryPoint(point: TelemetryPoint): void {
     // Update status to Online when receiving data (only in realtime mode)
     if (this.isRealtimeMode && this.loggerStatus !== 'Online') {
-      this.loggerStatus = 'Online';
+      this.loggerStatus = 'Offline';
       this.cdr.detectChanges();
       console.log('[Logger Status] Updated to Online (telemetry point received)');
     }
@@ -1814,23 +1846,28 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.resetStatusTimeout();
     }
 
-    // Add to ring buffer
-    this.telemetryBuffer.push(point);
-
-    // Trim buffer by size (safety limit based on expected Hz * retention)
-    if (this.telemetryBuffer.length > this.MAX_BUFFER_SIZE) {
-      this.telemetryBuffer.shift();
+    // Add to ring buffer (O(1) operation, no shift())
+    const writeIdx = this.telemetryBufferHead;
+    this.telemetryBuffer[writeIdx] = point;
+    this.telemetryBufferHead = (this.telemetryBufferHead + 1) % this.TELEMETRY_BUFFER_SIZE;
+    if (this.telemetryBufferCount < this.TELEMETRY_BUFFER_SIZE) {
+      this.telemetryBufferCount++;
+    } else {
+      // Buffer full, advance tail (O(1))
+      this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
     }
 
-    // Trim buffer by time (keep data within retention window)
-    // This ensures we don't keep data older than REALTIME_RETENTION_MS
+    // Trim buffer by time (O(1) per point, worst case O(N) but amortized O(1))
     const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
-    while (this.telemetryBuffer.length > 0 && this.telemetryBuffer[0].ts < cutoff) {
-      this.telemetryBuffer.shift();
+    while (this.telemetryBufferCount > 0 && this.telemetryBuffer[this.telemetryBufferTail]?.ts < cutoff) {
+      this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
+      this.telemetryBufferCount--;
     }
 
-    // Schedule render (throttled) - for Canvas
-    this.scheduleRender();
+    // Schedule render (throttled) - for Canvas (only if using canvas mode)
+    if (this.isRealtimeMode && this.useCanvasMode) {
+      this.scheduleRender();
+    }
 
     // Ingest point into deck.gl ring buffer (separate from render, O(1) operation)
     // Only if using deck.gl map mode (not canvas mode)
@@ -1841,21 +1878,75 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.drawPointOnCanvas(point);
     }
 
+    // Process point for chart resampling (5Hz pipeline)
+    this.processChartResampling(point);
+
     // Update chart (throttled) - for ApexCharts
     const now = Date.now();
     const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
 
-    // Force update chart immediately if it's the first point or every 10 points
-    const forceUpdate = this.telemetryBuffer.length === 1 || this.telemetryBuffer.length % 10 === 0;
-
-    if (shouldUpdate || forceUpdate) {
+    if (shouldUpdate) {
       this.updateChartIncremental();
       this.lastChartUpdate = now;
     }
+  }
 
-    // Debug log every 50 points
-    if (this.telemetryBuffer.length % 50 === 0) {
-      console.log(`[Telemetry] Buffer size: ${this.telemetryBuffer.length}, Latest AFR: ${point.afr ?? 'N/A'}`);
+  /**
+   * Process telemetry point for chart resampling (5Hz pipeline)
+   * Groups points into 200ms buckets and resamples to 5Hz display rate
+   */
+  private processChartResampling(point: TelemetryPoint): void {
+    const bucketTime = Math.floor(point.ts / this.CHART_BUCKET_MS) * this.CHART_BUCKET_MS;
+
+    // Initialize or update current bucket
+    if (!this.currentBucket || this.currentBucket.ts !== bucketTime) {
+      // Flush previous bucket if exists
+      if (this.currentBucket && this.currentBucket.points.length > 0) {
+        this.flushChartBucket(this.currentBucket);
+      }
+
+      // Start new bucket
+      this.currentBucket = { ts: bucketTime, points: [point] };
+    } else {
+      // Add to current bucket
+      this.currentBucket.points.push(point);
+    }
+  }
+
+  /**
+   * Flush a completed bucket to chart display buffer
+   * Uses "last" value strategy (keep last point in bucket)
+   */
+  private flushChartBucket(bucket: { ts: number; points: TelemetryPoint[] }): void {
+    if (bucket.points.length === 0) return;
+
+    // Use last point in bucket (alternative: average, max, min)
+    const lastPoint = bucket.points[bucket.points.length - 1];
+
+    // Write to chart display ring buffer
+    const writeIdx = this.chartDisplayHead;
+    this.chartDisplayBuffer[writeIdx] = {
+      ts: bucket.ts,
+      afr: lastPoint.afr ?? null,
+      avgAfr: lastPoint.afr ?? undefined,
+      realtimeAfr: lastPoint.afr ?? undefined,
+      warningAfr: lastPoint.afr ?? undefined,
+      speed: lastPoint.velocity ?? undefined
+    };
+
+    this.chartDisplayHead = (this.chartDisplayHead + 1) % this.CHART_MAX_DISPLAY_POINTS;
+    if (this.chartDisplayCount < this.CHART_MAX_DISPLAY_POINTS) {
+      this.chartDisplayCount++;
+    } else {
+      // Buffer full, advance tail (O(1))
+      this.chartDisplayTail = (this.chartDisplayTail + 1) % this.CHART_MAX_DISPLAY_POINTS;
+    }
+
+    // Trim old points outside 30-minute window (O(1) amortized)
+    const cutoff = Date.now() - this.CHART_WINDOW_MS;
+    while (this.chartDisplayCount > 0 && this.chartDisplayBuffer[this.chartDisplayTail]?.ts < cutoff) {
+      this.chartDisplayTail = (this.chartDisplayTail + 1) % this.CHART_MAX_DISPLAY_POINTS;
+      this.chartDisplayCount--;
     }
   }
 
@@ -1921,7 +2012,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.scheduleRender();
   }
 
+  /**
+   * Schedule canvas render (legacy, only for canvas mode)
+   * Disabled when using deck.gl map mode to avoid unnecessary rendering
+   */
   private scheduleRender(): void {
+    // Skip if using deck.gl map mode (not canvas mode)
+    if (this.isRealtimeMode && !this.useCanvasMode) {
+      return;
+    }
     if (this.pendingRender || !this.canvasCtx) return;
 
     this.pendingRender = true;
@@ -1958,7 +2057,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // Get points to render (use buffer for realtime, history for history mode)
-    const points = this.isHistoryMode ? this.historyDownsampled : this.telemetryBuffer;
+    // Note: For realtime mode, telemetryBuffer is now a ring buffer - need to extract valid points
+    const points = this.isHistoryMode ? this.historyDownsampled : this.getTelemetryBufferPoints();
 
     if (points.length < 2) {
       // Draw placeholder text if no data
@@ -2188,140 +2288,129 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    *
    * Only use append-incremental mode when points.length <= chartMax (no downsampling).
    */
+  /**
+   * Update chart using resampled display buffer (5Hz)
+   * Uses imperative update via ChartComponent API to avoid full rebuild
+   */
   private updateChartIncremental(): void {
-    const points = this.isHistoryMode ? this.historyPoints : this.telemetryBuffer;
-    if (points.length === 0) return;
+    // Use resampled display buffer (5Hz) instead of raw telemetry buffer
+    const displayPoints = this.getChartDisplayPoints();
+    if (displayPoints.length === 0) return;
 
-    // Maximum points to render in chart (performance limit)
-    const chartMax = 5000;
+    // Use imperative update via ChartComponent if available (more efficient)
+    // Note: ApexCharts API uses updateSeries method (not appendSeries)
+    if (this.chart?.chart) {
+      try {
+        // Build new data points from display buffer
+        const newData: Array<{x: number; y: number | null}> = displayPoints.map(p => ({
+          x: p.ts,
+          y: p.afr ?? null
+        }));
 
-    // Determine if downsampling is needed
-    const needsDownsampling = points.length > chartMax;
-    const chartPoints = needsDownsampling
-      ? this.downsampleTelemetry(points, chartMax)
-      : points;
+        // Use updateSeries for efficient update (ApexCharts API)
+        // This is more efficient than full binding rebuild
+        (this.chart.chart as any).updateSeries([{
+          name: 'AFR',
+          data: newData
+        }], false); // false = don't animate
 
-    // Initialize chart series if not exists
-    if (!this.detailOpts?.series || this.detailOpts.series.length === 0) {
-      console.log('[Chart] Initializing chart series with', points.length, 'points',
-        needsDownsampling ? `(downsampled to ${chartPoints.length})` : '');
-      const data: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
-        x: p.ts,
-        y: p.afr ?? null
-      }));
+        // Update brush chart (last 1000 points)
+        const brushData = newData.slice(-1000);
+        // Note: Brush chart update handled separately if needed
 
-      this.detailOpts = {
-        ...this.detailOpts,
-        series: [{ name: 'AFR', type: 'line', data }]
-      };
-
-      // Also update brush chart
-      this.brushOpts = {
-        ...this.brushOpts,
-        series: [{ name: 'AFR', type: 'line', data: data.slice(-1000) }] // Last 1000 points for brush
-      };
-
-      // Trigger change detection
-      this.ngZone.run(() => {
-        this.cdr.markForCheck();
-      });
-      return;
-    }
-
-    const series = this.detailOpts.series[0];
-    if (!series || !Array.isArray(series.data)) {
-      // Fallback: recreate series if data structure is invalid
-      console.log('[Chart] Recreating chart series due to invalid data structure');
-      const data: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
-        x: p.ts,
-        y: p.afr ?? null
-      }));
-
-      this.detailOpts = {
-        ...this.detailOpts,
-        series: [{ name: 'AFR', type: 'line', data }]
-      };
-
-      this.brushOpts = {
-        ...this.brushOpts,
-        series: [{ name: 'AFR', type: 'line', data: data.slice(-1000) }]
-      };
-
-      // Trigger change detection
-      this.ngZone.run(() => {
-        this.cdr.markForCheck();
-      });
-      return;
-    }
-
-    // CRITICAL FIX: When downsampling, we MUST rebuild the entire series.data
-    // because the downsampled set changes over time. The indices don't match
-    // between the old downsampled set and the new one.
-    if (needsDownsampling) {
-      // Rebuild entire series data from downsampled points
-      const updatedData: Array<{x: number; y: number | null}> = chartPoints.map(p => ({
-        x: p.ts,
-        y: p.afr ?? null
-      }));
-
-      this.detailOpts = {
-        ...this.detailOpts,
-        series: [{ ...series, data: updatedData }]
-      };
-
-      // Update brush chart (keep last 1000 points from full dataset, not downsampled)
-      const brushSourcePoints = points.slice(-1000);
-      const brushData: Array<{x: number; y: number | null}> = brushSourcePoints.map(p => ({
-        x: p.ts,
-        y: p.afr ?? null
-      }));
-      this.brushOpts = {
-        ...this.brushOpts,
-        series: [{ name: 'AFR', type: 'line', data: brushData }]
-      };
-
-      console.log(`[Chart] Rebuilt chart (downsampling): ${updatedData.length} points from ${points.length} source points`);
-
-      // Trigger change detection
-      this.ngZone.run(() => {
-        this.cdr.markForCheck();
-      });
-    } else {
-      // No downsampling: safe to use incremental append
-      const existingCount = series.data.length;
-      const newPoints: Array<{x: number; y: number | null}> = chartPoints.slice(existingCount).map(p => ({
-        x: p.ts,
-        y: p.afr ?? null
-      }));
-
-      if (newPoints.length > 0) {
-        const updatedData = [...series.data, ...newPoints] as Array<{x: number; y: number | null}>;
-        this.detailOpts = {
-          ...this.detailOpts,
-          series: [{ ...series, data: updatedData }]
-        };
-
-        // Update brush chart (keep last 1000 points)
-        const brushData = updatedData.slice(-1000);
-        this.brushOpts = {
-          ...this.brushOpts,
-          series: [{ name: 'AFR', type: 'line', data: brushData }]
-        };
-
-        console.log(`[Chart] Incremental update: ${updatedData.length} total points, added ${newPoints.length} new points`);
-
-        // Trigger change detection
-        this.ngZone.run(() => {
-          this.cdr.markForCheck();
-        });
-      } else {
-        // Even if no new points, update chart to ensure it's visible
-        this.detailOpts = { ...this.detailOpts, series: [...this.detailOpts.series] };
-        this.ngZone.run(() => {
-          this.cdr.markForCheck();
-        });
+        return; // Success, exit early
+      } catch (err) {
+        // Fallback to binding update if imperative update fails
+        console.warn('[Chart] Imperative update failed, falling back to binding:', err);
       }
     }
+
+    // Fallback: Use binding update (less efficient but reliable)
+    const data: Array<{x: number; y: number | null}> = displayPoints.map(p => ({
+      x: p.ts,
+      y: p.afr ?? null
+    }));
+
+    this.detailOpts = {
+      ...this.detailOpts,
+      series: [{ name: 'AFR', type: 'line', data }]
+    };
+
+    // Update brush chart (last 1000 points)
+    const brushData = data.slice(-1000);
+    this.brushOpts = {
+      ...this.brushOpts,
+      series: [{ name: 'AFR', type: 'line', data: brushData }]
+    };
+
+    // Trigger change detection
+    this.ngZone.run(() => {
+      this.cdr.markForCheck();
+    });
+  }
+
+  /**
+   * Get telemetry buffer points from ring buffer (chronological order)
+   * Returns points in chronological order for rendering/processing
+   */
+  private getTelemetryBufferPoints(): TelemetryPoint[] {
+    if (this.telemetryBufferCount === 0) return [];
+
+    const points: TelemetryPoint[] = [];
+
+    if (this.telemetryBufferTail < this.telemetryBufferHead) {
+      // No wrap: single contiguous segment
+      for (let i = this.telemetryBufferTail; i < this.telemetryBufferHead; i++) {
+        const p = this.telemetryBuffer[i];
+        if (p) points.push(p);
+      }
+    } else {
+      // Wrap-around: two segments
+      // Part A: from tail to end of array
+      for (let i = this.telemetryBufferTail; i < this.TELEMETRY_BUFFER_SIZE; i++) {
+        const p = this.telemetryBuffer[i];
+        if (p) points.push(p);
+      }
+      // Part B: from start of array to head
+      for (let i = 0; i < this.telemetryBufferHead; i++) {
+        const p = this.telemetryBuffer[i];
+        if (p) points.push(p);
+      }
+    }
+
+    return points;
+  }
+
+  /**
+   * Get chart display points from ring buffer (5Hz resampled)
+   * Returns points in chronological order
+   */
+  private getChartDisplayPoints(): Array<{ ts: number; afr: number | null }> {
+    if (this.chartDisplayCount === 0) return [];
+
+    const points: Array<{ ts: number; afr: number | null }> = [];
+
+    if (this.chartDisplayTail < this.chartDisplayHead) {
+      // No wrap: single contiguous segment
+      for (let i = this.chartDisplayTail; i < this.chartDisplayHead; i++) {
+        const p = this.chartDisplayBuffer[i];
+        if (p) points.push({ ts: p.ts, afr: p.afr });
+      }
+    } else {
+      // Wrap-around: two segments
+      // Part A: from tail to end of array
+      for (let i = this.chartDisplayTail; i < this.CHART_MAX_DISPLAY_POINTS; i++) {
+        const p = this.chartDisplayBuffer[i];
+        if (p) points.push({ ts: p.ts, afr: p.afr });
+      }
+      // Part B: from start of array to head
+      for (let i = 0; i < this.chartDisplayHead; i++) {
+        const p = this.chartDisplayBuffer[i];
+        if (p) points.push({ ts: p.ts, afr: p.afr });
+      }
+    }
+
+    return points;
   }
 
   // ===== History Text Parser =====
@@ -2401,7 +2490,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.webSocketService.clearLoggerData();
     this.wsLoggerData = [];
     this.allLogger = [];
-    console.log('Cleared all WebSocket data');
+    
+    // Reset ring buffers
+    this.telemetryBufferHead = 0;
+    this.telemetryBufferTail = 0;
+    this.telemetryBufferCount = 0;
+    this.chartDisplayHead = 0;
+    this.chartDisplayTail = 0;
+    this.chartDisplayCount = 0;
+    this.currentBucket = null;
+    
+    console.log('Cleared all WebSocket data and ring buffers');
   }
 
 
@@ -4501,6 +4600,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   /**
    * Schedule deck.gl render (throttled via requestAnimationFrame)
+   * Separates marker update (frequent) from path update (throttled)
    */
   private scheduleDeckRender(): void {
     if (this.deckRafId !== null) return; // Already scheduled
@@ -4508,9 +4608,43 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.deckRafId = requestAnimationFrame(() => {
       this.deckRafId = null;
       if (this.deckDirty) {
-        this.deckRender();
+        const now = Date.now();
+        const shouldUpdatePath = now - this.lastPathUpdate >= this.MAP_PATH_UPDATE_MS;
+
+        if (shouldUpdatePath) {
+          this.deckRender();
+          this.lastPathUpdate = now;
+        } else {
+          // Update only marker (frequent, lightweight)
+          this.deckRenderMarkerOnly();
+        }
       }
     });
+  }
+
+  /**
+   * Render only marker (lightweight, can be called frequently)
+   */
+  private deckRenderMarkerOnly(): void {
+    if (!this.deckOverlay || !this.latestMarkerLngLat) return;
+
+    const layers: Layer[] = [
+      new ScatterplotLayer({
+        id: 'track-marker',
+        data: [{ position: this.latestMarkerLngLat }],
+        getPosition: (d: any) => d.position,
+        getRadius: this.MARKER_RADIUS_PX,
+        radiusUnits: 'pixels',
+        getFillColor: [255, 59, 48, 255], // #FF3B30
+        stroked: true,
+        getLineColor: [255, 255, 255, 255], // White
+        lineWidthMinPixels: 2,
+        pickable: false,
+        parameters: { depthTest: false }
+      })
+    ];
+
+    this.deckOverlay.setProps({ layers });
   }
 
   // Reusable segment data array (to avoid GC pressure)
@@ -4535,10 +4669,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    // Resize reusable array if needed (grow only, never shrink to avoid GC)
+    // Pre-allocate segment data array (grow only, never shrink to avoid GC)
+    // Only initialize new elements (reuse existing ones to minimize allocations)
     if (this.segmentDataArray.length < segCount) {
+      const oldLength = this.segmentDataArray.length;
       this.segmentDataArray.length = segCount;
-      for (let i = 0; i < segCount; i++) {
+      // Only initialize new elements (reuse existing ones)
+      for (let i = oldLength; i < segCount; i++) {
         this.segmentDataArray[i] = {
           source: [0, 0],
           target: [0, 0],
@@ -4548,12 +4685,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // Populate segment data from typed arrays (efficient conversion)
+    // Optimized: Direct array access, minimal function calls
     if (this.ringBufferTail < this.ringBufferHead) {
       // No wrap: single contiguous segment
       for (let i = 0; i < segCount; i++) {
         const segIdx = this.ringBufferTail + i;
-        const targetIdx = (segIdx + 1) % this.MAX_POINTS; // Target is next point
+        const targetIdx = segIdx + 1; // Next point (no wrap in contiguous case)
         const data = this.segmentDataArray[i];
+        // Direct typed array access (faster than function calls)
         data.source[0] = this.sourcePositions[segIdx * 2];
         data.source[1] = this.sourcePositions[segIdx * 2 + 1];
         data.target[0] = this.targetPositions[targetIdx * 2];
@@ -4613,10 +4752,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // Part B: from start of array to head
       if (partBLength > 1) {
         const segCountB = partBLength - 1;
+        const segCountA = partALength > 1 ? partALength - 1 : 0;
+        const offsetB = segCountA; // Offset for part B in segmentDataArray
         for (let i = 0; i < segCountB; i++) {
           const segIdx = i;
           const targetIdx = i + 1; // Target is next point (no wrap in part B)
-          const data = this.segmentDataArray[i];
+          const data = this.segmentDataArray[offsetB + i];
           data.source[0] = this.sourcePositions[segIdx * 2];
           data.source[1] = this.sourcePositions[segIdx * 2 + 1];
           data.target[0] = this.targetPositions[targetIdx * 2];
@@ -4629,7 +4770,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
         layers.push(new LineLayer({
           id: 'track-line-b',
-          data: this.segmentDataArray.slice(0, segCountB),
+          data: this.segmentDataArray.slice(offsetB, offsetB + segCountB),
           getSourcePosition: (d: any) => d.source,
           getTargetPosition: (d: any) => d.target,
           getColor: (d: any) => d.color,
@@ -4658,7 +4799,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }));
     }
 
-    // Update overlay layers
+    // Update overlay layers (single setProps call, batched for performance)
     this.deckOverlay.setProps({ layers });
     this.deckDirty = false;
   }
@@ -4943,7 +5084,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.clearStatusTimeout();
 
     // Clear buffers
-    this.telemetryBuffer = [];
+    // Reset ring buffers (don't recreate arrays, just reset indices)
+    this.telemetryBufferHead = 0;
+    this.telemetryBufferTail = 0;
+    this.telemetryBufferCount = 0;
+    this.chartDisplayHead = 0;
+    this.chartDisplayTail = 0;
+    this.chartDisplayCount = 0;
+    this.currentBucket = null;
     this.historyPoints = [];
     this.historyDownsampled = [];
   }
