@@ -51,7 +51,8 @@ export const APP_CONFIG = {
       ADD_RACE: '/race/addRace',
       END_RACE: '/race/endRace',
       UPDATE_RACE: '/race/updateRace',
-      DELETE_RACE: '/racerace/deleteRace',
+      DELETE_RACE: '/race/deleteRace',
+      EXPORT_RACE_DATA_LOGGER: '/race/exportDataLoggerInRace',
 
       // Loggers/Racers
       GET_LOGGERS: '/logger/get-logger',

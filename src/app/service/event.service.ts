@@ -6,7 +6,7 @@ import { handleHttpError } from '../utility/http-error-handler.util';
 import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-import { ApiConfigResponse, ApiDropDownResponse, ApiEventResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
+import { ApiConfigResponse, ApiDropDownResponse, ApiEventResponse, ApiExportDataLoggerInRaceResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, ExportDataLoggerInRaceModel, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
 // helper เล็ก ๆ
@@ -31,6 +31,7 @@ export class EventService {
   private raceList: RaceModel[] = [];
   private eventList: eventModel[] = [];
   public eventOption: optionModel[] = [];
+  public dataLoggerInRace: ExportDataLoggerInRaceModel[] = [];
   constructor(private http: HttpClient) {  }
 
   // ------GET Deatil Logger----------
@@ -71,6 +72,53 @@ export class EventService {
         onlineTime: data.onlineTime,
         disconnectTime: data.disconnectTime,
       }))
+    );
+  }
+
+    // service method
+  getDataLoggerInRace(
+    parameterRaceId: any,
+    parameterLoggerID: any
+  ): Observable<ExportDataLoggerInRaceModel[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.EXPORT_RACE_DATA_LOGGER);
+    const payload = {
+      race_id: toIntOrDefault(parameterRaceId ?? 3, 3),
+      logger_id: parameterLoggerID,
+    };
+
+    return this.http.post<ApiExportDataLoggerInRaceResponse>(url, payload).pipe(
+        map(response => {
+          // Map API data to Match interface
+          if(!response.data){
+            return [];
+          }
+
+          this.dataLoggerInRace = response.data.map((data) => ({
+              velocity: data.velocity || 0,
+              height: data.height || 0,
+              heading: data.heading || 0,
+              lat: data.lat || 0,
+              long: data.long || 0,
+              sats: data.sats || 0,
+              fixtype: data.fixtype || 0,
+              accelx: data.accelx || 0,
+              accely: data.accely || 0,
+              accelz: data.accelz || 0,
+              accelsqrt: data.accelsqrt || 0,
+              gyrox: data.gyrox || 0,
+              gyroy: data.gyroy || 0,
+              gyroz: data.gyroz || 0,
+              magx: data.magx || 0,
+              magy: data.magy || 0,
+              magz: data.magz || 0,
+              mdirection: data.mdirection || 0,
+              time_ms: data.time_ms || 0,
+              car_id: data.car_id || 0,
+              afr: data.afr || 0,
+              rpm: data.rpm || 0,
+          }));
+          return this.dataLoggerInRace;
+      })
     );
   }
 

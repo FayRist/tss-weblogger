@@ -128,6 +128,70 @@ export interface LoggerRaceDetailModel {
 }
 
 
+export interface ExportDataLoggerInRaceModel {
+  velocity: number;      // float64
+  height: number;
+  heading: number;
+  lat: number;
+  long: number;
+  sats: number;          // int32
+  fixtype: number;
+  accelx: number;        // float64
+  accely: number;
+  accelz: number;
+  accelsqrt: number;
+  gyrox: number;         // float64
+  gyroy: number;
+  gyroz: number;
+  magx: number;          // float64
+  magy: number;
+  magz: number;
+  mdirection: number;
+  time_ms: number;       // int64 (TS number ใช้ได้ แต่ถ้าใหญ่มากอาจพิจารณา bigint)
+  car_id: number;        // int32
+  afr: number;           // float64
+  rpm: number;           // float64
+}
+
+
+
+export interface ExportDataLoggerInRaceRes {
+  velocity: number;      // float64
+  height: number;
+  heading: number;
+
+  lat: number;
+  long: number;
+
+  sats: number;          // int32
+  fixtype: number;
+
+  accelx: number;        // float64
+  accely: number;
+  accelz: number;
+  accelsqrt: number;
+
+  gyrox: number;         // float64
+  gyroy: number;
+  gyroz: number;
+
+  magx: number;          // float64
+  magy: number;
+  magz: number;
+  mdirection: number;
+
+  time_ms: number;       // int64 (TS number ใช้ได้ แต่ถ้าใหญ่มากอาจพิจารณา bigint)
+  car_id: number;        // int32
+
+  afr: number;           // float64
+  rpm: number;           // float64
+}
+
+export interface ApiExportDataLoggerInRaceResponse {
+  count: number;
+  data: ExportDataLoggerInRaceRes[];
+  success: boolean;
+}
 
 // api-shapes.ts
 export interface ApiLoggerAFR {

@@ -5511,6 +5511,164 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // });
   }
 
+  /**
+   * Export logger data to .txt file in the specified format
+   */
+  exportLoggerDataToTxt(): void {
+    this.eventService
+      .getDataLoggerInRace(this.parameterRaceId, this.parameterLoggerID)
+      .subscribe({
+        next: (detail) => {
+
+
+          // if (!this.allLogger || this.allLogger.length === 0) {
+          //   this.toastr.warning('ไม่มีข้อมูลสำหรับ export');
+          //   return;
+          // }
+
+          // Get current date and time for file header
+          const now = new Date();
+          const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+          const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+          // Prepare data array for export
+          const exportData: any[] = detail.map(logger => ({
+            sats: logger.sats || '000',
+            time: logger.time_ms || '0',
+            lat: this.formatCoordinate(logger.lat),
+            long: this.formatCoordinate(logger.long),
+            velocity: this.formatNumber(logger.velocity),
+            heading: logger.heading || '0',
+            height: logger.height || '0',
+            FixType: logger.fixtype || '0',
+            accelX: logger.accelx || '0',
+            accelY: logger.accely || '0',
+            accelZ: logger.accelz || '0',
+            accelSqrt: logger.accelsqrt || '0',
+            gyroX: logger.gyrox || '0',
+            gyroY: logger.gyroy || '0',
+            gyroZ: logger.gyroz || '0',
+            magX: logger.magx || '0',
+            magY: logger.magy || '0',
+            magZ: logger.magz || '0',
+            mDirection: logger.mdirection || '0',
+            Time_ms: logger.time_ms || '0',
+            Afr: logger.afr || '0',
+            Rpm: logger.rpm || '0'
+          }));
+
+          // Build file content
+          let content = `File created on ${dateStr} @ ${timeStr}\n\n`;
+          content += `[header]\n`;
+          content += `satellites\n`;
+          content += `time\n`;
+          content += `latitude\n`;
+          content += `longitude\n`;
+          content += `velocity kmh\n`;
+          content += `heading\n`;
+          content += `height\n`;
+          content += `FixType\n`;
+          content += `accelX\n`;
+          content += `accelY\n`;
+          content += `accelZ\n`;
+          content += `accelSqrt\n`;
+          content += `gyroX\n`;
+          content += `gyroY\n`;
+          content += `gyroZ\n`;
+          content += `magX\n`;
+          content += `magY\n`;
+          content += `magZ\n`;
+          content += `mDirection\n`;
+          content += `Time_ms\n\n`;
+          content += `AFR\n\n`;
+          content += `RPM\n\n`;
+          content += `[channel units]\n`;
+          content += `\n`;
+          content += `[comments]\n`;
+          content += `\n`;
+          content += `[columnnames]\n`;
+          content += `sats time lat long velocity heading height FixType accelX accelY accelZ accelSqrt gyroX gyroY gyroZ magX magY magZ mDirection Time_ms AFR RPM\n`;
+          content += `\n`;
+          content += `[data]\n`;
+
+          // Add data rows
+          exportData.forEach(row => {
+            content += `${row.sats.padStart(3, '0')} ${row.time} ${row.lat} ${row.long} ${row.velocity} ${row.heading} ${row.height} ${row.FixType} ${row.accelX} ${row.accelY} ${row.accelZ} ${row.accelSqrt} ${row.gyroX} ${row.gyroY} ${row.gyroZ} ${row.magX} ${row.magY} ${row.magZ} ${row.mDirection} ${row.Time_ms} ${row.Afr} ${row.Rpm}\n`;
+          });
+
+          // Create and download file
+          const blob = new Blob([content], { type: 'text/plain' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `logger_export_${now.getTime()}.txt`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          this.toastr.success(`Export ข้อมูลสำเร็จ (${exportData.length} records)`);
+
+        }
+    })
+  }
+
+  /**
+   * Format time string to HHMMSS.ss format
+   */
+  private formatTimeForExport(timeStr: string): string {
+    try {
+      let date: Date;
+
+      // Try to parse as ISO string or timestamp
+      if (timeStr.includes('T') || timeStr.includes('-')) {
+        date = new Date(timeStr);
+      } else if (!isNaN(Number(timeStr)) && timeStr.length > 10) {
+        // Timestamp in milliseconds
+        date = new Date(Number(timeStr));
+      } else {
+        // Try to parse as date string
+        date = new Date(timeStr);
+      }
+
+      if (isNaN(date.getTime())) {
+        // If parsing fails, use current time
+        date = new Date();
+      }
+
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      const milliseconds = String(date.getMilliseconds()).padStart(2, '0').slice(0, 2);
+
+      return `${hours}${minutes}${seconds}.${milliseconds}`;
+    } catch (error) {
+      // Fallback to current time
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      return `${hours}${minutes}${seconds}.00`;
+    }
+  }
+
+  /**
+   * Format coordinate (latitude/longitude) to string with proper decimal places
+   */
+  private formatCoordinate(coord: string | number): string {
+    const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+    if (isNaN(num)) return '0.000000';
+    return num.toFixed(6);
+  }
+
+  /**
+   * Format number to string with proper decimal places
+   */
+  private formatNumber(num: number): string {
+    if (isNaN(num)) return '0.000';
+    return num.toFixed(3);
+  }
+
   // ====== ฟังก์ชันสำหรับควบคุมการหมุนและกลับด้าน SVG ======
 
   /**
