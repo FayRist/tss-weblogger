@@ -509,13 +509,17 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // สร้าง map สำหรับเก็บ status updates
-    const statusMap = new Map<string, string>();
+    // สร้าง map สำหรับเก็บ status updates พร้อม online_time และ disconnect_time
+    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string }>();
     statusList.forEach((statusItem: any) => {
       const loggerId = statusItem.logger_key || '';
       const status = (statusItem.status || '').toString().toLowerCase().trim();
       if (loggerId && status) {
-        statusMap.set(String(loggerId), status === 'online' ? 'online' : 'offline');
+        statusMap.set(String(loggerId), {
+          status: status === 'online' ? 'online' : 'offline',
+          onlineTime: statusItem.online_time || undefined,
+          disconnectTime: statusItem.disconnect_time || undefined
+        });
       }
     });
 
@@ -527,18 +531,34 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     let hasUpdate = false;
     const updatedLoggers = this.allLoggers.map(logger => {
       const loggerIdStr = String(logger.loggerId);
-      const newStatus = statusMap.get(loggerIdStr);
+      const statusUpdate = statusMap.get(loggerIdStr);
 
-      if (newStatus) {
+      if (statusUpdate) {
         const oldStatus = (logger.loggerStatus || logger.status || '').toString().toLowerCase().trim();
-        if (oldStatus !== newStatus) {
+        const statusChanged = oldStatus !== statusUpdate.status;
+        const onlineTimeChanged = statusUpdate.onlineTime && logger.onlineTime?.toString() !== statusUpdate.onlineTime;
+        const disconnectTimeChanged = statusUpdate.disconnectTime && logger.disconnectTime?.toString() !== statusUpdate.disconnectTime;
+
+        if (statusChanged || onlineTimeChanged || disconnectTimeChanged) {
           hasUpdate = true;
           // สร้าง object ใหม่แทนการแก้ไขโดยตรง (immutable update)
-          return {
+          const updatedLogger: any = {
             ...logger,
-            loggerStatus: newStatus as 'online' | 'offline',
-            status: newStatus
+            loggerStatus: statusUpdate.status as 'online' | 'offline',
+            status: statusUpdate.status
           };
+
+          // อัพเดท onlineTime ถ้ามี
+          if (statusUpdate.onlineTime) {
+            updatedLogger.onlineTime = new Date(statusUpdate.onlineTime);
+          }
+
+          // อัพเดท disconnectTime ถ้ามี
+          if (statusUpdate.disconnectTime) {
+            updatedLogger.disconnectTime = new Date(statusUpdate.disconnectTime);
+          }
+
+          return updatedLogger;
         }
       }
       return logger;

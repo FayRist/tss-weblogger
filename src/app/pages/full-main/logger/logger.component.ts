@@ -1942,11 +1942,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Select point with lowest AFR value in bucket
     // Filter points that have valid AFR values
     const pointsWithAfr = bucket.points.filter(p => p.afr != null && !isNaN(p.afr));
-    
+
     let selectedPoint: TelemetryPoint;
     if (pointsWithAfr.length > 0) {
       // Find point with lowest AFR
-      selectedPoint = pointsWithAfr.reduce((min, current) => 
+      selectedPoint = pointsWithAfr.reduce((min, current) =>
         (current.afr! < min.afr!) ? current : min
       );
     } else {
@@ -2960,7 +2960,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   /**
    * อัปเดต status ของ logger จาก WebSocket status list
    */
-  private handleStatusUpdate(statusList: Array<{ logger_key: string; status: string; last_seen?: string; is_connected?: boolean }>): void {
+  private handleStatusUpdate(statusList: Array<{ logger_key: string; status: string; last_seen?: string; is_connected?: boolean; online_time?: string; disconnect_time?: string }>): void {
     if (!this.currentLoggerId || !statusList || statusList.length === 0) {
       return;
     }
@@ -2980,6 +2980,31 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.loggerStatus = newStatus;
         this.cdr.detectChanges();
         console.log(`[Logger Status] Updated to: ${newStatus} for logger ${currentLoggerKey}`);
+      }
+
+      // อัพเดท onlineLastTime จาก online_time หรือ disconnect_time
+      if (statusItem.online_time || statusItem.disconnect_time) {
+        let selectedDate: Date | null = null;
+
+        if (statusItem.online_time && statusItem.disconnect_time) {
+          const onlineTime = new Date(statusItem.online_time);
+          const disconnectTime = new Date(statusItem.disconnect_time);
+          // เลือกเวลาที่ใหม่กว่า
+          selectedDate = onlineTime > disconnectTime ? onlineTime : disconnectTime;
+        } else if (statusItem.online_time) {
+          selectedDate = new Date(statusItem.online_time);
+        } else if (statusItem.disconnect_time) {
+          selectedDate = new Date(statusItem.disconnect_time);
+        }
+
+        if (selectedDate) {
+          this.onlineLastTime = this.formatDateTime(selectedDate);
+          this.cdr.detectChanges();
+        }
+      } else if (!statusItem.online_time && !statusItem.disconnect_time) {
+        // ถ้าไม่มีทั้งสองค่า ให้เคลียร์เวลา
+        this.onlineLastTime = "";
+        this.cdr.detectChanges();
       }
 
       // รีเซ็ต timer เมื่อได้รับ status update
