@@ -4996,9 +4996,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         container: this.raceMapDeckRef.nativeElement,
         style: `https://api.maptiler.com/maps/satellite/style.json?key=${mapApiKey}`,
         center: [center.lng, center.lat], // [lng, lat]
-        zoom: 15.3,
+        zoom: center.zoom,
         pitch: 0,
-        bearing: 0
+        bearing: center.rotation
       });
 
       // Initialize deck.gl overlay with interleaved mode (WebGL2)
