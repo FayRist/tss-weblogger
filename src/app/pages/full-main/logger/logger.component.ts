@@ -416,6 +416,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private map!: L.Map;
   private baseLayers!: Record<string, L.TileLayer>;
   private trackLine?: L.Polyline;
+  private trackLineSegments: L.Polyline[] = []; // เก็บ segments ทั้งหมดสำหรับ history
   private warnLayer = L.layerGroup();
   private liveMarker?: L.Marker;
   //--- Race ------
@@ -1479,7 +1480,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   ngOnInit() {
     // ===== Mode Detection from URL =====
-    const statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? 'realtime';
+    const statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? 'live';
     this.isHistoryMode = statusRace === 'history';
     this.isRealtimeMode = !this.isHistoryMode;
 
@@ -1639,44 +1640,167 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // Try to load from WebSocket history endpoint first
       const loggerId = this.parameterLoggerID || String(this.loggerID);
       if (loggerId) {
-        this.webSocketService.connectHistory(`client_${loggerId}`, 0);
-        this.webSocketService.historyPoint$.subscribe(point => {
-          if (point) {
-            let lat = Number(point.lat);
-            let lon = Number(point.lon);
+          console.log('Loading history data for logger:', loggerId, 'race:', this.parameterRaceId);
 
-            // แปลงค่าที่ผิดปกติด้วยสูตร: lat ÷ 60, lon: abs(lon) ÷ 60
-            // เช็คว่าค่า lat/lon ผิดปกติหรือไม่ (ค่าปกติ: lat อยู่ระหว่าง -90 ถึง 90, lon อยู่ระหว่าง -180 ถึง 180)
-            if (lat > 90 || lat < -90) {
-              // ค่าผิดปกติ ให้หาร 60 ตรงๆ
-              lat = lat / 60;
-            }
+          // แสดง toast notification ว่ากำลังโหลดข้อมูล
+          this.toastr.info('Loading history data...', 'Please wait', { timeOut: 2000 });
 
-            if (lon > 180 || lon < -180) {
-              // ค่าผิดปกติ ให้ใช้ abs() ก่อน แล้วค่อยหาร 60
-              // ตัวอย่าง: abs(-6060.505452) ÷ 60 = 101.008424
-              lon = Math.abs(lon) / 60;
-            }
+          this.eventService
+            .getDataLoggerInRace(this.parameterRaceId, this.parameterLoggerID)
+            .subscribe({
+              next: (dataArray) => {
+                if (!dataArray || dataArray.length === 0) {
+                  console.warn('No history data received');
+                  // this.toastr.warning('No history data available', 'Info');
+                  return;
+                }
 
-            const tp: TelemetryPoint = {
-              loggerId: loggerId,
-              ts: point.ts,
-              x: lat,
-              y: lon,
-              afr: point.afrValue,
-              velocity: point.velocity
-              // Note: raw payload is NOT stored to keep memory usage low
-            };
-            this.historyPoints.push(tp);
-            // Downsample for display
-            if (this.historyPoints.length % 10 === 0) {
-              this.downsampleHistory();
-            }
-          }
-        });
+                console.log(`Received ${dataArray.length} history records`);
+
+                // แปลงข้อมูลจาก API เป็น MapPoint[] พร้อมกรองข้อมูลที่ไม่ถูกต้อง
+                const startTime = performance.now();
+                const mapPoints: MapPoint[] = dataArray
+                  .filter(item => {
+                    // กรองข้อมูลที่ lat/lon ไม่ถูกต้อง
+                    const lat = item.lat;
+                    const lon = item.long;
+                    return Number.isFinite(lat) && Number.isFinite(lon) &&
+                           Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
+                           lat !== 0 && lon !== 0; // กรองค่า 0,0 ที่อาจเป็นค่า default
+                  })
+                  .map(item => {
+                    // แปลง time_ms เป็น ts (milliseconds)
+                    // ถ้า time_ms เป็น epoch milliseconds ใช้ได้เลย
+                    // ถ้าเป็น epoch seconds ให้คูณ 1000
+                    let ts = item.time_ms;
+                    if (ts < 1e12) {
+                      // ถ้าน้อยกว่า 1e12 น่าจะเป็น seconds ให้คูณ 1000
+                      ts = ts * 1000;
+                    }
+
+                    return {
+                      ts: ts,
+                      lat: item.lat,
+                      lon: item.long,
+                      velocity: Number.isFinite(item.velocity) ? item.velocity : undefined,
+                      heading: Number.isFinite(item.heading) ? item.heading : undefined,
+                      afrValue: Number.isFinite(item.afr) ? item.afr : undefined,
+                      time: ts // เก็บ timestamp ไว้ด้วย
+                    } as MapPoint;
+                  })
+                  .sort((a, b) => this.toMillis(a.ts) - this.toMillis(b.ts)); // เรียงตามเวลา
+
+                const filterTime = performance.now() - startTime;
+                console.log(`Filtered and converted ${mapPoints.length} valid points in ${filterTime.toFixed(2)}ms`);
+
+                if (mapPoints.length === 0) {
+                  console.warn('No valid map points after filtering');
+                  this.toastr.warning('No valid GPS data found', 'Info');
+                  return;
+                }
+
+                // สำหรับข้อมูลจำนวนมาก (มากกว่า 30,000 points) ให้ downsample
+                // เพื่อให้การแสดงผลใน map และกราฟราบรื่น
+                let processedPoints = mapPoints;
+                const originalCount = mapPoints.length;
+                if (mapPoints.length > 30000) {
+                  console.log(`Downsampling ${mapPoints.length} points to ~30000 for better performance`);
+                  // ใช้ downsampling แบบง่ายๆ: เก็บทุกๆ N-th point
+                  // แต่เก็บจุดแรกและจุดสุดท้ายไว้เสมอ
+                  const step = Math.ceil(mapPoints.length / 30000);
+                  const downsampled: MapPoint[] = [mapPoints[0]]; // เก็บจุดแรก
+
+                  for (let i = step; i < mapPoints.length - 1; i += step) {
+                    downsampled.push(mapPoints[i]);
+                  }
+
+                  if (mapPoints.length > 1) {
+                    downsampled.push(mapPoints[mapPoints.length - 1]); // เก็บจุดสุดท้าย
+                  }
+
+                  processedPoints = downsampled;
+                  console.log(`Downsampled from ${originalCount} to ${processedPoints.length} points (step: ${step})`);
+                }
+
+                // สร้าง key สำหรับเก็บข้อมูล (ใช้ raceId + loggerId)
+                const dataKey = `race_${this.parameterRaceId}_logger_${loggerId}`;
+
+                // เก็บข้อมูลใน allDataLogger
+                this.allDataLogger[dataKey] = processedPoints;
+                this.selectedRaceKey = dataKey;
+
+                // แบ่งเป็น laps
+                console.log('Splitting into laps...');
+                const lapStartTime = performance.now();
+                this.raceLab = this.splitIntoLapsArray(processedPoints);
+                const lapTime = performance.now() - lapStartTime;
+                console.log(`Split into ${this.raceLab.length} laps in ${lapTime.toFixed(2)}ms`);
+
+                // อัพเดท lap stats
+                this.updateLapArtifacts(dataKey, this.raceLab);
+
+                // สร้าง map และกราฟ
+                console.log('Building map and charts...');
+                const buildStartTime = performance.now();
+                this.buildMapFromLaps(this.raceLab, dataKey);
+                this.buildChartsFromLaps(this.raceLab);
+                
+                // แสดงเส้นทางใน Leaflet map (ถ้ามี map ถูก initialize แล้ว)
+                if (this.map) {
+                  try {
+                    // รวมทุก lap เป็นเส้นทางเดียว
+                    const allLapPoints = this.raceLab.flat();
+                    if (allLapPoints.length > 0) {
+                      // ลบ polyline เก่า (ถ้ามี)
+                      if (this.trackLine) {
+                        this.map.removeLayer(this.trackLine);
+                        this.trackLine = undefined;
+                      }
+                      
+                      // สร้าง polyline segments ตามสี AFR
+                      this.createColoredPolyline(allLapPoints);
+                      console.log(`Added ${allLapPoints.length} points to Leaflet map with AFR coloring`);
+                    }
+                  } catch (err) {
+                    console.warn('Failed to update Leaflet map:', err);
+                  }
+                } else {
+                  console.log('Leaflet map not initialized yet, skipping map update');
+                }
+                
+                const buildTime = performance.now() - buildStartTime;
+                console.log(`Built map and charts in ${buildTime.toFixed(2)}ms`);
+
+                // อัพเดท selected lap index
+                if (this.raceLab.length > 0) {
+                  this.selectedLapIndex = 0;
+                  this.updateMapWithSelectedLap();
+                }
+
+                // ตั้งค่า mode เป็น history
+                this.isHistoryMode = true;
+                this.isRealtimeMode = false;
+
+                // Trigger change detection
+                this.cdr.markForCheck();
+
+                // แสดง success message
+                const message = originalCount !== processedPoints.length
+                  ? `Loaded ${processedPoints.length.toLocaleString()} points (downsampled from ${originalCount.toLocaleString()})`
+                  : `Loaded ${processedPoints.length.toLocaleString()} points`;
+                this.toastr.success(message, 'History data loaded', { timeOut: 3000 });
+
+                console.log('History data loaded and displayed successfully');
+              },
+              error: (err) => {
+                console.error('Error loading history data:', err);
+                this.toastr.error('Failed to load history data: ' + (err.message || 'Unknown error'), 'Error', { timeOut: 5000 });
+              }
+          });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load history:', err);
+      this.toastr.error('Failed to load history data: ' + (err.message || 'Unknown error'), 'Error');
     }
   }
 
@@ -3270,18 +3394,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ฟังก์ชันสำหรับสร้างกราฟจาก lap เดียว
   private buildChartFromSingleLap(lap: MapPoint[]) {
     const lapIndex = this.selectedLapIndex;
+    const MAX_POINTS_PER_SERIES = 5000;
 
-    // สร้าง series สำหรับ lap เดียว
+    // สร้าง series สำหรับ lap เดียว (downsample)
+    const rawData = lap.map(p => ({
+      x: this.toMillis(p.ts),
+      y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
+    }));
+    
+    const downsampledData = this.downsampleChartData(rawData, MAX_POINTS_PER_SERIES);
+    
     const detailSeries = [{
       name: `Lap ${lapIndex + 1}`,
       type: 'line',
-      data: lap.map(p => ({
-        x: this.toMillis(p.ts),
-        y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
-      }))
+      data: downsampledData
     }];
 
-    // จุดแดงเกินลิมิต
+    // จุดแดงเกินลิมิต (คำนวณใหม่หลังจาก downsample)
     const discrete: any[] = [];
     const limit = this.afrLimit ?? 14;
     // บน touch device (iPad/Tablet) ใช้ขนาด marker ใหญ่ขึ้นเพื่อให้ tap ได้ง่ายขึ้น
@@ -3301,7 +3430,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       });
     });
 
-    // brush: ใช้ข้อมูลจาก lap เดียว
+    // brush: ใช้ข้อมูลจาก lap เดียว (downsample)
     const brushData: Array<{x:number;y:number|null}> = [];
     lap.forEach(p => {
       brushData.push({
@@ -3309,6 +3438,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
       });
     });
+    
+    const downsampledBrushData = this.downsampleChartData(brushData, MAX_POINTS_PER_SERIES);
 
     // อัปเดตกราฟ detail และ brush
     this.detailOpts = {
@@ -3327,24 +3458,56 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.brushOpts = {
       ...(this.brushOpts || {}),
-      series: [{ name: `Lap ${lapIndex + 1}`, type: 'line', data: brushData }]
+      series: [{ name: `Lap ${lapIndex + 1}`, type: 'line', data: downsampledBrushData }]
     };
 
-    console.log(`Chart updated for lap ${lapIndex + 1}: ${detailSeries[0].data.length} data points`);
+    console.log(`Chart updated for lap ${lapIndex + 1}: ${detailSeries[0].data.length} data points (downsampled from ${rawData.length})`);
+  }
+
+  // Downsample chart data เพื่อป้องกัน stack overflow ใน ApexCharts
+  private downsampleChartData(data: Array<{x:number;y:number|null}>, maxPoints: number = 5000): Array<{x:number;y:number|null}> {
+    if (data.length <= maxPoints) {
+      return data;
+    }
+
+    // ใช้ simple step-based downsampling สำหรับ chart (เร็วกว่า)
+    const step = Math.ceil(data.length / maxPoints);
+    const downsampled: Array<{x:number;y:number|null}> = [data[0]]; // เก็บจุดแรก
+
+    for (let i = step; i < data.length - 1; i += step) {
+      downsampled.push(data[i]);
+    }
+
+    if (data.length > 1) {
+      downsampled.push(data[data.length - 1]); // เก็บจุดสุดท้าย
+    }
+
+    return downsampled;
   }
 
   private buildChartsFromLaps(laps: MapPoint[][]) {
-    // 5.1 detail series: 1 lap = 1 series
-    const detailSeries = laps.map((lap, idx) => ({
-      name: `Lap ${idx+1}`,
-      type: 'line',
-      data: lap.map(p => ({
+    // จำกัดจำนวน points ต่อ series เพื่อป้องกัน stack overflow
+    const MAX_POINTS_PER_SERIES = 5000;
+    const MAX_POINTS_FOR_BRUSH = 10000;
+
+    // 5.1 detail series: 1 lap = 1 series (downsample แต่ละ lap)
+    const detailSeries = laps.map((lap, idx) => {
+      const rawData = lap.map(p => ({
         x: this.toMillis(p.ts),
         y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
-      }))
-    }));
+      }));
+      
+      // Downsample แต่ละ lap
+      const downsampledData = this.downsampleChartData(rawData, MAX_POINTS_PER_SERIES);
+      
+      return {
+        name: `Lap ${idx+1}`,
+        type: 'line',
+        data: downsampledData
+      };
+    });
 
-    // 5.2 จุดแดงเกินลิมิต
+    // 5.2 จุดแดงเกินลิมิต (ต้องคำนวณใหม่หลังจาก downsample)
     const discrete: any[] = [];
     const limit = this.afrLimit ?? 14;
     // บน touch device (iPad/Tablet) ใช้ขนาด marker ใหญ่ขึ้นเพื่อให้ tap ได้ง่ายขึ้น
@@ -3358,7 +3521,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       });
     });
 
-    // 5.3 brush: รวมทุกจุดต่อเนื่อง
+    // 5.3 brush: รวมทุกจุดต่อเนื่อง (downsample ทั้งหมด)
     const brushData: Array<{x:number;y:number|null}> = [];
     laps.forEach(lap => lap.forEach(p => {
       brushData.push({
@@ -3366,6 +3529,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
       });
     }));
+    
+    // Downsample brush data
+    const downsampledBrushData = this.downsampleChartData(brushData, MAX_POINTS_FOR_BRUSH);
 
     // 5.4 commit
     this.detailOpts = {
@@ -3376,8 +3542,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
     this.brushOpts = {
       ...(this.brushOpts || {}),
-      series: [{ name: 'AFR', type: 'line', data: brushData }]
+      series: [{ name: 'AFR', type: 'line', data: downsampledBrushData }]
     };
+
+    const totalPoints = detailSeries.reduce((sum, s) => sum + s.data.length, 0);
+    console.log(`Chart built: ${detailSeries.length} series, ${totalPoints} total points (downsampled), brush: ${downsampledBrushData.length} points`);
   }
 
   private updateLapArtifacts(key: string, laps: MapPoint[][]) {
@@ -5429,6 +5598,84 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   //   }
   //   return pts.sort((a, b) => a.ts - b.ts);
   // }
+
+  // สร้าง polyline ที่มีสีตาม AFR สำหรับ history data
+  private createColoredPolyline(points: MapPoint[]): void {
+    if (!points.length || !this.map) return;
+
+    // ลบ polyline segments เก่าทั้งหมด (ถ้ามี)
+    this.trackLineSegments.forEach(segment => {
+      if (this.map.hasLayer(segment)) {
+        this.map.removeLayer(segment);
+      }
+    });
+    this.trackLineSegments = [];
+    
+    if (this.trackLine && this.map.hasLayer(this.trackLine)) {
+      this.map.removeLayer(this.trackLine);
+      this.trackLine = undefined;
+    }
+
+    // สร้าง polyline segments ตามสี AFR
+    // เนื่องจาก Leaflet polyline ไม่รองรับการเปลี่ยนสีต่อ segment โดยตรง
+    // เราจะสร้างหลาย polyline segments แต่ละ segment มีสีต่างกัน
+    let currentSegment: L.LatLng[] = [];
+    let currentColor = '';
+
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+      const ll = this.getLatLon(point);
+      if (!ll) continue;
+
+      const afrValue = Number.isFinite(point.afrValue as number) ? (point.afrValue as number) : null;
+      const color = afrValue !== null ? this.getAfrColor(afrValue) : '#808080';
+
+      // ถ้าเปลี่ยนสี ให้สร้าง segment ใหม่
+      if (i > 0 && color !== currentColor && currentSegment.length > 0) {
+        const polyline = L.polyline(currentSegment, {
+          color: currentColor,
+          weight: 4,
+          opacity: 0.8
+        }).addTo(this.map);
+        this.trackLineSegments.push(polyline);
+        currentSegment = [L.latLng(ll.lat, ll.lon)];
+        currentColor = color;
+      } else {
+        currentSegment.push(L.latLng(ll.lat, ll.lon));
+        if (i === 0 || currentColor === '') {
+          currentColor = color;
+        }
+      }
+    }
+
+    // เพิ่ม segment สุดท้าย
+    if (currentSegment.length > 0) {
+      const polyline = L.polyline(currentSegment, {
+        color: currentColor,
+        weight: 4,
+        opacity: 0.8
+      }).addTo(this.map);
+      this.trackLineSegments.push(polyline);
+    }
+
+    // เก็บ reference ของ segment แรกเป็น trackLine (เพื่อความเข้ากันได้)
+    if (this.trackLineSegments.length > 0) {
+      this.trackLine = this.trackLineSegments[0];
+    }
+
+    // ปรับมุมมองให้พอดี
+    const allLatLngs = points
+      .map(p => this.getLatLon(p))
+      .filter((ll): ll is {lat: number; lon: number} => ll !== null)
+      .map(ll => L.latLng(ll.lat, ll.lon));
+    
+    if (allLatLngs.length > 0) {
+      const bounds = L.latLngBounds(allLatLngs);
+      this.map.fitBounds(bounds.pad(0.1));
+    }
+
+    console.log(`Created ${this.trackLineSegments.length} colored polyline segments`);
+  }
 
   setMapPoints(points: MapPoint[]): void {
     if (!points.length) return;

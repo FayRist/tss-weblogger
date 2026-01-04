@@ -63,6 +63,7 @@ export const APP_CONFIG = {
       RESET_LOGGER: '/logger/resetLoger',
       LIST_LOGGER_FOREXCEL: '/logger/getListLoger',
       GET_DETAIL_LOGGERS_IN_RACE: '/logger/getDetailLoggerInRace',
+      GET_ALL_DATA_HISTORY_LOGGERS_IN_RACE: '/logger/getHistoryLoggerInRace',
       GET_ALL_LOGGERS_DATE: '/logger/getLoggerDate',
 
       // Users (สำหรับอนาคต)

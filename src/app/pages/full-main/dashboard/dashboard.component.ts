@@ -199,6 +199,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   parameterSegment:any = null;
   parameterClass:any = null;
   circuitName:string = '';
+  statusRace:string = '';
 
   ngOnInit() {
     // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
@@ -209,7 +210,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.parameterSegment = qp.get('segment') ?? '';
       this.parameterClass   = qp.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
       this.circuitName   = qp.get('circuitName') ?? '';
-      
+      this.statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
+
       this.filterLogger.setValue('all', { emitEvent: true });
       this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
 
@@ -350,7 +352,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   navigateToLoggerDetail(LoggerId :any) {
     this.router.navigate(['/pages', 'logger'], {
-      queryParams: { raceId: this.parameterRaceId, segment: this.parameterSegment, class: this.parameterClass, loggerId: LoggerId,circuitName: this.circuitName}
+      queryParams: { raceId: this.parameterRaceId, segment: this.parameterSegment, class: this.parameterClass, loggerId: LoggerId,circuitName: this.circuitName, statusRace: this.statusRace}
     });
     // this.router.navigate(['logger'], { relativeTo: this.route });
   }

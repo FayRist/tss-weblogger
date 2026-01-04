@@ -68,7 +68,7 @@ export class LoginComponent {
     this.eventService.getLoggerByDate(now).subscribe({
       next: ({ items, count }) => {
           this.router.navigate(['/pages', 'dashboard'], {
-            queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue }   // ➜ /pages/dashboard?raceId=10&class=c
+            queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, statusRace: 'live'}   // ➜ /pages/dashboard?raceId=10&class=c
           });
       },
       error: (e) => console.error(e),
