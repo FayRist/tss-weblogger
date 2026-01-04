@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {MatInputModule} from '@angular/material/input';
@@ -34,7 +34,7 @@ import { TimeService } from '../../../service/time.service';
   templateUrl: './race.component.html',
   styleUrl: './race.component.scss'
 })
-export class RaceComponent implements OnInit {
+export class RaceComponent implements OnInit, OnDestroy {
   readonly dialog = inject(MatDialog);
   allRace: RaceModel[] = [];
   eventRes: optionModel[] = [];
@@ -55,12 +55,29 @@ export class RaceComponent implements OnInit {
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
   ngOnInit() {
+    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
+    const queryParamsSub = this.route.queryParamMap.subscribe(params => {
+      const eventId = params.get('eventId') ?? '';
+      const statusRace = params.get('statusRace') ?? '';
+      this.circuitName = params.get('circuitName') ?? '';
+      
+      if (eventId) {
+        this.CurrentEventId = eventId;
+        this.loadRace(eventId, statusRace);
+      }
+    });
+    this.subscriptions.push(queryParamsSub);
+
+    // โหลดข้อมูลครั้งแรก
     let eventId = this.route.snapshot.queryParamMap.get('eventId') ?? '';
     let statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
     this.circuitName = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
-    this.loadRace(eventId, statusRace);
-
     this.CurrentEventId = eventId;
+    
+    if (eventId) {
+      this.loadRace(eventId, statusRace);
+    }
+
     this.allRace = [
       {
         id_list: 1,
@@ -277,6 +294,13 @@ export class RaceComponent implements OnInit {
       // console.log('The dialog was closed');
       this.allRace = this.allRace.filter(e => e.id_list !== result);
     });
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.forEach(s => s.unsubscribe());
+    if (this.sub) {
+      this.sub.unsubscribe();
+    }
   }
 }
 

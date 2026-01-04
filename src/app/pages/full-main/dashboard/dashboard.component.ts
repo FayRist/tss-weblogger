@@ -18,7 +18,7 @@ import { ResetWarningLoggerComponent } from './reset-warning-logger/reset-warnin
 import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
-import { merge, Subscription, startWith} from 'rxjs';
+import { merge, Subscription, startWith } from 'rxjs';
 import { RACE_SEGMENT } from '../../../constants/race-data';
 import { parseClassQueryToCombined } from '../../../utility/race-param.util';
 import { getQueryParamsOnce, formControlWithInitial } from '../../../utility/rxjs-utils';
@@ -201,27 +201,31 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   circuitName:string = '';
 
   ngOnInit() {
-    this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
-    this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
-    this.circuitName   = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
-    this.filterLogger.setValue('all', { emitEvent: true });
-    this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
+    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
+    const queryParamsSub = this.route.queryParamMap.pipe(
+      startWith(this.route.snapshot.queryParamMap) // ให้ emit ค่าเริ่มต้นก่อน
+    ).subscribe(qp => {
+      this.parameterRaceId  = Number(qp.get('raceId') ?? 0);
+      this.parameterSegment = qp.get('segment') ?? '';
+      this.parameterClass   = qp.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
+      this.circuitName   = qp.get('circuitName') ?? '';
+      
+      this.filterLogger.setValue('all', { emitEvent: true });
+      this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
 
-    if(!this.parameterRaceId && !this.parameterSegment && !this.parameterClass){
-      const now = toDate(this.time.now());
-        // this.eventService.getLoggerByDate(now).subscribe({
-        //   next: ({ items, count }) => {
+      if(!this.parameterRaceId && !this.parameterSegment && !this.parameterClass){
+        const now = toDate(this.time.now());
+          // this.eventService.getLoggerByDate(now).subscribe({
+          //   next: ({ items, count }) => {
 
-        //     this.allLoggers;
-        //     // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
-        //     // this.total = count;
-        //     // this.dataSource.data = this.loggers;
-        //   },
-        //   error: (e) => console.error(e),
-        // });
-    }else{
-      const qpSub = getQueryParamsOnce(this.route).subscribe(qp => {
+          //     this.allLoggers;
+          //     // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
+          //     // this.total = count;
+          //     // this.dataSource.data = this.loggers;
+          //   },
+          //   error: (e) => console.error(e),
+          // });
+      }else{
         // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
         const classMulti = qp.getAll('class');
         const classSingle = qp.get('class');
@@ -262,9 +266,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.subscriptions.push(reactSub);
 
         this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
-      });
-      this.subscriptions.push(qpSub);
-    }
+      }
+    });
+    this.subscriptions.push(queryParamsSub);
   }
 
   onSelectChange(event: MatSelectChange) {

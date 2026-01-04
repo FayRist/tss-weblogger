@@ -1,18 +1,23 @@
 // time.service.ts
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, OnDestroy } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
-export class TimeService {
-  // ✅ ล็อกเวลาไว้ที่ 2025-05-20 13:23:00 เวลาไทย (UTC+7)
-  readonly now = signal<Date>(new Date('2025-12-11 06:23:00+07'));
+export class TimeService implements OnDestroy {
+  readonly now = signal<Date>(new Date());
 
-  // ❌ ไม่ต้องมี timer ถ้าจะให้ค่านิ่ง
-  // private timer = setInterval(() => this.now.set(new Date()), 1000);
+  private timer = setInterval(() => this.now.set(new Date()), 1000);
 
-  // เผื่ออยากเปลี่ยนตอนรันไทม์
   freezeAt(d: Date) {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null as any;
+    }
     this.now.set(d);
   }
 
-  // ngOnDestroy() {} // ไม่จำเป็นแล้ว
+  ngOnDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+  }
 }

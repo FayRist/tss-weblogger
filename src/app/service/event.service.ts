@@ -3,10 +3,10 @@ import { Injectable } from '@angular/core';
 import { catchError, map, Observable } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
 import { handleHttpError } from '../utility/http-error-handler.util';
-import { eventModel, LoggerDetailPayload, LoggerModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
+import { eventModel, LoggerDetailPayload, LoggerModel, optionEventModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-import { ApiConfigResponse, ApiDropDownResponse, ApiEventResponse, ApiExportDataLoggerInRaceResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, ExportDataLoggerInRaceModel, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
+import { ApiConfigResponse, ApiDropDownoptionEventResponse, ApiDropDownResponse, ApiEventResponse, ApiExportDataLoggerInRaceResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, ExportDataLoggerInRaceModel, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
 // helper เล็ก ๆ
@@ -30,7 +30,8 @@ export class EventService {
   private seasonalList: SeasonalModel[] = [];
   private raceList: RaceModel[] = [];
   private eventList: eventModel[] = [];
-  public eventOption: optionModel[] = [];
+  public eventOption: optionEventModel[] = [];
+  public option: optionModel[] = [];
   public dataLoggerInRace: ExportDataLoggerInRaceModel[] = [];
   constructor(private http: HttpClient) {  }
 
@@ -143,14 +144,16 @@ export class EventService {
       );
   }
 
-  getDropDownEvent(): Observable<optionModel[]> {
+  getDropDownEvent(): Observable<optionEventModel[]> {
     const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.EVENT_DROPDOWN);
-      return this.http.get<ApiDropDownResponse>(seasonURL).pipe(
+      return this.http.get<ApiDropDownoptionEventResponse>(seasonURL).pipe(
         map(response => {
           // Map API data to Match interface
           this.eventOption = response.data.map((apiData) => ({
               name: apiData.name,
               value: apiData.value,
+              c_name: apiData.c_name,
+              active: apiData.active,
           }));
           return this.eventOption;
         })
@@ -170,11 +173,11 @@ export class EventService {
             return [];
           }
 
-          this.eventOption = response.data.map((apiData) => ({
+          this.option = response.data.map((apiData) => ({
               name: apiData.name,
               value: apiData.value,
           }));
-          return this.eventOption;
+          return this.option;
         })
       );
   }
@@ -191,11 +194,11 @@ export class EventService {
           if(!response.data){
             return [];
           }
-          this.eventOption = response.data.map((apiData) => ({
+          this.option = response.data.map((apiData) => ({
               name: apiData.name,
               value: apiData.value,
           }));
-          return this.eventOption;
+          return this.option;
         })
       );
   }

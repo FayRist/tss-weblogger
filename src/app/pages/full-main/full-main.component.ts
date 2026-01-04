@@ -37,6 +37,7 @@ function toDate(v: unknown): Date {
 }
 
 
+type OptionEvent = { value: number | string; name: String;  c_name: String;  active : String; };
 type Option = { value: number | string; name: String };
 
 type UrlParams = {
@@ -80,7 +81,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
   private subscriptions: Subscription[] = [];
   private sub!: Subscription;
 
-  eventList: Option[] = [];
+  eventList: OptionEvent[] = [];
   SegmentList: Option[] = [];
   SessionList: Option[] = [];
 
@@ -151,7 +152,8 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
             if(isDashboardPage){
               this.router.navigate(['/pages', 'dashboard'], {
-                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName}   // ➜ /pages/dashboard?raceId=10&class=c
+                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName},   // ➜ /pages/dashboard?raceId=10&class=c
+                onSameUrlNavigation: 'reload'  // ✅ บังคับให้ reload component เมื่อ navigate ไปยัง route เดิม
               });
             }
             // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
@@ -280,7 +282,8 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
             // if(isDashboardPage){
               this.router.navigate(['/pages', 'dashboard'], {
-                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue }   // ➜ /pages/dashboard?raceId=10&class=c
+                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue },   // ➜ /pages/dashboard?raceId=10&class=c
+                onSameUrlNavigation: 'reload'  // ✅ บังคับให้ reload component เมื่อ navigate ไปยัง route เดิม
               });
             // }
             // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
@@ -317,11 +320,16 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
   navigateToLogout() { this.router.navigate(['/login']); }
 
-  navigateToRace(eventId: any, eventName: String) {
+  navigateToRace(eventId: any, eventName: String, activeRace: any, circuitName: String) {
     this.eventNameSelect = eventName;
+    let statusRace = 'live'
+    if(activeRace == 0){
+      statusRace = 'history'
+    }
+
     this.router.navigate(['/pages', 'race'], {
-      queryParams: { eventId },
-      queryParamsHandling: 'merge'     // ✅ คงพารามิเตอร์เดิมทั้งหมดไว้
+      queryParams: { eventId, statusRace, circuitName },
+      onSameUrlNavigation: 'reload'
     });
   }
 
@@ -334,7 +342,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   loadDropDownEvent(eventId?: number) {
     const s = this.eventService.getDropDownEvent().subscribe({
-      next: (eventRes: Option[]) => {
+      next: (eventRes: OptionEvent[]) => {
         this.eventList = eventRes ?? [];
 
         // ถ้ามี eventId จาก URL ให้เลือกไว้เลย

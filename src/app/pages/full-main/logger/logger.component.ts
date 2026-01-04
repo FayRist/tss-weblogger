@@ -1692,10 +1692,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Connect with tail_ms=120000 for 2-minute backlog
     // Use wrap=1 for standardized message format (batch type)
-    const base = typeof location !== 'undefined'
-      ? `${APP_CONFIG.API.URL_SOCKET_LOCAL}`
-      : APP_CONFIG.API.URL_SOCKET_SERVER.replace(/^http/, 'ws');
-    const url = `${base}/ws/realtime?logger=client_${loggerId}&tail_ms=120000&wrap=1`;
+    // Use getApiWebSocket() to automatically select local or server URL based on hostname
+    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=120000&wrap=1`;
+    const url = getApiWebSocket(endpoint);
 
     try {
       const ws = new WebSocket(url);
@@ -1934,23 +1933,36 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   /**
    * Flush a completed bucket to chart display buffer
-   * Uses "last" value strategy (keep last point in bucket)
+   * Uses "lowest AFR" strategy: selects point with lowest AFR value in bucket
+   * Falls back to last point if no AFR values are available
    */
   private flushChartBucket(bucket: { ts: number; points: TelemetryPoint[] }): void {
     if (bucket.points.length === 0) return;
 
-    // Use last point in bucket (alternative: average, max, min)
-    const lastPoint = bucket.points[bucket.points.length - 1];
+    // Select point with lowest AFR value in bucket
+    // Filter points that have valid AFR values
+    const pointsWithAfr = bucket.points.filter(p => p.afr != null && !isNaN(p.afr));
+    
+    let selectedPoint: TelemetryPoint;
+    if (pointsWithAfr.length > 0) {
+      // Find point with lowest AFR
+      selectedPoint = pointsWithAfr.reduce((min, current) => 
+        (current.afr! < min.afr!) ? current : min
+      );
+    } else {
+      // Fallback: use last point if no AFR values available
+      selectedPoint = bucket.points[bucket.points.length - 1];
+    }
 
     // Write to chart display ring buffer
     const writeIdx = this.chartDisplayHead;
     this.chartDisplayBuffer[writeIdx] = {
       ts: bucket.ts,
-      afr: lastPoint.afr ?? null,
-      avgAfr: lastPoint.afr ?? undefined,
-      realtimeAfr: lastPoint.afr ?? undefined,
-      warningAfr: lastPoint.afr ?? undefined,
-      speed: lastPoint.velocity ?? undefined
+      afr: selectedPoint.afr ?? null,
+      avgAfr: selectedPoint.afr ?? undefined,
+      realtimeAfr: selectedPoint.afr ?? undefined,
+      warningAfr: selectedPoint.afr ?? undefined,
+      speed: selectedPoint.velocity ?? undefined
     };
 
     this.chartDisplayHead = (this.chartDisplayHead + 1) % this.CHART_MAX_DISPLAY_POINTS;

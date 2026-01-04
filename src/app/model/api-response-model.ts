@@ -1,4 +1,4 @@
-import { optionModel } from "./season-model";
+import { optionEventModel, optionModel } from "./season-model";
 
 // API Response interface for loggers
 export interface ApiLoggerResponse {
@@ -38,6 +38,11 @@ export interface ApiDropDownResponse {
   success: boolean;
 }
 
+export interface ApiDropDownoptionEventResponse {
+  count: number;
+  data: optionEventModel[];
+  success: boolean;
+}
 
 export interface ApiSeasonResponse {
   count: number;

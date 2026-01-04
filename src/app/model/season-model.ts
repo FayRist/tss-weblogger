@@ -32,6 +32,14 @@ export interface optionModel {
 }
 
 
+export interface optionEventModel {
+  value: string;
+  name: string;
+  c_name: string;
+  active: string;
+}
+
+
 
 
 export interface LoggerModel {

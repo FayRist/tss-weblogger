@@ -81,12 +81,7 @@ export class AddEventComponent implements OnInit {
   classList = CLASS_LIST;
   mapsList: optionModel[] = MAPS_LIST;
 
-  eventList: optionModel[] = [
-    {
-      value: '6',
-      name:'BANGSAEN'
-    },
-  ];
+  eventList: optionModel[] = [  ];
 
   seasonList: any[] = [
     {
