@@ -356,6 +356,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   selectedKeys: ChartKey[] = ['avgAfr', 'realtimeAfr'];
   brushOverviewKey: ChartKey = 'realtimeAfr';
+  filterData: boolean = true; // เปิด/ปิดการกรองข้อมูลก่อนนำไปแสดงในกราฟ
 
   currentPageData: any[] = [];
   chartFilter = new FormControl<SelectKey[]>(['avgAfr', 'realtimeAfr'], { nonNullable: true });
@@ -1766,6 +1767,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                   }
                 } else {
                   console.log('Leaflet map not initialized yet, skipping map update');
+                }
+
+                // แสดงเส้นทางใน deck.gl map หรือ canvas map (สำหรับ history mode)
+                const allLapPoints = this.raceLab.flat();
+                if (allLapPoints.length > 0) {
+                  if (!this.useCanvasMode && this.deckOverlay) {
+                    // deck.gl map mode
+                    this.loadHistoryDataToDeckMap(allLapPoints);
+                  } else if (this.useCanvasMode && this.raceMapCanvasCtx) {
+                    // canvas map mode
+                    this.loadHistoryDataToCanvasMap(allLapPoints);
+                  }
                 }
                 
                 const buildTime = performance.now() - buildStartTime;
@@ -3881,6 +3894,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (keys?.length === 1 && keys[0] === this.selectedRaceKey && this.raceLab && this.raceLab.length) {
       return;
     }
+    
+    // ถ้า filterData == false ให้ใช้ทุก keys ที่มีใน allDataLogger
+    let keysToUse = keys;
+    if (this.filterData == false) {
+      keysToUse = Object.keys(this.allDataLogger);
+    }
+    
     const mkSeries = (k: string) => {
       const data = (this.allDataLogger[k] || []);
       const seriesData = data.map((p, idx) => {
@@ -3897,7 +3917,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return { name: k, data: seriesData };
     };
 
-    const fullSeries = keys.map(mkSeries);
+    const fullSeries = keysToUse.map(mkSeries);
     const displayThreshold = 50000; // จำนวนจุดสูงสุดที่ต้องการแสดงผล
     const downsampledSeries = fullSeries.map((seriesItem: any) => {
       const downsampledData = this.downsample(seriesItem.data, displayThreshold);
@@ -4340,7 +4360,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!Array.isArray(this.currentPoints) || !this.currentPoints.length || !keys.length) {
       return [];
     }
-    return keys.map(k => {
+    
+    // ถ้า filterData == false ให้แสดงทุก keys แทนที่จะกรองตาม selectedKeys
+    let keysToUse = keys;
+    if (this.filterData == false) {
+      // ใช้ทุก keys ที่มีใน options
+      keysToUse = this.options.map(o => o.value) as ChartKey[];
+    }
+    
+    return keysToUse.map(k => {
       const field = this.fieldMap[k];
       const name = this.options.find(o => o.value === k)?.label ?? k;
       const data = this.currentPoints.map(p => {
@@ -4353,15 +4381,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   private refreshDetail(): void {
-    const series = this.buildSeries(this.selectedKeys);
+    // ถ้า filterData == false ให้ใช้ทุก keys, ถ้าไม่ใช่ให้ใช้ selectedKeys
+    const keysToUse = this.filterData ? this.selectedKeys : (this.options.map(o => o.value) as ChartKey[]);
+    const series = this.buildSeries(keysToUse);
     if (!series.length) {
       // เคลียร์แบบปลอดภัย (บางเวอร์ชันของ Apex ไม่ชอบ series = undefined)
       this.detailOpts = { ...this.detailOpts, series: [] };
       return;
     }
     const widthArr = new Array(series.length).fill(2);
-    const dashArr = this.selectedKeys.map(k => k === 'warningAfr' ? 6 : 0);
-    const colorArr = this.selectedKeys.map(k => SERIES_COLORS[k]).filter(Boolean);
+    const dashArr = keysToUse.map(k => k === 'warningAfr' ? 6 : 0);
+    const colorArr = keysToUse.map(k => SERIES_COLORS[k]).filter(Boolean);
 
     this.detailOpts = {
       ...this.detailOpts,
@@ -4393,14 +4423,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private refreshBrush(): void {
-    const series = this.buildSeries(this.selectedKeys);
+    // ถ้า filterData == false ให้ใช้ทุก keys, ถ้าไม่ใช่ให้ใช้ selectedKeys
+    const keysToUse = this.filterData ? this.selectedKeys : (this.options.map(o => o.value) as ChartKey[]);
+    const series = this.buildSeries(keysToUse);
     if (!series.length) {
       this.brushOpts = { ...this.brushOpts, series: [] };
       return;
     }
-    const colorArr = this.selectedKeys.map(k => SERIES_COLORS[k]).filter(Boolean);
-    const widthArr = this.selectedKeys.map(k => (k === 'warningAfr' ? 2 : 1.5));
-    const dashArr = this.selectedKeys.map(k => (k === 'warningAfr' ? 5 : 0));
+    const colorArr = keysToUse.map(k => SERIES_COLORS[k]).filter(Boolean);
+    const widthArr = keysToUse.map(k => (k === 'warningAfr' ? 2 : 1.5));
+    const dashArr = keysToUse.map(k => (k === 'warningAfr' ? 5 : 0));
 
     this.brushOpts = {
       ...this.brushOpts,
@@ -5315,6 +5347,193 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     b = Math.round((b + m) * 255);
 
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  }
+
+  /**
+   * Load history data to deck.gl map (for history mode)
+   */
+  private loadHistoryDataToDeckMap(points: MapPoint[]): void {
+    if (!this.deckOverlay || points.length < 2) {
+      console.warn('[deck.gl] Cannot load history data: overlay not initialized or insufficient points');
+      return;
+    }
+
+    console.log(`[deck.gl] Loading ${points.length} history points to deck.gl map`);
+
+    // Convert MapPoint[] to segment data for deck.gl
+    const segments: Array<{ source: [number, number]; target: [number, number]; color: [number, number, number, number] }> = [];
+
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+
+      const prevLL = this.getLatLon(prev);
+      const currLL = this.getLatLon(curr);
+
+      if (!prevLL || !currLL) continue;
+
+      // Get AFR value for color
+      const afrValue = Number.isFinite(curr.afrValue as number) ? (curr.afrValue as number) : 14.0;
+      const color = this.afrToColorUint8(afrValue);
+
+      segments.push({
+        source: [prevLL.lon, prevLL.lat], // [lng, lat]
+        target: [currLL.lon, currLL.lat], // [lng, lat]
+        color: [color[0], color[1], color[2], 255] // RGBA
+      });
+    }
+
+    if (segments.length === 0) {
+      console.warn('[deck.gl] No valid segments created from history data');
+      return;
+    }
+
+    // Create LineLayer for history path
+    const pathLayer = new LineLayer({
+      id: 'history-track-line',
+      data: segments,
+      getSourcePosition: (d: any) => d.source,
+      getTargetPosition: (d: any) => d.target,
+      getColor: (d: any) => d.color,
+      getWidth: this.LINE_WIDTH_PX,
+      widthUnits: 'pixels',
+      pickable: false,
+      parameters: { depthTest: false }
+    });
+
+    // Add marker for last position
+    const lastPoint = points[points.length - 1];
+    const lastLL = this.getLatLon(lastPoint);
+    const markerLayer = lastLL ? new ScatterplotLayer({
+      id: 'history-track-marker',
+      data: [{ position: [lastLL.lon, lastLL.lat] }],
+      getPosition: (d: any) => d.position,
+      getRadius: this.MARKER_RADIUS_PX,
+      radiusUnits: 'pixels',
+      getFillColor: [255, 59, 48, 255], // #FF3B30
+      stroked: true,
+      getLineColor: [255, 255, 255, 255], // White
+      lineWidthMinPixels: 2,
+      pickable: false,
+      parameters: { depthTest: false }
+    }) : null;
+
+    // Update overlay with history layers
+    const layers: Layer[] = [pathLayer];
+    if (markerLayer) {
+      layers.push(markerLayer);
+    }
+
+    this.deckOverlay.setProps({ layers });
+
+    // Set map view to circuit center (same as initialization)
+    if (this.deckMap) {
+      const center = getMapCenterForCircuit(this.circuitName);
+      if (center) {
+        this.deckMap.setCenter([center.lng, center.lat]); // [lng, lat]
+        this.deckMap.setZoom(center.zoom);
+        this.deckMap.setPitch(0);
+        this.deckMap.setBearing(center.rotation);
+      }
+    }
+
+    console.log(`[deck.gl] Loaded ${segments.length} history segments to deck.gl map`);
+  }
+
+  /**
+   * Load history data to canvas map (for history mode, when no circuit match)
+   */
+  private loadHistoryDataToCanvasMap(points: MapPoint[]): void {
+    if (!this.raceMapCanvasCtx || !this.raceMapCanvasRef?.nativeElement || points.length < 2) {
+      console.warn('[Canvas Map] Cannot load history data: canvas not initialized or insufficient points');
+      return;
+    }
+
+    console.log(`[Canvas Map] Loading ${points.length} history points to canvas map`);
+
+    const canvas = this.raceMapCanvasRef.nativeElement;
+
+    // Clear canvas
+    this.raceMapCanvasCtx.fillStyle = '#0e1113';
+    this.raceMapCanvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate bounds from points
+    const validPoints = points
+      .map(p => this.getLatLon(p))
+      .filter((ll): ll is { lat: number; lon: number } => ll !== null);
+
+    if (validPoints.length === 0) {
+      console.warn('[Canvas Map] No valid points to draw');
+      return;
+    }
+
+    const lngs = validPoints.map(p => p.lon);
+    const lats = validPoints.map(p => p.lat);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+
+    // Add padding
+    const padding = 0.1;
+    const lngSpan = maxLng - minLng || 0.01;
+    const latSpan = maxLat - minLat || 0.01;
+    const paddedMinLng = minLng - lngSpan * padding;
+    const paddedMaxLng = maxLng + lngSpan * padding;
+    const paddedMinLat = minLat - latSpan * padding;
+    const paddedMaxLat = maxLat + latSpan * padding;
+    const paddedLngSpan = paddedMaxLng - paddedMinLng;
+    const paddedLatSpan = paddedMaxLat - paddedMinLat;
+
+    // Convert lat/lon to canvas coordinates
+    const toCanvasX = (lon: number) => ((lon - paddedMinLng) / paddedLngSpan) * canvas.width;
+    const toCanvasY = (lat: number) => canvas.height - ((lat - paddedMinLat) / paddedLatSpan) * canvas.height;
+
+    // Draw path segments with AFR coloring
+    this.raceMapCanvasCtx.lineWidth = 2;
+    this.raceMapCanvasCtx.lineCap = 'round';
+    this.raceMapCanvasCtx.lineJoin = 'round';
+
+    let lastX: number | null = null;
+    let lastY: number | null = null;
+
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+      const ll = this.getLatLon(point);
+      if (!ll) continue;
+
+      const x = toCanvasX(ll.lon);
+      const y = toCanvasY(ll.lat);
+
+      // Get AFR value for color
+      const afrValue = Number.isFinite(point.afrValue as number) ? (point.afrValue as number) : 14.0;
+      const color = Number.isFinite(afrValue) ? this.getAfrColor(afrValue) : '#808080';
+
+      // Draw line from last point to current point
+      if (lastX !== null && lastY !== null) {
+        this.raceMapCanvasCtx.beginPath();
+        this.raceMapCanvasCtx.moveTo(lastX, lastY);
+        this.raceMapCanvasCtx.lineTo(x, y);
+        this.raceMapCanvasCtx.strokeStyle = color;
+        this.raceMapCanvasCtx.stroke();
+      }
+
+      lastX = x;
+      lastY = y;
+    }
+
+    // Draw marker for last position
+    if (lastX !== null && lastY !== null) {
+      this.raceMapCanvasCtx.beginPath();
+      this.raceMapCanvasCtx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+      this.raceMapCanvasCtx.fillStyle = '#00FFA3'; // Latest position color
+      this.raceMapCanvasCtx.fill();
+      this.raceMapCanvasCtx.strokeStyle = '#FFFFFF';
+      this.raceMapCanvasCtx.lineWidth = 2;
+      this.raceMapCanvasCtx.stroke();
+    }
+
+    console.log(`[Canvas Map] Drew ${validPoints.length} history points on canvas`);
   }
 
   private ro?: ResizeObserver;

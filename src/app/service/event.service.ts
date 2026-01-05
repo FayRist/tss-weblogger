@@ -83,8 +83,8 @@ export class EventService {
   ): Observable<ExportDataLoggerInRaceModel[]> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.EXPORT_RACE_DATA_LOGGER);
     const payload = {
-      race_id: toIntOrDefault(parameterRaceId ?? 3, 3),
-      logger_id: parameterLoggerID,
+      raceId: toIntOrDefault(parameterRaceId ?? 3, 3),
+      loggerId: parameterLoggerID,
     };
 
     return this.http.post<ApiExportDataLoggerInRaceResponse>(url, payload).pipe(

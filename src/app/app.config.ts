@@ -137,7 +137,7 @@ export const APP_CONFIG = {
       bsc: {
         LAT: 13.304227,
         LNG: 100.903282,
-        MAP_ZOOM: 14.8,
+        MAP_ZOOM: 14.7,
         ROTATION: -60
       }
     }
