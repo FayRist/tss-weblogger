@@ -52,6 +52,8 @@ export interface DialogLoggerData {
   lastName: string;
   classValue: string;
   teamName: string;
+  circuit_name: string;
+  event_id: string;
 }
 
 @Component({
@@ -85,37 +87,11 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
     'resetLimit'
   ];
 
-  allLoggers: LoggerModel[] = [
-    {
-      id: 1,
-      firstName: "ทดสอบ1",
-      lastName: "Test01",
-      carNumber: "1",
-      loggerId: "Client121",
-      createdDate: new Date(10 / 9 / 2025),
-      numberLimit: 2,
-      classType: 'PickupA',
-      warningDetector: false,
-      loggerStatus: 'offline',
-      afrAverage: 15.2,
-      teamName: 'Teammmmm TEST',
+  allLoggers: LoggerModel[] = [  ];
 
-    }, {
-      id: 4,
-      firstName: "ทดสอบ4",
-      lastName: "Test04",
-      carNumber: "4",
-      loggerId: "Client124",
-      createdDate: new Date(10 / 9 / 2025),
-      numberLimit: 0,
-      classType: 'PickupA',
-      warningDetector: false,
-      loggerStatus: 'offline',
-      afrAverage: 15.2,
-      teamName: 'Teammmmm TEST2',
+  circuitName: string = '';
+  CurrentEventId: any = null;
 
-    },
-  ];
 
   // สมมติคุณมีรายการอีเวนต์ 1..n (ถ้าไม่มีให้ส่ง [] ได้)
   eventList: EventItem[] = [
@@ -125,23 +101,54 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
 
   constructor(
     // private router: Router, private route: ActivatedRoute,
+    private router: Router, private route: ActivatedRoute,
     private eventService: EventService, private toastr: ToastrService) {
 
   }
   ngOnInit() {
-    this.loadLogger();
+    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
+    const queryParamsSub = this.route.queryParamMap.subscribe(params => {
+      const eventId = params.get('eventId') ?? '';
+      this.circuitName = params.get('circuitName') ?? '';
+
+      if (eventId) {
+        this.CurrentEventId = Number(eventId);
+      } else {
+        this.CurrentEventId = null;
+      }
+
+      // Reload ข้อมูลเมื่อ query params เปลี่ยน
+      this.loadLogger(this.circuitName, this.CurrentEventId);
+    });
+    this.subscriptions.push(queryParamsSub);
+
+    // โหลดข้อมูลครั้งแรก
+    const eventId = this.route.snapshot.queryParamMap.get('eventId') ?? '';
+    this.circuitName = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
+
+    if (eventId) {
+      this.CurrentEventId = Number(eventId);
+    } else {
+      this.CurrentEventId = null;
+    }
+
+    this.loadLogger(this.circuitName, this.CurrentEventId);
   }
 
   addLogger(enterAnimationDuration: string, exitAnimationDuration: string): void {
     const dialogRef = this.dialog.open(AddLoggerComponent, {
       width: '100vw', maxWidth: '750px',
+      data: {
+        circuit_name: this.circuitName,
+        event_id: this.CurrentEventId
+      },
       enterAnimationDuration, exitAnimationDuration,
     });
 
     dialogRef.afterClosed().subscribe(result => {
       console.log('The dialog was closed');
       if (result == 'success') {
-        this.loadLogger();
+        this.loadLogger(this.circuitName, this.CurrentEventId);
       }
     });
   }
@@ -154,7 +161,8 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       data: {
         id: arrayData[0].id, firstName: arrayData[0].firstName,  lastName: arrayData[0].lastName,
         carNumber: arrayData[0].carNumber, loggerId: arrayData[0].loggerId,
-        classValue: arrayData[0].classType, teamName: arrayData[0].teamName
+        classValue: arrayData[0].classType, teamName: arrayData[0].teamName,
+        circuit_name: this.circuitName, event_id: this.CurrentEventId
       },
     });
 
@@ -162,7 +170,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       // console.log('The dialog was closed');
       if (result == 'success') {
         this.toastr.success(`แก้ไขข้ออมูล ${arrayData[0].loggerId} สำเร็จ`);
-        this.loadLogger();
+        this.loadLogger(this.circuitName, this.CurrentEventId);
       }
     });
   }
@@ -172,28 +180,33 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
     const dialogRef = this.dialog.open(DeleteLoggerComponent, {
       width: '100vw', maxWidth: '350px',
       enterAnimationDuration, exitAnimationDuration,
-      data: { loggerId: arrayData[0].loggerId },
+      data: {
+        id: arrayData[0].id,
+        loggerId: arrayData[0].loggerId,
+        carNumber: arrayData[0].carNumber,
+        circuit_name: this.circuitName,
+        event_id: this.CurrentEventId
+      },
     });
 
     dialogRef.afterClosed().subscribe(result => {
       // console.log('The dialog was closed');
       if (result == 'success') {
-        this.loadLogger();
+        this.loadLogger(this.circuitName, this.CurrentEventId);
         this.toastr.success('แก้ไข Logger เรียบร้อย')
 
       }
     });
   }
 
-  loadLogger() {
+  loadLogger(circuitName: string, EventId: number | null) {
     this.allLoggers = []
-    const { classTypes } = parseClassQueryToCombined(
-      'abcd',
-      'pickup' //
-    );
 
-    // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
-    const sub = this.eventService.getLoggerSetting({ classTypes }).subscribe({
+    // >>> ยิง service แบบที่ backend ต้องการ: ?circuit_name=xxx&event_id=yyy
+    const sub = this.eventService.getLoggerSetting({
+      circuitName: circuitName,
+      eventId: EventId ?? undefined
+    }).subscribe({
       next: (loggerRes) => {
         this.allLoggers = loggerRes ?? [];
         this.allLoggers = [...this.allLoggers].sort((a, b) => {

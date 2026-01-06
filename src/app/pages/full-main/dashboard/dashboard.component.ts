@@ -196,6 +196,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   parameterRaceId:any = null;
+  parameterEventId:any = null;
   parameterSegment:any = null;
   parameterClass:any = null;
   circuitName:string = '';
@@ -207,6 +208,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       startWith(this.route.snapshot.queryParamMap) // ให้ emit ค่าเริ่มต้นก่อน
     ).subscribe(qp => {
       this.parameterRaceId  = Number(qp.get('raceId') ?? 0);
+      this.parameterEventId  = Number(qp.get('eventId') ?? 0);
       this.parameterSegment = qp.get('segment') ?? '';
       this.parameterClass   = qp.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
       this.circuitName   = qp.get('circuitName') ?? '';
@@ -238,9 +240,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
         );
 
-        // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
+        // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
         const sub = this.eventService
-          .getLoggersWithAfr({ classTypes, raceId: this.parameterRaceId }) // <-- ใส่ raceId ตรงนี้
+          .getLoggersWithAfr({ 
+            raceId: this.parameterRaceId,
+            eventId: this.parameterEventId,
+            circuitName: this.circuitName
+          })
           .subscribe({
           next: (loggerRes) => {
             this.allLoggers = loggerRes ?? [];
@@ -387,9 +393,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
           );
 
-          // >>> ยิง service แบบที่ backend ต้องการ: ?class_type=a&class_type=b
+          // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
           const sub = this.eventService
-            .getLoggersWithAfr({ classTypes, raceId: this.parameterRaceId }) // <-- ใส่ raceId ตรงนี้
+            .getLoggersWithAfr({ 
+              raceId: this.parameterRaceId,
+              eventId: this.parameterEventId,
+              circuitName: this.circuitName
+            })
             .subscribe({
             next: (loggerRes) => {
               this.allLoggers = loggerRes ?? [];

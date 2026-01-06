@@ -1,7 +1,7 @@
 import { Component, computed, inject, OnDestroy, OnInit } from '@angular/core';
 import { Router, NavigationEnd, RouterOutlet, ActivatedRoute, NavigationExtras } from '@angular/router';
 import { distinctUntilChanged, filter, map, startWith } from 'rxjs/operators';
-import { combineLatest, interval, Observable, Subscription } from 'rxjs';
+import { combineLatest, interval, Observable, Subscription, firstValueFrom } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { AddEventComponent } from './add-event/add-event.component';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -152,13 +152,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
             if(isDashboardPage){
               this.router.navigate(['/pages', 'dashboard'], {
-                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName},   // ➜ /pages/dashboard?raceId=10&class=c
-                onSameUrlNavigation: 'reload'  // ✅ บังคับให้ reload component เมื่อ navigate ไปยัง route เดิม
+                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName, statusRace: 'live'},
+                onSameUrlNavigation: 'reload'
               });
             }
-            // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
-            // this.total = count;
-            // this.dataSource.data = this.loggers;
           },
           error: (e) => console.error(e),
         });
@@ -240,35 +237,19 @@ export class FullMainComponent implements OnInit, OnDestroy {
     );
   }
 
-
-  // navigateToDashboard(race:any) {
-  //   this.router.navigate(['/pages', 'dashboard'], {
-  //     queryParams: { raceID: race}
-  //   });
-  // }
   navigateToDashboard(race: any = 0) {
-    // ถ้า e.value เป็น string:
-    const selectedSession: string =
-      String(this.SessionList.find(e => String(e.value) === String(race))?.name ?? '');
-
-    // ถ้า e.value เป็น number ให้ใช้:  e => Number(e.value) === Number(race)
-
+    const selectedSession: string = String(this.SessionList.find(e => String(e.value) === String(race))?.name ?? '');
     const classSub = insideParen(selectedSession); // string | null
     const qp: any ={}
     if(race != 0){
-      // ส่งเฉพาะค่าที่มีจริง
       qp.raceId = race ;
     }
     if (classSub) {
-      // ใช้ 'klass' ให้สอดคล้องระบบ (หรือเปลี่ยนเป็น 'class' ถ้าทั้งระบบใช้ชื่อนี้)
       qp.class = classSub;
-      // ถ้าต้องการ 'class' จริง ๆ: qp.class = classSub;
     }
 
       const currentPath = this.router.url;
       const isDashboardPage = currentPath.includes('/pages/dashboard');
-      // if(isDashboardPage){
-        // ส่งเป็น UTC เสมอ
         const now = toDate(this.time.now());
         this.eventService.getLoggerByDate(now).subscribe({
           next: ({ items, count }) => {
@@ -279,29 +260,33 @@ export class FullMainComponent implements OnInit, OnDestroy {
             this.eventNameSelect = items[0].eventName;
             this.SegmentNameSelect = items[0].segmentValue;
             this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";
-
-            // if(isDashboardPage){
               this.router.navigate(['/pages', 'dashboard'], {
-                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue },   // ➜ /pages/dashboard?raceId=10&class=c
-                onSameUrlNavigation: 'reload'  // ✅ บังคับให้ reload component เมื่อ navigate ไปยัง route เดิม
+                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, statusRace: 'live'},
               });
-            // }
-            // this.loggers = items.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
-            // this.total = count;
-            // this.dataSource.data = this.loggers;
           },
           error: (e) => console.error(e),
         });
-      // }
-    // this.router.navigate(
-    //   ['/pages', 'dashboard'],
-    //   { queryParams: qp, queryParamsHandling: 'merge' }
-    // );
   }
 
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
   navigateToListAllSeason() { this.router.navigate(['/pages', 'event']); }
-  navigateToListSettingLogger() { this.router.navigate(['/pages', 'setting-logger']); }
+  navigateToListSettingLogger() {
+    const now = toDate(this.time.now());
+    this.eventService.getLoggerByDate(now).subscribe({
+      next: ({ items, count }) => {
+        if (items.length <= 0){
+          return
+        }
+        this.eventNameSelect = items[0].eventName;
+        this.router.navigate(['/pages', 'setting-logger'], {
+          queryParams: { eventId: items[0].eventId, circuitName: items[0].circuitName},
+          onSameUrlNavigation: 'reload'
+        });
+      },
+      error: (e) => console.error(e),
+    });
+  }
+
   navigateToListConfigAFR2() { this.router.navigate(['/pages', 'admin-config']); }
   navigateToListConfigAFR(enterAnimationDuration: string, exitAnimationDuration: string) {
     // this.router.navigate(['/pages', 'setting-config-afr']);
@@ -320,17 +305,27 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
   navigateToLogout() { this.router.navigate(['/login']); }
 
-  navigateToRace(eventId: any, eventName: String, activeRace: any, circuitName: String) {
+  async navigateToRace(eventId: any, eventName: String, activeRace: any, circuitName: String) {
     this.eventNameSelect = eventName;
     let statusRace = 'live'
     if(activeRace == 0){
       statusRace = 'history'
     }
 
-    this.router.navigate(['/pages', 'race'], {
-      queryParams: { eventId, statusRace, circuitName },
-      onSameUrlNavigation: 'reload'
-    });
+    const isDashboard = await firstValueFrom(this.isDashboard$);
+    const isSettingLogger = await firstValueFrom(this.isSettingLogger$);
+
+    if(isDashboard) {
+      this.router.navigate(['/pages', 'race'], {
+        queryParams: { eventId, statusRace, circuitName },
+        onSameUrlNavigation: 'reload'
+      });
+    }else if(isSettingLogger){
+      this.router.navigate(['/pages', 'setting-logger'], {
+        queryParams: { eventId: eventId, circuitName: circuitName},
+        onSameUrlNavigation: 'reload'
+      });
+    }
   }
 
   navigateToAddSeason(enterAnimationDuration: string, exitAnimationDuration: string): void {

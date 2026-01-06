@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import {
+  MAT_DIALOG_DATA,
   MatDialogClose,
   MatDialogContent,
   MatDialogRef,
@@ -14,6 +15,11 @@ import * as XLSX from 'xlsx';
 import { EventService } from '../../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 
+export interface DialogLoggerData {
+  circuit_name: string;
+  event_id: string;
+}
+
 interface ExcelRow {
   logger: string;      // <- จากไฟล์
   nbr: string | number;
@@ -21,6 +27,8 @@ interface ExcelRow {
   lastname: string;
   class: string;
   team: string;
+  circuit: string;
+  eventId: string;
 }
 export interface ExcelRowPayLoad {
   logger: string;      // <- จากไฟล์
@@ -48,6 +56,9 @@ export class AddLoggerComponent implements OnInit {
   error = '';
   isSubmitting = false;
   readonly dialogRef = inject(MatDialogRef<AddLoggerComponent>);
+  readonly data = inject<DialogLoggerData>(MAT_DIALOG_DATA);
+  circuit_name = this.data.circuit_name;
+  event_id = this.data.event_id;
 
   constructor(private eventService: EventService, private toastr: ToastrService) {}
   ngOnInit() {
@@ -154,7 +165,10 @@ export class AddLoggerComponent implements OnInit {
             lastname: (getByCanon(row, 'lastname') ?? '').toString().trim(),
             class: (getByCanon(row, 'class') ?? '').toString().trim(),
             team: (getByCanon(row, 'team') ?? '').toString().trim(), // ถ้าอยากเก็บทีมด้วย ให้เติมใน interface ด้วย
+            circuit: this.circuit_name,
+            eventId: this.event_id,
           };
+
 
           const empty = !rec.logger && !rec.nbr && !rec.firstname && !rec.lastname && !rec.class;
           return empty ? null : rec;
@@ -189,6 +203,8 @@ export class AddLoggerComponent implements OnInit {
       creat_date: String(r.lastname ?? '').trim(),
       class_type: String(r.class ?? '').trim(),
       team_name: String(r.team ?? '').trim(),
+      circuit: String(r.circuit ?? '').trim(),
+      eventId: Number(r.eventId ?? 0),
     }));
 
 

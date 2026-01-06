@@ -430,12 +430,16 @@ export class EventService {
     );
   }
 
-  getLoggerSetting(params: { classTypes?: string[] }) {
+  getLoggerSetting(params: { circuitName?: string; eventId?: number }) {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_SETTING_LOGGERS);
     let httpParams = new HttpParams();
 
-    if (params.classTypes?.length) {
-      params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct)); // class_type=pickupa&class_type=pickupb
+    if (params.circuitName) {
+      httpParams = httpParams.set('circuit_name', params.circuitName);
+    }
+
+    if (params.eventId !== undefined && params.eventId !== null) {
+      httpParams = httpParams.set('event_id', params.eventId.toString());
     }
 
     return this.http.get<ApiLoggerResponse>(url, { params: httpParams }).pipe(
@@ -456,18 +460,23 @@ export class EventService {
     );
   }
 
-  getLoggersWithAfr(params: { classTypes?: string[]; raceId?: number; limit?: number; offset?: number }) {
+  getLoggersWithAfr(params: { raceId?: number; eventId?: number; circuitName?: string; limit?: number; offset?: number }) {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
     let httpParams = new HttpParams();
-
-    // class_type=...&class_type=...
-    if (params.classTypes?.length) {
-      params.classTypes.forEach(ct => httpParams = httpParams.append('class_type', ct));
-    }
 
     // race_id=...
     if (params.raceId !== undefined && params.raceId !== null) {
       httpParams = httpParams.set('race_id', String(params.raceId));
+    }
+
+    // event_id=...
+    if (params.eventId !== undefined && params.eventId !== null) {
+      httpParams = httpParams.set('event_id', String(params.eventId));
+    }
+
+    // circuit_name=...
+    if (params.circuitName) {
+      httpParams = httpParams.set('circuit_name', params.circuitName);
     }
 
     if (params.limit)  httpParams = httpParams.set('limit',  String(params.limit));

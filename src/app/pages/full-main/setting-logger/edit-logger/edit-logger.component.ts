@@ -40,6 +40,9 @@ export class EditLoggerComponent implements OnInit {
   classValue = this.data.classValue;
   teamName = this.data.teamName;
   classList = CLASS_SEGMENT_LIST;
+  circuit_name = this.data.circuit_name;
+  event_id = this.data.event_id;
+
 
 
   constructor(private eventService: EventService, private toastr: ToastrService) {}
@@ -57,6 +60,8 @@ export class EditLoggerComponent implements OnInit {
       last_name: this.lastName,
       class_type: this.classValue,
       team_name: this.teamName,
+      circuit: this.circuit_name,
+      eventId: Number(this.event_id),
       creat_date: new Date()
     }
 

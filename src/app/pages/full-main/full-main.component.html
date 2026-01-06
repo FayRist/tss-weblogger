@@ -10,7 +10,7 @@
         <div class="row w-100">
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
-            @if ((isDashboard$  | async) || (isRace$  | async)) {
+            @if ((isDashboard$  | async) || (isRace$  | async) || (isSettingLogger$  | async) ) {
                 <mat-chip matButton  [matMenuTriggerFor]="Event"  style="width: auto;">Event : {{ eventNameSelect }}</mat-chip>
                 <mat-menu #Event="matMenu">
                   @for (eventMenuBar of eventList; track eventMenuBar.value) {

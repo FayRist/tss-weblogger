@@ -34,6 +34,10 @@ export class DeleteLoggerComponent implements OnInit {
   logger_id = this.data.loggerId;
   id = this.data.id;
   car_number = this.data.carNumber;
+  circuit_name = this.data.circuit_name;
+  event_id = this.data.event_id;
+
+
   constructor(private eventService: EventService, private authService: AuthService,private toastr: ToastrService) {}
 
   ngOnInit() {
@@ -53,6 +57,8 @@ export class DeleteLoggerComponent implements OnInit {
       id: this.id,   // <- map ชื่อคีย์
       logger_id: this.logger_id,   // <- map ชื่อคีย์
       car_number: this.car_number,
+      circuit: this.circuit_name,
+      eventId: Number(this.event_id),
     }
 
     this.eventService.deleteLogger(payload).subscribe(
