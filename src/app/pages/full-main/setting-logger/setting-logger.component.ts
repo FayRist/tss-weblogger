@@ -169,7 +169,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
     dialogRef.afterClosed().subscribe(result => {
       // console.log('The dialog was closed');
       if (result == 'success') {
-        this.toastr.success(`แก้ไขข้ออมูล ${arrayData[0].loggerId} สำเร็จ`);
+        this.toastr.success(`แก้ไขข้อมูล Logger ${arrayData[0].loggerId} สำเร็จ`);
         this.loadLogger(this.circuitName, this.CurrentEventId);
       }
     });
@@ -193,7 +193,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       // console.log('The dialog was closed');
       if (result == 'success') {
         this.loadLogger(this.circuitName, this.CurrentEventId);
-        this.toastr.success('แก้ไข Logger เรียบร้อย')
+        // this.toastr.success('แก้ไข Logger เรียบร้อย')
 
       }
     });

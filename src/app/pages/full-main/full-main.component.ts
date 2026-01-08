@@ -237,6 +237,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
     );
   }
 
+
   navigateToDashboard(race: any = 0) {
     const selectedSession: string = String(this.SessionList.find(e => String(e.value) === String(race))?.name ?? '');
     const classSub = insideParen(selectedSession); // string | null
@@ -247,25 +248,24 @@ export class FullMainComponent implements OnInit, OnDestroy {
     if (classSub) {
       qp.class = classSub;
     }
+  }
 
-      const currentPath = this.router.url;
-      const isDashboardPage = currentPath.includes('/pages/dashboard');
-        const now = toDate(this.time.now());
-        this.eventService.getLoggerByDate(now).subscribe({
-          next: ({ items, count }) => {
-            if (items.length <= 0){
-              return
-            }
-
-            this.eventNameSelect = items[0].eventName;
-            this.SegmentNameSelect = items[0].segmentValue;
-            this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";
-              this.router.navigate(['/pages', 'dashboard'], {
-                queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, statusRace: 'live'},
-              });
-          },
-          error: (e) => console.error(e),
-        });
+  navigateToDashboardOnDate() {
+      const now = toDate(this.time.now());
+      this.eventService.getLoggerByDate(now).subscribe({
+        next: ({ items, count }) => {
+          if (items.length <= 0){
+            return
+          }
+          this.eventNameSelect = items[0].eventName;
+          this.SegmentNameSelect = items[0].segmentValue;
+          this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";
+            this.router.navigate(['/pages', 'dashboard'], {
+              queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, statusRace: 'live'},
+            });
+        },
+        error: (e) => console.error(e),
+      });
   }
 
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }

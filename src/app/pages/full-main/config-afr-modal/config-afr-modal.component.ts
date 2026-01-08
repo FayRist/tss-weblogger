@@ -69,6 +69,10 @@ export class ConfigAfrModalComponent  implements OnInit {
   countMin: number = 0;
   afrLimit: number = 0;
 
+  afrGraphsMinLimit: number = 0;
+  afrGraphsMaxLimit: number = 0;
+
+
   CountMaxSlider = 30;
   CountMinSlider = 0;
   CountStepSlider = 1;
@@ -80,6 +84,12 @@ export class ConfigAfrModalComponent  implements OnInit {
   LimitStepSlider = 1;
   LimitThumbLabelSlider = true;
   LimitShowTicksSlider = true;
+
+  LimitGraphsMaxSlider = 30;
+  LimitGraphsMinSlider = 0;
+  LimitGraphsStepSlider = 1;
+  LimitGraphsThumbLabelSlider = true;
+  LimitGraphsShowTicksSlider = true;
 
   configAFR: any;
   private subscriptions: Subscription[] = [];
@@ -93,13 +103,18 @@ export class ConfigAfrModalComponent  implements OnInit {
 
   getAllConfig(){
 
-    const form_code = `max_count, limit_afr`
+    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
         this.configAFR = [];
         this.configAFR = config;
         this.afrLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value;
         this.countMax = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value;
+
+        this.afrGraphsMinLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value;
+        this.afrGraphsMaxLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value;
+
+
       },
       error => {
         console.error('Error loading matchList:', error);
@@ -114,6 +129,8 @@ export class ConfigAfrModalComponent  implements OnInit {
   submitUpdateConfig(){
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value =this.afrLimit.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value =this.countMax.toString();
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value =this.afrGraphsMinLimit.toString();
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value =this.afrGraphsMaxLimit.toString();
 
     this.eventService.updateConfig(this.configAFR).subscribe(
         response => {

@@ -185,8 +185,8 @@ export class EventService {
   getDropDownSession(eventId: any, raceId:any): Observable<optionModel[]> {
     const seasonURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.EVENT_SESSION_DROPDOWN);
       const payload = {
-        event_id: eventId,
-        race_id: raceId
+        eventid: eventId,
+        seasonid: raceId
       }
       return this.http.post<ApiDropDownResponse>(seasonURL, payload).pipe(
         map(response => {

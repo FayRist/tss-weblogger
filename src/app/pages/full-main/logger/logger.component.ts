@@ -410,6 +410,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   afrLimit: number = 0;
   countMax: number = 0;
+  afrGraphsMinLimit: number = 0;
+  afrGraphsMaxLimit: number = 0;
 
   configAFR: any;
 
@@ -1435,13 +1437,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   async loadAndApplyConfig() {
-    const form_code = `max_count, limit_afr`
+    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
         this.configAFR = [];
         this.configAFR = config;
         this.afrLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value);
         this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
+
+        this.afrGraphsMinLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value);
+        this.afrGraphsMaxLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value);
+
 
         this.detailOpts = {
           ...this.detailOpts,
@@ -1745,7 +1751,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                 const buildStartTime = performance.now();
                 this.buildMapFromLaps(this.raceLab, dataKey);
                 this.buildChartsFromLaps(this.raceLab);
-                
+
                 // แสดงเส้นทางใน Leaflet map (ถ้ามี map ถูก initialize แล้ว)
                 if (this.map) {
                   try {
@@ -1757,7 +1763,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                         this.map.removeLayer(this.trackLine);
                         this.trackLine = undefined;
                       }
-                      
+
                       // สร้าง polyline segments ตามสี AFR
                       this.createColoredPolyline(allLapPoints);
                       console.log(`Added ${allLapPoints.length} points to Leaflet map with AFR coloring`);
@@ -1780,7 +1786,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                     this.loadHistoryDataToCanvasMap(allLapPoints);
                   }
                 }
-                
+
                 const buildTime = performance.now() - buildStartTime;
                 console.log(`Built map and charts in ${buildTime.toFixed(2)}ms`);
 
@@ -3414,9 +3420,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       x: this.toMillis(p.ts),
       y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
     }));
-    
+
     const downsampledData = this.downsampleChartData(rawData, MAX_POINTS_PER_SERIES);
-    
+
     const detailSeries = [{
       name: `Lap ${lapIndex + 1}`,
       type: 'line',
@@ -3451,7 +3457,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
       });
     });
-    
+
     const downsampledBrushData = this.downsampleChartData(brushData, MAX_POINTS_PER_SERIES);
 
     // อัปเดตกราฟ detail และ brush
@@ -3509,10 +3515,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         x: this.toMillis(p.ts),
         y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
       }));
-      
+
       // Downsample แต่ละ lap
       const downsampledData = this.downsampleChartData(rawData, MAX_POINTS_PER_SERIES);
-      
+
       return {
         name: `Lap ${idx+1}`,
         type: 'line',
@@ -3542,7 +3548,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         y: Number.isFinite(p.afrValue) ? (p.afrValue as number) : null
       });
     }));
-    
+
     // Downsample brush data
     const downsampledBrushData = this.downsampleChartData(brushData, MAX_POINTS_FOR_BRUSH);
 
@@ -3894,13 +3900,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (keys?.length === 1 && keys[0] === this.selectedRaceKey && this.raceLab && this.raceLab.length) {
       return;
     }
-    
+
     // ถ้า filterData == false ให้ใช้ทุก keys ที่มีใน allDataLogger
     let keysToUse = keys;
     if (this.filterData == false) {
       keysToUse = Object.keys(this.allDataLogger);
     }
-    
+
     const mkSeries = (k: string) => {
       const data = (this.allDataLogger[k] || []);
       const seriesData = data.map((p, idx) => {
@@ -4360,14 +4366,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!Array.isArray(this.currentPoints) || !this.currentPoints.length || !keys.length) {
       return [];
     }
-    
+
     // ถ้า filterData == false ให้แสดงทุก keys แทนที่จะกรองตาม selectedKeys
     let keysToUse = keys;
     if (this.filterData == false) {
       // ใช้ทุก keys ที่มีใน options
       keysToUse = this.options.map(o => o.value) as ChartKey[];
     }
-    
+
     return keysToUse.map(k => {
       const field = this.fieldMap[k];
       const name = this.options.find(o => o.value === k)?.label ?? k;
@@ -5829,7 +5835,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     });
     this.trackLineSegments = [];
-    
+
     if (this.trackLine && this.map.hasLayer(this.trackLine)) {
       this.map.removeLayer(this.trackLine);
       this.trackLine = undefined;
@@ -5887,7 +5893,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       .map(p => this.getLatLon(p))
       .filter((ll): ll is {lat: number; lon: number} => ll !== null)
       .map(ll => L.latLng(ll.lat, ll.lon));
-    
+
     if (allLatLngs.length > 0) {
       const bounds = L.latLngBounds(allLatLngs);
       this.map.fitBounds(bounds.pad(0.1));

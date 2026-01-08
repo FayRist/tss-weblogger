@@ -48,6 +48,26 @@
 
               </div>
 
+              <div class="col-12">
+                <div class="slider-label-container">
+                  <label id="slider-name-label" class="slider-name-label">AFR (Graphs)</label>
+                  <label class="slider-value-label">{{afrGraphsMinLimit}} - {{afrGraphsMaxLimit}}</label>
+                </div>
+                <mat-slider
+                    class="slider-margin"
+                    [max]="LimitGraphsMaxSlider"
+                    [min]="LimitGraphsMinSlider"
+                    [step]="LimitGraphsStepSlider"
+                    [discrete]="LimitGraphsThumbLabelSlider"
+                    [showTickMarks]="LimitGraphsShowTicksSlider">
+
+                  <input [(ngModel)]="afrGraphsMinLimit" matSliderStartThumb #sliderGraphLimitMin>
+                  <input [(ngModel)]="afrGraphsMaxLimit" matSliderEndThumb #sliderGraphLimitMax>
+
+                </mat-slider>
+
+              </div>
+
               <!-- <div class="col-4">
                 <mat-card class="zone zone-picker">
                     <mat-form-field>
