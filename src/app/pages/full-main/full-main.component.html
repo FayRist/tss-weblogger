@@ -3,6 +3,7 @@
     <button (click)="drawer.toggle()" mat-icon-button class="example-icon" aria-label="menu">
       <mat-icon>menu</mat-icon>
     </button>
+
 <!-- ถ้าเป็น /pages/dashboard ให้โชว์ฟอร์ม; ถ้าไม่ใช่ ให้โชว์ข้อความ Data Logger -->
       <span>Data Logger</span>
 
@@ -11,7 +12,7 @@
           <mat-chip-set aria-label="Fish selection">
             <div class="col-6">
             @if ((isDashboard$  | async) || (isRace$  | async) || (isSettingLogger$  | async) ) {
-                <mat-chip matButton  [matMenuTriggerFor]="Event"  style="width: auto;">Event : {{ eventNameSelect }}</mat-chip>
+                <mat-chip matButton  [matMenuTriggerFor]="Event"  style="width: auto; display: inline-flex; align-items: center;">Event : {{ eventNameSelect }} <mat-icon style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon></mat-chip>
                 <mat-menu #Event="matMenu">
                   @for (eventMenuBar of eventList; track eventMenuBar.value) {
                   <button mat-menu-item (click)="navigateToRace(eventMenuBar.value, eventMenuBar.name, eventMenuBar.active, eventMenuBar.c_name)"> {{eventMenuBar.name}} </button>
@@ -27,13 +28,15 @@
                   }
                 </mat-menu> -->
 
-                <mat-chip matButton  [matMenuTriggerFor]="Category" style="width: auto;">Category : {{ SessionNameSelect }}</mat-chip>
+                <mat-chip matButton  [matMenuTriggerFor]="Category" style="width: auto; display: inline-flex; align-items: center;">Category : {{ SessionNameSelect }} <mat-icon style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon></mat-chip>
                 <mat-menu #Category="matMenu">
                   @for (SessionMenuBar of SessionList; track SessionMenuBar.value) {
                   <button mat-menu-item (click)="navigateToDashboard(SessionMenuBar.value)"> {{SessionMenuBar.name}} </button>
                   }
                 </mat-menu>
             }
+
+
                 <mat-chip color="primary" disabled>
                   {{ currentTime() | date:'dd MMM, yyyy HH:mm:ss' }}
                 </mat-chip>
@@ -44,6 +47,11 @@
       </div>
     <span class="example-spacer"></span>
 
+    @if (isLogger$ | async) {
+      <button type="button" class="btn btn-danger w-10 h-75 text-light" (click)="navigateBack()">
+        ย้อนกลับ
+      </button>
+    }
     <button mat-icon-button class="example-icon" aria-label="profile" [matMenuTriggerFor]="profileMenu">
       <mat-icon>person</mat-icon>
     </button>

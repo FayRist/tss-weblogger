@@ -80,6 +80,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   sortStatus:string = '';
   showRoutePath: boolean = true;
+  isSortLocked: boolean = false; // สถานะล็อคตำแหน่งการ sort
+  lockedLoggersSnapshot: LoggerItem[] | null = null; // เก็บ snapshot ของตำแหน่งที่ล็อค
 
   displayedColumns: string[] = [
     'carNumber',
@@ -177,6 +179,36 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateView(allLoggers: LoggerItem[] = []): void {
     const filters = this.filterLogger.value ?? ['all'];
+
+    // ถ้าล็อคตำแหน่งอยู่ ให้ใช้ snapshot และอัปเดตข้อมูลจาก allLoggers แต่คงตำแหน่งเดิม
+    if (this.isSortLocked && this.lockedLoggersSnapshot) {
+      // สร้าง Map จาก allLoggers เพื่อค้นหาข้อมูลล่าสุด
+      const loggerMap = new Map<number, LoggerItem>();
+      allLoggers.forEach(logger => {
+        loggerMap.set(logger.loggerId, logger);
+      });
+
+      // อัปเดตข้อมูลใน snapshot แต่คงตำแหน่งเดิม
+      const updatedSnapshot = this.lockedLoggersSnapshot.map(lockedLogger => {
+        const latestLogger = loggerMap.get(lockedLogger.loggerId);
+        if (latestLogger) {
+          // อัปเดตข้อมูลจาก allLoggers แต่คงตำแหน่งเดิม
+          return {
+            ...latestLogger,
+            // เก็บตำแหน่งเดิมไว้
+          };
+        }
+        return lockedLogger;
+      }).filter(logger => {
+        // กรองตาม filter
+        return this.matchesFilters(logger, filters);
+      });
+
+      this.onShowAllLoggers = updatedSnapshot;
+      this.lockedLoggersSnapshot = updatedSnapshot; // อัปเดต snapshot
+      this.dataSource.data = this.onShowAllLoggers;
+      return;
+    }
 
     // FILTER
     let filtered = allLoggers.filter(x => this.matchesFilters(x, filters));
@@ -285,6 +317,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private applyFilter(value: FilterKey) {
+    // ถ้าล็อคตำแหน่งอยู่ ให้ใช้ updateView เพื่อจัดการ snapshot
+    if (this.isSortLocked && this.lockedLoggersSnapshot) {
+      this.updateView(this.allLoggers);
+      return;
+    }
+
     let filtered: LoggerItem[] = [];
     switch (value) {
       case 'all':
@@ -336,6 +374,25 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   /** Announce the change in sort state for assistive technology. */
   announceSortChange(sortState: Sort) {
+    // ถ้าล็อคตำแหน่งอยู่ ให้ไม่ให้มีการ sort
+    if (this.isSortLocked) {
+      // รีเซ็ต sort กลับไปเป็นสถานะเดิม (ไม่มีการ sort)
+      if (this.sort) {
+        this.sort.sort({ id: '', start: 'asc', disableClear: false });
+        this.sort.active = '';
+        this.sort.direction = '';
+        this.dataSource.sort = this.sort;
+        this.dataSource.sort = null; // ปิดการ sort ชั่วคราว
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    // เปิดการ sort กลับมาใหม่ถ้ายังไม่ได้เปิด
+    if (this.dataSource.sort === null && this.sort) {
+      this.dataSource.sort = this.sort;
+    }
+
     // This example uses English messages. If your application supports
     // multiple language, you would internationalize these strings.
     // Furthermore, you can customize the message to add additional
@@ -345,6 +402,35 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     } else {
       this._liveAnnouncer.announce('Sorting cleared');
     }
+  }
+
+  /** Toggle สถานะล็อคตำแหน่งการ sort */
+  toggleSortLock() {
+    this.isSortLocked = !this.isSortLocked;
+    
+    if (this.isSortLocked) {
+      // เมื่อล็อค ให้เก็บ snapshot ของตำแหน่งปัจจุบัน
+      this.lockedLoggersSnapshot = [...this.onShowAllLoggers]; // deep copy
+      
+      // รีเซ็ต sort state
+      if (this.sort) {
+        this.sort.active = '';
+        this.sort.direction = '';
+        this.dataSource.sort = null;
+      }
+    } else {
+      // เมื่อปลดล็อค ให้ลบ snapshot และเปิดการ sort กลับมา
+      this.lockedLoggersSnapshot = null;
+      
+      if (this.sort) {
+        this.dataSource.sort = this.sort;
+      }
+      
+      // เรียงลำดับใหม่ตามปกติ
+      this.updateView(this.allLoggers);
+    }
+    
+    this.cdr.markForCheck();
   }
   onToggleSortCarNumber() {
     // ใช้การเรียงลำดับแบบเดียวกัน (Count → Status → NBR.)
@@ -580,7 +666,35 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     if (hasUpdate) {
       // อัปเดต allLoggers ด้วย array ใหม่
       this.allLoggers = updatedLoggers;
-      this.updateView(this.allLoggers);
+      
+      // ถ้าล็อคตำแหน่งอยู่ ให้อัปเดต snapshot แทน
+      if (this.isSortLocked && this.lockedLoggersSnapshot) {
+        // สร้าง Map จาก allLoggers เพื่อค้นหาข้อมูลล่าสุด
+        const loggerMap = new Map<number, LoggerItem>();
+        this.allLoggers.forEach(logger => {
+          loggerMap.set(logger.loggerId, logger);
+        });
+
+        // อัปเดตข้อมูลใน snapshot แต่คงตำแหน่งเดิม
+        const updatedSnapshot = this.lockedLoggersSnapshot.map(lockedLogger => {
+          const latestLogger = loggerMap.get(lockedLogger.loggerId);
+          if (latestLogger) {
+            // อัปเดตข้อมูลจาก allLoggers แต่คงตำแหน่งเดิม
+            return {
+              ...latestLogger,
+            };
+          }
+          return lockedLogger;
+        });
+
+        this.lockedLoggersSnapshot = updatedSnapshot;
+        this.onShowAllLoggers = updatedSnapshot;
+        this.dataSource.data = this.onShowAllLoggers;
+      } else {
+        // ถ้าไม่ล็อค ให้ทำงานปกติ
+        this.updateView(this.allLoggers);
+      }
+      
       // ใช้ detectChanges() เพื่อให้อัปเดต view ทันที (เหมาะกับ real-time updates)
       this.cdr.detectChanges();
     }

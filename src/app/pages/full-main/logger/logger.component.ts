@@ -1448,10 +1448,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         // ดึงค่าจาก config พร้อม fallback เป็น default
         const minConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_min');
         const maxConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_max');
-        
+
         const minValue = minConfig ? Number(minConfig.value) : null;
         const maxValue = maxConfig ? Number(maxConfig.value) : null;
-        
+
         // ตรวจสอบว่าค่าถูกต้อง (ไม่ใช่ null, undefined, NaN) และใช้ default ถ้าไม่ valid
         this.afrGraphsMinLimit = (minValue !== null && minValue !== undefined && Number.isFinite(minValue)) ? minValue : 0;
         this.afrGraphsMaxLimit = (maxValue !== null && maxValue !== undefined && Number.isFinite(maxValue)) ? maxValue : 30;
@@ -1505,7 +1505,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         // Fallback to default values if API fails
         this.afrGraphsMinLimit = 0;
         this.afrGraphsMaxLimit = 30;
-        
+
         // อัปเดตแกน Y ด้วยค่า default
         this.detailOpts = {
           ...this.detailOpts,
@@ -6035,11 +6035,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     </div>`;
   }
   //////////// RACE /////////////////////////////////
-
-  navigateToDashboard() {
-    this.router.navigate(['/pages', 'dashboard']);
-  }
-
   formatGpsTimeToText(timeStr: string): string {
     const hour = timeStr.slice(0, 2);
     const minute = timeStr.slice(2, 4);

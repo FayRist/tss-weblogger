@@ -9,7 +9,7 @@ import { MatIcon } from '@angular/material/icon';
 import { MatActionList } from '@angular/material/list';
 import { MatDrawer, MatDrawerContainer } from '@angular/material/sidenav';
 import { MatButtonModule } from '@angular/material/button';
-import { AsyncPipe, DatePipe } from '@angular/common';
+import { AsyncPipe, DatePipe, Location } from '@angular/common';
 import { MaterialModule } from '../../material.module';
 import { AuthService, Role } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
@@ -45,6 +45,8 @@ type UrlParams = {
   raceId:  number | null;
   klass:   String | null;
   segment:    String | null;
+  circuitName:    String | null;
+  statusRace :    String | null;
 };
 const KEY = 'dashboard.lastParams';
 
@@ -98,12 +100,14 @@ export class FullMainComponent implements OnInit, OnDestroy {
   isDashboard$: Observable<boolean>;
   isRace$: Observable<boolean>;
   isSettingLogger$: Observable<boolean>;
+  isLogger$: Observable<boolean>;
 
   constructor(private router: Router
     , private auth: AuthService
     , private route: ActivatedRoute
     , private eventService: EventService
-    , private toastr: ToastrService) {
+    , private toastr: ToastrService
+    , private location: Location) {
     this.isDashboard$ = this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
@@ -120,6 +124,12 @@ export class FullMainComponent implements OnInit, OnDestroy {
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
       map(() => this.router.url.startsWith('/pages/setting-logger'))    // หรือจะใช้ regex ก็ได้
+    );
+
+    this.isLogger$ = this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
+      map(() => this.router.url.startsWith('/pages/logger'))    // หรือจะใช้ regex ก็ได้
     );
   }
 
@@ -230,24 +240,69 @@ export class FullMainComponent implements OnInit, OnDestroy {
         const raceId  = num(params.get('raceId')  ?? qp.get('raceId'));
         const klass   = (params.get('class')     ?? qp.get('class'));
         const segment    = (params.get('segment')      ?? qp.get('segment'));
+        const circuitName    = (params.get('circuitName')      ?? qp.get('circuitName'));
+        const statusRace    = (params.get('statusRace')      ?? qp.get('statusRace'));
 
-        const out: UrlParams = { eventId, raceId, klass, segment };
+        const out: UrlParams = { eventId, raceId, klass, segment, circuitName, statusRace };
         return out;
       })
     );
   }
 
 
-  navigateToDashboard(race: any = 0) {
+  async navigateToDashboard(race: any = 0) {
     const selectedSession: string = String(this.SessionList.find(e => String(e.value) === String(race))?.name ?? '');
     const classSub = insideParen(selectedSession); // string | null
-    const qp: any ={}
-    if(race != 0){
-      qp.raceId = race ;
+
+    const isDashboard = await firstValueFrom(this.isDashboard$);
+    if (!isDashboard) {
+      return;
     }
+
+    // ดึงค่าปัจจุบันจาก URL params
+    const currentParams = await firstValueFrom(this.urlParams$);
+    const { eventId, segment, circuitName, statusRace } = currentParams;
+
+    // สร้าง query params ใหม่โดยใช้ค่าจาก URL params ที่มีอยู่ และอัปเดตเฉพาะค่าที่เปลี่ยน
+    const queryParams: any = {};
+
+    if (eventId) {
+      queryParams.eventId = eventId;
+    }
+
+    if (race != 0) {
+      queryParams.raceId = race;
+    }
+
+    if (segment) {
+      queryParams.segment = segment;
+    }
+
     if (classSub) {
-      qp.class = classSub;
+      queryParams.class = classSub;
     }
+
+    if (circuitName) {
+      queryParams.circuitName = circuitName;
+    }
+
+    if (statusRace) {
+      queryParams.statusRace = statusRace;
+    }
+
+    // อัปเดต UI state
+    if (segment) {
+      this.SegmentNameSelect = segment;
+    }
+    if (selectedSession) {
+      this.SessionNameSelect = selectedSession;
+    }
+
+    // Navigate และ reload หน้า
+    this.router.navigate(['/pages', 'dashboard'], {
+      queryParams: queryParams,
+      onSameUrlNavigation: 'reload'
+    });
   }
 
   navigateToDashboardOnDate() {
@@ -261,8 +316,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
           this.SegmentNameSelect = items[0].segmentValue;
           this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";
             this.router.navigate(['/pages', 'dashboard'], {
-              queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, statusRace: 'live'},
+              queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName, statusRace: 'live'},
+
             });
+
         },
         error: (e) => console.error(e),
       });
@@ -304,6 +361,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   }
   navigateToLogout() { this.router.navigate(['/login']); }
+
+  navigateBack(): void {
+    this.location.back();
+  }
 
   async navigateToRace(eventId: any, eventName: String, activeRace: any, circuitName: String) {
     this.eventNameSelect = eventName;
@@ -416,6 +477,8 @@ export class FullMainComponent implements OnInit, OnDestroy {
       raceId:  this.toNum(pm.get('raceId')),
       klass:   (klassRaw && klassRaw.trim() !== '') ? klassRaw : null,
       segment: (pm.get('segment') && pm.get('segment')!.trim() !== '') ? pm.get('segment') : null,
+      circuitName: (pm.get('circuitName') && pm.get('circuitName')!.trim() !== '') ? pm.get('circuitName') : null,
+      statusRace: (pm.get('statusRace') && pm.get('statusRace')!.trim() !== '') ? pm.get('statusRace') : null,
     };
   }
 

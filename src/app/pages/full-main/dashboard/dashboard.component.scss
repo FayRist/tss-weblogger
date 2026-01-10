@@ -188,3 +188,10 @@ td.mat-mdc-cell{
   border-radius: 4px;       /* (แนะนำ) ทำให้ขอบมนสวยงาม */
 
 }
+
+/* ปิดการใช้งาน sort headers เมื่อล็อคตำแหน่ง */
+:host ::ng-deep table.sort-locked .mat-sort-header {
+  pointer-events: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
