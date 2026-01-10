@@ -1445,12 +1445,25 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.afrLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value);
         this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
 
-        this.afrGraphsMinLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value);
-        this.afrGraphsMaxLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value);
+        // ดึงค่าจาก config พร้อม fallback เป็น default
+        const minConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_min');
+        const maxConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_max');
+        
+        const minValue = minConfig ? Number(minConfig.value) : null;
+        const maxValue = maxConfig ? Number(maxConfig.value) : null;
+        
+        // ตรวจสอบว่าค่าถูกต้อง (ไม่ใช่ null, undefined, NaN) และใช้ default ถ้าไม่ valid
+        this.afrGraphsMinLimit = (minValue !== null && minValue !== undefined && Number.isFinite(minValue)) ? minValue : 0;
+        this.afrGraphsMaxLimit = (maxValue !== null && maxValue !== undefined && Number.isFinite(maxValue)) ? maxValue : 30;
 
-
+        // อัปเดตแกน Y ของกราฟหลัก (detail)
         this.detailOpts = {
           ...this.detailOpts,
+          yaxis: {
+            ...this.detailOpts.yaxis,
+            min: this.afrGraphsMinLimit,
+            max: this.afrGraphsMaxLimit
+          },
           annotations: {
             yaxis: [
               {
@@ -1472,11 +1485,46 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             ]
           }
         };
+
+        // อัปเดตแกน Y ของกราฟล่าง (brush)
+        this.brushOpts = {
+          ...this.brushOpts,
+          yaxis: {
+            ...this.brushOpts.yaxis,
+            min: this.afrGraphsMinLimit,
+            max: this.afrGraphsMaxLimit
+          }
+        };
+
+        // รีเฟรชกราฟเพื่อให้การเปลี่ยนแปลงมีผล
+        this.refreshDetail();
+        this.refreshBrush();
       },
       error => {
         console.error('Error loading matchList:', error);
-        // Fallback to mock data if API fails
-        // this.matchList = this.eventService.getMatchSync();
+        // Fallback to default values if API fails
+        this.afrGraphsMinLimit = 0;
+        this.afrGraphsMaxLimit = 30;
+        
+        // อัปเดตแกน Y ด้วยค่า default
+        this.detailOpts = {
+          ...this.detailOpts,
+          yaxis: {
+            ...this.detailOpts.yaxis,
+            min: this.afrGraphsMinLimit,
+            max: this.afrGraphsMaxLimit
+          }
+        };
+        this.brushOpts = {
+          ...this.brushOpts,
+          yaxis: {
+            ...this.brushOpts.yaxis,
+            min: this.afrGraphsMinLimit,
+            max: this.afrGraphsMaxLimit
+          }
+        };
+        this.refreshDetail();
+        this.refreshBrush();
       }
     );
     this.subscriptions.push(MatchSub);
@@ -4404,7 +4452,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       series,
       colors: colorArr.length ? colorArr : PAL.series.slice(0, series.length),
       stroke: { ...this.detailOpts.stroke, curve: 'smooth', width: widthArr, dashArray: dashArr },
-
+      // รักษาค่า yaxis.min และ yaxis.max ที่ตั้งไว้จาก config
+      yaxis: {
+        ...this.detailOpts.yaxis,
+        min: this.afrGraphsMinLimit ?? 0,
+        max: this.afrGraphsMaxLimit ?? 30
+      },
       annotations: {
         yaxis: [
           {
@@ -4444,7 +4497,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ...this.brushOpts,
       series,
       colors: colorArr.length ? colorArr : [PAL.series[1]],
-      stroke: { ...this.brushOpts.stroke, width: widthArr, dashArray: dashArr }
+      stroke: { ...this.brushOpts.stroke, width: widthArr, dashArray: dashArr },
+      // รักษาค่า yaxis.min และ yaxis.max ที่ตั้งไว้จาก config
+      yaxis: {
+        ...this.brushOpts.yaxis,
+        min: this.afrGraphsMinLimit ?? 0,
+        max: this.afrGraphsMaxLimit ?? 30
+      }
     };
   }
 

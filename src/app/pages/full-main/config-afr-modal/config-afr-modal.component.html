@@ -3,7 +3,7 @@
 </h1>
 
 <mat-dialog-content>
-        <div class="card card-bg-transparen">
+        <div class="card card-bg-transparen" *ngIf="isDataLoaded">
           <div class="card-body">
             <div class="row">
               <div class="col-12">
@@ -61,8 +61,8 @@
                     [discrete]="LimitGraphsThumbLabelSlider"
                     [showTickMarks]="LimitGraphsShowTicksSlider">
 
-                  <input [(ngModel)]="afrGraphsMinLimit" matSliderStartThumb #sliderGraphLimitMin>
-                  <input [(ngModel)]="afrGraphsMaxLimit" matSliderEndThumb #sliderGraphLimitMax>
+                  <input [(ngModel)]="afrGraphsMinLimit" matSliderStartThumb>
+                  <input [(ngModel)]="afrGraphsMaxLimit" matSliderEndThumb>
 
                 </mat-slider>
 

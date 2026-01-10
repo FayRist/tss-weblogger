@@ -1,6 +1,7 @@
 import { filter } from 'rxjs/operators';
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { AbstractControl, FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { ThemePalette } from '@angular/material/core';
 import {
@@ -46,6 +47,7 @@ export interface configAFRModel {
     MatCardModule,
     MatCheckboxModule,
     MatSliderModule,
+    CommonModule,
   ],
   templateUrl: './config-afr-modal.component.html',
   styleUrl: './config-afr-modal.component.scss',
@@ -93,9 +95,15 @@ export class ConfigAfrModalComponent  implements OnInit {
 
   configAFR: any;
   private subscriptions: Subscription[] = [];
+  isDataLoaded: boolean = false;
 
 
-  constructor(private eventService: EventService, private authService: AuthService,private toastr: ToastrService) {}
+  constructor(
+    private eventService: EventService, 
+    private authService: AuthService,
+    private toastr: ToastrService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit() {
     this.getAllConfig();
@@ -108,13 +116,29 @@ export class ConfigAfrModalComponent  implements OnInit {
       config => {
         this.configAFR = [];
         this.configAFR = config;
-        this.afrLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value;
-        this.countMax = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value;
+        
+        // แปลงค่า string เป็น number และตั้งค่า
+        const limitAfrItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0];
+        const maxCountItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0];
+        const graphsAfrMinItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0];
+        const graphsAfrMaxItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0];
 
-        this.afrGraphsMinLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value;
-        this.afrGraphsMaxLimit = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value;
+        if (limitAfrItem) {
+          this.afrLimit = Number(limitAfrItem.value) || 0;
+        }
+        if (maxCountItem) {
+          this.countMax = Number(maxCountItem.value) || 0;
+        }
+        if (graphsAfrMinItem) {
+          this.afrGraphsMinLimit = Number(graphsAfrMinItem.value) || 0;
+        }
+        if (graphsAfrMaxItem) {
+          this.afrGraphsMaxLimit = Number(graphsAfrMaxItem.value) || 0;
+        }
 
-
+        // ตั้งค่า flag และ trigger change detection
+        this.isDataLoaded = true;
+        this.cdr.detectChanges();
       },
       error => {
         console.error('Error loading matchList:', error);
