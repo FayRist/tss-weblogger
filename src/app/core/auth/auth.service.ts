@@ -1,12 +1,15 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
+import { hashPassword } from '../../utility/password.util';
+import { EventService } from '../../service/event.service';
 
 export type Role = 'admin' | 'scruitineer';
 export interface AuthState { username: string; role: Role; }
 
+// Password ที่ hash แล้ว (MD5 แล้วตามด้วย SHA256)
 const USERS: Record<string, { password: string; role: Role }> = {
-  admin:       { password: 'pass1235', role: 'admin' },
-  scruitineer: { password: 'pass2356', role: 'scruitineer' },
+  admin:       { password: hashPassword('pass1235'), role: 'admin' },
+  scruitineer: { password: hashPassword('pass2356'), role: 'scruitineer' },
 };
 
 const LS_KEY = 'auth_state_v1';
@@ -15,6 +18,8 @@ const LS_KEY = 'auth_state_v1';
 export class AuthService {
   private _user$ = new BehaviorSubject<AuthState | null>(this.readFromLS());
   user$ = this._user$.asObservable();
+
+  constructor(private eventService: EventService) {  }
 
   private readFromLS(): AuthState | null {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { return null; }
@@ -25,8 +30,24 @@ export class AuthService {
   }
 
   login(username: string, password: string): { ok: boolean; error?: string } {
+
+    const hashedPassword = hashPassword(password);
+    const MatchSub = this.eventService.getUser(username, hashedPassword).subscribe(
+      (config: any) => {
+        console.log(config);
+
+      },
+      error => {
+          console.error('Error loading matchList:', error);
+      }
+    );
+
     const rec = USERS[username];
-    if (!rec || rec.password !== password) return { ok: false, error: 'Invalid username or password' };
+    if (!rec) return { ok: false, error: 'Invalid username or password' };
+
+    // Hash password ที่ผู้ใช้ป้อนเข้ามา (MD5 แล้วตามด้วย SHA256)
+
+    if (rec.password !== hashedPassword) return { ok: false, error: 'Invalid username or password' };
     const state: AuthState = { username, role: rec.role };
     this._user$.next(state);
     this.writeToLS(state);
@@ -52,6 +73,8 @@ export class AuthService {
     const user = USERS[userState.username];
     if (!user) return false;
 
-    return user.password === password;
+    // Hash password ที่ผู้ใช้ป้อนเข้ามา (MD5 แล้วตามด้วย SHA256)
+    const hashedPassword = hashPassword(password);
+    return user.password === hashedPassword;
   }
 }

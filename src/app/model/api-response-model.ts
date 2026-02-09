@@ -1,5 +1,18 @@
 import { optionEventModel, optionModel } from "./season-model";
 
+export interface ApiUsersResponse {
+  count: number;
+  data: ApiUserData[];
+  success: boolean;
+}
+export interface ApiUserData {
+  email : number;
+  password_hash : string;
+  username : string;
+  role_id : string;
+}
+
+
 // API Response interface for loggers
 export interface ApiLoggerResponse {
   count: number;

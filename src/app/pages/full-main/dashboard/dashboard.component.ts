@@ -274,7 +274,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
         // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
         const sub = this.eventService
-          .getLoggersWithAfr({ 
+          .getLoggersWithAfr({
             raceId: this.parameterRaceId,
             eventId: this.parameterEventId,
             circuitName: this.circuitName
@@ -407,11 +407,11 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Toggle สถานะล็อคตำแหน่งการ sort */
   toggleSortLock() {
     this.isSortLocked = !this.isSortLocked;
-    
+
     if (this.isSortLocked) {
       // เมื่อล็อค ให้เก็บ snapshot ของตำแหน่งปัจจุบัน
       this.lockedLoggersSnapshot = [...this.onShowAllLoggers]; // deep copy
-      
+
       // รีเซ็ต sort state
       if (this.sort) {
         this.sort.active = '';
@@ -421,15 +421,15 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     } else {
       // เมื่อปลดล็อค ให้ลบ snapshot และเปิดการ sort กลับมา
       this.lockedLoggersSnapshot = null;
-      
+
       if (this.sort) {
         this.dataSource.sort = this.sort;
       }
-      
+
       // เรียงลำดับใหม่ตามปกติ
       this.updateView(this.allLoggers);
     }
-    
+
     this.cdr.markForCheck();
   }
   onToggleSortCarNumber() {
@@ -481,7 +481,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
           // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
           const sub = this.eventService
-            .getLoggersWithAfr({ 
+            .getLoggersWithAfr({
               raceId: this.parameterRaceId,
               eventId: this.parameterEventId,
               circuitName: this.circuitName
@@ -607,8 +607,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // สร้าง map สำหรับเก็บ status updates พร้อม online_time และ disconnect_time
-    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string }>();
+    // สร้าง map สำหรับเก็บ status updates พร้อม online_time, disconnect_time และ afr_count
+    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string; afrCount?: number }>();
     statusList.forEach((statusItem: any) => {
       const loggerId = statusItem.logger_key || '';
       const status = (statusItem.status || '').toString().toLowerCase().trim();
@@ -616,7 +616,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         statusMap.set(String(loggerId), {
           status: status === 'online' ? 'online' : 'offline',
           onlineTime: statusItem.online_time || undefined,
-          disconnectTime: statusItem.disconnect_time || undefined
+          disconnectTime: statusItem.disconnect_time || undefined,
+          afrCount: statusItem.afr_count !== undefined ? Number(statusItem.afr_count) : undefined
         });
       }
     });
@@ -636,14 +637,17 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         const statusChanged = oldStatus !== statusUpdate.status;
         const onlineTimeChanged = statusUpdate.onlineTime && logger.onlineTime?.toString() !== statusUpdate.onlineTime;
         const disconnectTimeChanged = statusUpdate.disconnectTime && logger.disconnectTime?.toString() !== statusUpdate.disconnectTime;
+        const afrCountChanged = statusUpdate.afrCount !== undefined && (logger as any).afrCount !== statusUpdate.afrCount;
 
-        if (statusChanged || onlineTimeChanged || disconnectTimeChanged) {
+        if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged) {
           hasUpdate = true;
           // สร้าง object ใหม่แทนการแก้ไขโดยตรง (immutable update)
           const updatedLogger: any = {
             ...logger,
             loggerStatus: statusUpdate.status as 'online' | 'offline',
-            status: statusUpdate.status
+            status: statusUpdate.status,
+            countDetect: statusUpdate.afrCount,
+            afrAverage: logger.afrAverage
           };
 
           // อัพเดท onlineTime ถ้ามี
@@ -656,6 +660,11 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             updatedLogger.disconnectTime = new Date(statusUpdate.disconnectTime);
           }
 
+          // อัพเดท afrCount ถ้ามี
+          if (statusUpdate.afrCount !== undefined) {
+            updatedLogger.afrCount = statusUpdate.afrCount;
+          }
+
           return updatedLogger;
         }
       }
@@ -666,7 +675,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     if (hasUpdate) {
       // อัปเดต allLoggers ด้วย array ใหม่
       this.allLoggers = updatedLoggers;
-      
+
       // ถ้าล็อคตำแหน่งอยู่ ให้อัปเดต snapshot แทน
       if (this.isSortLocked && this.lockedLoggersSnapshot) {
         // สร้าง Map จาก allLoggers เพื่อค้นหาข้อมูลล่าสุด
@@ -694,7 +703,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         // ถ้าไม่ล็อค ให้ทำงานปกติ
         this.updateView(this.allLoggers);
       }
-      
+
       // ใช้ detectChanges() เพื่อให้อัปเดต view ทันที (เหมาะกับ real-time updates)
       this.cdr.detectChanges();
     }

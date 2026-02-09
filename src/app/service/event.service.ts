@@ -6,7 +6,7 @@ import { handleHttpError } from '../utility/http-error-handler.util';
 import { eventModel, LoggerDetailPayload, LoggerModel, optionEventModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
 import { ExcelRowPayLoad } from '../pages/full-main/setting-logger/add-logger/add-logger.component';
 import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-event.component';
-import { ApiConfigResponse, ApiDropDownoptionEventResponse, ApiDropDownResponse, ApiEventResponse, ApiExportDataLoggerInRaceResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, ExportDataLoggerInRaceModel, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
+import { ApiConfigResponse, ApiDropDownoptionEventResponse, ApiDropDownResponse, ApiEventResponse, ApiExportDataLoggerInRaceResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, ApiUsersResponse, ExportDataLoggerInRaceModel, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
 // helper เล็ก ๆ
@@ -632,5 +632,31 @@ export class EventService {
       );
     }
 
+
+    getUser(user: string, PassHash:string): Observable<unknown> {
+      const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_USERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
+      let httpParams = new HttpParams();
+
+      if (user) {
+        httpParams = httpParams.set('username', user);
+      }
+
+      if (PassHash) {
+        httpParams = httpParams.set('password_hash', PassHash);
+      }
+
+        return this.http.get<ApiUsersResponse>(url, { params: httpParams }).pipe(
+        map(response => response.data.map(api => ({
+          eMail: api.email,
+          passwordHash: api.password_hash,
+          roleId: api.role_id,
+          username: api.username,
+        })))
+      );
+
+
+    }
+
 }
+
 
