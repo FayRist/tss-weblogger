@@ -61,7 +61,7 @@ export class ResetWarningLoggerComponent implements OnInit {
         response => {
           console.log('Reset Count successfully:', response);
           this.toastr.success(`Reset Count Logger ${this.loggerId} สำเร็จ`);
-          this.dialogRef.close('success');
+          this.dialogRef.close({ success: true, mode: this.mode, loggerId: this.loggerId });
         },
         error => {
           console.error('Error Reset Count:', error);

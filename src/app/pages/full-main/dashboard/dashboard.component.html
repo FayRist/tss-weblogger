@@ -51,8 +51,8 @@
     </div>
     <span class="example-spacer"></span>
     <div class="col-3 ps-0 pe-0 d-flex  align-items-center justify-content-end">
-      <button 
-        type="button" 
+      <button
+        type="button"
         class="btn w-60 h-75 text-light me-3"
         [ngClass]="isSortLocked ? 'btn-success' : 'btn-warning'"
         (click)="toggleSortLock()"
@@ -169,7 +169,7 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by afrAverage">&nbsp;&nbsp;
           AFR
         </th>
-        <td class="text-center"  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.afrAverage || 0| number:'1.1-1'}} </td>
+        <td class="text-center"  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.afr || 0| number:'1.1-1'}} </td>
       </ng-container>
 
       <!-- numberLimit Column -->

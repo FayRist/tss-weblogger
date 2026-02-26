@@ -355,6 +355,11 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
   }
 
+  /** ค่า AFR ที่ใช้แสดง (ล่าสุดก่อน ถ้าไม่มีใช้ค่าเฉลี่ย) */
+  getAFRDisplayValue(item: LoggerItem): number | null {
+    const v = item.afr ?? item.afrAverage ?? null;
+    return v != null ? Number(v) : null;
+  }
 
   ngAfterViewInit(): void {
     this.dataSource.paginator = this.paginator;
@@ -460,14 +465,25 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     });
 
     dialogRef.afterClosed().subscribe(result => {
-      // console.log('The dialog was closed');
-      if(result == 'success'){
-        this.toastr.success('Reset ทั้งหมด เรียบร้อย')
+      const success = result && (result === 'success' || (typeof result === 'object' && result.success));
+      if (success) {
+        const mode = typeof result === 'object' ? result.mode : '';
+        const loggerId = typeof result === 'object' ? result.loggerId : '';
+        // เคลียร์ค่า Count และ AFR ในตารางให้เป็น 0 ทันที (ก่อน refetch)
+        this.allLoggers = this.allLoggers.map(l => {
+          const match = mode === 'all' || String(l.loggerId) === String(loggerId);
+          if (!match) return l;
+          return { ...l, countDetect: 0, afr: 0 };
+        });
+        this.updateView(this.allLoggers);
+        this.cdr.markForCheck();
+
+        this.toastr.success('Reset เรียบร้อย');
         this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
         this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-        this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
+        this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
         this.filterLogger.setValue('all', { emitEvent: true });
-        this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
+        this.applyFilter('all');
         const qpSub = getQueryParamsOnce(this.route).subscribe(qp => {
           // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
           const classMulti = qp.getAll('class');
@@ -608,7 +624,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // สร้าง map สำหรับเก็บ status updates พร้อม online_time, disconnect_time และ afr_count
-    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string; afrCount?: number }>();
+    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string; afrCount?: number; afr?: number }>();
     statusList.forEach((statusItem: any) => {
       const loggerId = statusItem.logger_key || '';
       const status = (statusItem.status || '').toString().toLowerCase().trim();
@@ -617,7 +633,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           status: status === 'online' ? 'online' : 'offline',
           onlineTime: statusItem.online_time || undefined,
           disconnectTime: statusItem.disconnect_time || undefined,
-          afrCount: statusItem.afr_count !== undefined ? Number(statusItem.afr_count) : undefined
+          afrCount: statusItem.afr_count !== undefined ? Number(statusItem.afr_count) : undefined,
+          afr: statusItem.afr !== undefined && statusItem.afr !== null ? Number(statusItem.afr) : undefined
         });
       }
     });
@@ -638,8 +655,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         const onlineTimeChanged = statusUpdate.onlineTime && logger.onlineTime?.toString() !== statusUpdate.onlineTime;
         const disconnectTimeChanged = statusUpdate.disconnectTime && logger.disconnectTime?.toString() !== statusUpdate.disconnectTime;
         const afrCountChanged = statusUpdate.afrCount !== undefined && (logger as any).afrCount !== statusUpdate.afrCount;
+        const afrChanged = statusUpdate.afr !== undefined && (logger.afr ?? null) !== (statusUpdate.afr ?? null);
 
-        if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged) {
+        if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged || afrChanged) {
           hasUpdate = true;
           // สร้าง object ใหม่แทนการแก้ไขโดยตรง (immutable update)
           const updatedLogger: any = {
@@ -647,6 +665,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             loggerStatus: statusUpdate.status as 'online' | 'offline',
             status: statusUpdate.status,
             countDetect: statusUpdate.afrCount,
+            afr: statusUpdate.afr !== undefined ? statusUpdate.afr : logger.afr,
             afrAverage: logger.afrAverage
           };
 
