@@ -28,7 +28,7 @@ import { EventService } from '../../../service/event.service';
 import { ResetWarningLoggerComponent } from '../dashboard/reset-warning-logger/reset-warning-logger.component';
 import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
-import { APP_CONFIG, getApiWebSocket, getMapCenterForCircuit } from '../../../app.config';
+import { APP_CONFIG, getApiUrl, getApiWebSocket, getMapCenterForCircuit } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
@@ -458,6 +458,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly MAP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for map
   private readonly MAP_PATH_FPS = 25; // Path layer update rate (20-30fps range)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
+  /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
+  arrayLoggerCache: TelemetryPoint[] = [];
+  /** ตัวเดียวสำหรับ feed กราฟ (detailOpts/brushOpts): เริ่มต้นว่าง, เติมจาก Redis ถ้ามี, ต่อด้วย realtime */
+  private chartDataPoints: TelemetryPoint[] = [];
+  private readonly LOGGER_CACHE_MAX_POINTS = 5000;
 
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;
@@ -1693,25 +1698,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.isHistoryMode) {
       this.loadHistoryData();
     } else {
+      // Realtime: restore from sessionStorage if available (e.g. after timeout then re-enter path)
+      this.loadAndRestoreLoggerCache();
       // Realtime mode with late join (2-minute backlog)
-      // Initialize empty chart series for realtime mode
-      // this.initializeRealtimeChart();
       this.initializeRealtimeWithBacklog();
     }
-  }
-
-  // Initialize chart series for realtime mode
-  private initializeRealtimeChart(): void {
-    console.log('[Chart] Initializing realtime chart');
-    this.detailOpts = {
-      ...this.detailOpts,
-      series: [{ name: 'AFR', type: 'line', data: [] }]
-    };
-    this.brushOpts = {
-      ...this.brushOpts,
-      series: [{ name: 'AFR', type: 'line', data: [] }]
-    };
-    this.cdr.markForCheck();
   }
 
   // ===== History Mode =====
@@ -1960,6 +1951,53 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  private loadAndRestoreLoggerCache(): void {
+    if (this.arrayLoggerCache?.length) {
+      this.arrayLoggerCache = [];
+    }
+    this.chartDataPoints = []; // เริ่มต้น array กราฟว่าง รอ Redis หรือ realtime
+    const loggerId = this.parameterLoggerID ?? String(this.loggerID);
+    if (!loggerId) {
+      this.initializeRealtimeWithBacklog();
+      return;
+    }
+    const loggerKey = loggerId.startsWith('client_') ? loggerId : `client_${loggerId}`;
+    const url = getApiUrl('/realtime/cache') + `?logger=${encodeURIComponent(loggerKey)}&limit=${this.LOGGER_CACHE_MAX_POINTS}`;
+    this.http.get<{ items?: unknown[] }>(url).subscribe({
+      next: (res) => {
+        const items = Array.isArray(res?.items) ? res.items : [];
+        if (items.length === 0) return;
+        const points = items
+          .map((item: unknown) => this.parseTelemetryPoint(item as any, loggerId))
+          .filter((p): p is TelemetryPoint => p != null);
+        if (points.length === 0) return;
+        const sorted = [...points].sort((a, b) => a.ts - b.ts);
+        this.chartDataPoints = sorted; // เก็บลง array กลางสำหรับกราฟ
+        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId);
+        this.restoreFromSessionCache(points);
+      },
+      error: (e) => {
+        console.warn('[Logger Cache] Load from Redis failed:', e);
+      },
+      complete: () => {
+        this.initializeRealtimeWithBacklog();
+      }
+    });
+  }
+
+  private restoreFromSessionCache(points: TelemetryPoint[]): void {
+    const sorted = [...points].sort((a, b) => a.ts - b.ts);
+    const opts = { skipTimeTrim: true, skipChartUpdate: true };
+    for (const p of sorted) {
+      this.addTelemetryPoint(p, opts);
+    }
+    // chartDataPoints ถูกเซ็ตใน loadAndRestoreLoggerCache แล้ว — อัปเดตกราฟจาก array กลาง
+    this.updateChartFromGlobalArray();
+    this.scheduleRender();
+    this.scheduleDeckRender();
+    this.cdr.markForCheck();
+  }
+
   // ===== Realtime Message Handler =====
   private handleRealtimeMessage(data: string, loggerId: string): void {
     try {
@@ -2067,7 +2105,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
   }
 
-  private addTelemetryPoint(point: TelemetryPoint): void {
+  private addTelemetryPoint(point: TelemetryPoint, options?: { skipTimeTrim?: boolean; skipChartUpdate?: boolean }): void {
+    const skipTimeTrim = options?.skipTimeTrim === true;
+    const skipChartUpdate = options?.skipChartUpdate === true;
+
     // Update status to Online when receiving data (only in realtime mode)
     if (this.isRealtimeMode && this.loggerStatus !== 'Online') {
       this.loggerStatus = 'Online';
@@ -2091,11 +2132,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
     }
 
-    // Trim buffer by time (O(1) per point, worst case O(N) but amortized O(1))
-    const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
-    while (this.telemetryBufferCount > 0 && this.telemetryBuffer[this.telemetryBufferTail]?.ts < cutoff) {
-      this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
-      this.telemetryBufferCount--;
+    // Trim buffer by time (skip when restoring from session cache)
+    if (!skipTimeTrim) {
+      const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
+      while (this.telemetryBufferCount > 0 && this.telemetryBuffer[this.telemetryBufferTail]?.ts < cutoff) {
+        this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
+        this.telemetryBufferCount--;
+      }
     }
 
     // Schedule render (throttled) - for Canvas (only if using canvas mode)
@@ -2115,13 +2158,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Process point for chart resampling (5Hz pipeline)
     this.processChartResampling(point);
 
-    // Update chart (throttled) - for ApexCharts
-    const now = Date.now();
-    const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
-
-    if (shouldUpdate) {
-      this.updateChartIncremental();
-      this.lastChartUpdate = now;
+    // อัปเดตกราฟจาก array กลาง: ต่อจุดใหม่เข้า chartDataPoints แล้วอัปเดต (realtime)
+    if (!skipChartUpdate) {
+      this.chartDataPoints.push(point);
+      const cutoff = Date.now() - this.CHART_WINDOW_MS;
+      while (this.chartDataPoints.length > 0 && (this.chartDataPoints[0]?.ts ?? 0) < cutoff) {
+        this.chartDataPoints.shift();
+      }
+      const now = Date.now();
+      const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
+      if (shouldUpdate) {
+        this.updateChartFromGlobalArray();
+        this.lastChartUpdate = now;
+      }
     }
   }
 
@@ -2609,84 +2658,46 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return sampled;
   }
 
-  // ===== Incremental Chart Update =====
+
   /**
-   * Updates the chart with new telemetry data.
-   *
-   * IMPORTANT: When downsampling is applied (points.length > chartMax), we MUST rebuild
-   * the entire series.data because the downsampled set changes over time. Appending
-   * based on existingCount would cause data to disappear or freeze.
-   *
-   * Only use append-incremental mode when points.length <= chartMax (no downsampling).
+   * อัปเดตกราฟจาก array กลาง chartDataPoints (ตัวเดียวสำหรับ detailOpts/brushOpts)
+   * เรียกเมื่อ restore จาก Redis และเมื่อ realtime รับจุดใหม่
    */
-  /**
-   * Update chart using resampled display buffer (5Hz)
-   * Uses imperative update via ChartComponent API to avoid full rebuild
-   */
-  private updateChartIncremental(): void {
-    const displayPoints = this.getChartDisplayPoints();
-    if (displayPoints.length === 0) return;
-
-    const firstTs = displayPoints[0].ts;
-    const lastTs = displayPoints[displayPoints.length - 1].ts;
-
-    // Use imperative update via ChartComponent if available (more efficient)
-    // Note: ApexCharts API uses updateSeries method (not appendSeries)
-    if (this.chart?.chart) {
-      try {
-        // Build new data points from display buffer (x = p.ts จาก getChartDisplayPoints)
-        const newData: Array<{x: number; y: number | null}> = displayPoints.map(p => ({
-          x: p.ts,
-          y: p.afr ?? null
-        }));
-
-        (this.chart.chart as any).updateSeries([{
-          name: 'AFR',
-          data: newData
-        }], false); // false = don't animate
-
-        // ยึดช่วงแกน X จากค่าแรกถึงค่าสุดท้าย
-        // (this.chart.chart as any).updateOptions({
-        //   xaxis: { ...this.detailOpts.xaxis, min: firstTs, max: lastTs }
-        // }, false);
-
-        // Update brush chart (last 1000 points)
-        const brushData = newData.slice(-1000);
-        // Note: Brush chart update handled separately if needed
-
-        return; // Success, exit early
-      } catch (err) {
-        // Fallback to binding update if imperative update fails
-        console.warn('[Chart] Imperative update failed, falling back to binding:', err);
-      }
-    }
-
-    // Fallback: Use binding update (less efficient but reliable)
-    const data: Array<{x: number; y: number | null}> = displayPoints.map(p => ({
+  private updateChartFromGlobalArray(): void {
+    const points = this.chartDataPoints;
+    if (!points?.length) return;
+    const data: Array<{ x: number; y: number | null }> = points.map(p => ({
       x: p.ts,
       y: p.afr ?? null
     }));
+    const brushData = data.slice(-1000);
+
+    if (this.chart?.chart) {
+      try {
+        (this.chart.chart as any).updateSeries([{
+          name: 'AFR',
+          data
+        }], false);
+        this.brushOpts = {
+          ...this.brushOpts,
+          series: [{ name: 'AFR', type: 'line', data: brushData }]
+        };
+        this.cdr.markForCheck();
+        return;
+      } catch (err) {
+        console.warn('[Chart] updateChartFromGlobalArray imperative update failed:', err);
+      }
+    }
 
     this.detailOpts = {
       ...this.detailOpts,
       series: [{ name: 'AFR', type: 'line', data }]
-      // ,xaxis: {
-      //   ...this.detailOpts.xaxis,
-      //   min: firstTs,
-      //   max: lastTs
-      // }
     };
-
-    // Update brush chart (last 1000 points)
-    const brushData = data.slice(-1000);
     this.brushOpts = {
       ...this.brushOpts,
       series: [{ name: 'AFR', type: 'line', data: brushData }]
     };
-    // Trigger change detection
-    this.ngZone.run(() => {
-      this.cdr.markForCheck();
-    });
+    this.ngZone.run(() => this.cdr.markForCheck());
   }
 
   /**
@@ -4469,24 +4480,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  /** สลับค่า y ใน series ตาม afrGraphInverted (ใช้เมื่อกลับด้านกราฟ) */
-  private invertSeriesY(series: ApexAxisChartSeries): ApexAxisChartSeries {
-    if (!this.afrGraphInverted) return series;
-    const lo = this.afrGraphsMinLimit;
-    const hi = this.afrGraphsMaxLimit;
-    return series.map(s => {
-      const data = Array.isArray(s.data) ? s.data : [];
-      const invertedData = data.map((pt: any) => {
-        const y = pt?.y;
-        if (y !== null && y !== undefined && Number.isFinite(Number(y))) {
-          return { ...pt, y: lo + hi - Number(y) };
-        }
-        return pt;
-      });
-      return { ...s, data: invertedData };
-    });
-  }
-
   onAfrGraphInvertChange(): void {
 
     this.detailOpts = {
@@ -4497,8 +4490,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ...this.brushOpts,
       yaxis: { ...this.brushOpts.yaxis, min: this.afrYAxisMin, max: this.afrYAxisMax, reversed: this.afrGraphInverted }
     };
-    this.refreshDetail();
-    this.refreshBrush();
+    // this.refreshDetail();
+    // this.refreshBrush();
   }
 
   private refreshDetail(): void {
@@ -5954,6 +5947,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.disconnectWebSocket();
     this.clearStatusTimeout();
 
+    // Persist current buffers to sessionStorage so re-entering path can restore (e.g. after timeout)
+    // this.saveLoggerCache();
+
     // Clear buffers
     // Reset ring buffers (don't recreate arrays, just reset indices)
     this.telemetryBufferHead = 0;
@@ -5966,6 +5962,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.lastChartXAxisUpdate = 0;
     this.historyPoints = [];
     this.historyDownsampled = [];
+    this.chartDataPoints = [];
   }
 
   //////////// RACE /////////////////////////////////
