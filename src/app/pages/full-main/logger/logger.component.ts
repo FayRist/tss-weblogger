@@ -7,6 +7,7 @@ import { MAT_SELECT_CONFIG, MatSelect, MatSelectChange, MatSelectModule } from '
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
 import { Subscription, Subject } from 'rxjs';
@@ -166,7 +167,7 @@ interface LapState {
   selector: 'app-logger',
   imports: [FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
     , ReactiveFormsModule, MatButtonModule, MatDividerModule, MatIconModule
-    , MatToolbarModule, NgxApexchartsModule, CommonModule],
+    , MatSlideToggleModule, MatToolbarModule, NgxApexchartsModule, CommonModule],
   templateUrl: './logger.component.html',
   styleUrl: './logger.component.scss',
   providers: [
@@ -412,8 +413,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   countMax: number = 0;
   afrGraphsMinLimit: number = 0;
   afrGraphsMaxLimit: number = 0;
+  /** เมื่อ true = กลับด้านกราฟ (min/max สลับ, ค่าในกราฟสลับ); false = ปกติ */
+  afrGraphInverted: boolean = false;
 
   configAFR: any;
+
+  /** ค่า min ของแกน Y (ลำดับปกติเสมอ — ใช้ร่วมกับ yaxis.reversed เพื่อไม่ให้ ApexCharts แจ้ง min > max) */
+  get afrYAxisMin(): number {
+    return this.afrGraphsMinLimit;
+  }
+  /** ค่า max ของแกน Y (ลำดับปกติเสมอ) */
+  get afrYAxisMax(): number {
+    return this.afrGraphsMaxLimit;
+  }
 
 
   private map!: L.Map;
@@ -437,7 +449,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // Chart resampling: 5Hz display (200ms buckets) for smooth rendering
   private readonly CHART_BUCKET_MS = 200; // 200ms = 5Hz display rate
   private readonly CHART_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for chart
-  private readonly CHART_UPDATE_MS = 150; // Chart update throttle (100-200ms range)
+  private readonly CHART_UPDATE_MS = 150; // Chart update throttle — สูงขึ้นเพื่อลดการกระพริบ
+  private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
   private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
 
@@ -572,7 +585,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         type: 'datetime',
         axisBorder: { color: PAL.axis },
         axisTicks: { color: PAL.axis },
-        labels: { style: { colors: PAL.textMuted } }
+        labels: {
+          style: { colors: PAL.textMuted },
+          // แสดงเฉพาะเวลา (ไม่มี DD/MM/YYYY) — ค่า x มาจาก p.ts
+          formatter: (value: string, timestamp?: number) => {
+            const ts = typeof value === 'number' ? value : (timestamp ?? Number(value));
+            const d = new Date(ts);
+            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+          }
+        }
       },
       yaxis: {
         reversed: true,
@@ -1313,6 +1334,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // Chart update throttling to prevent excessive renders
   private chartUpdateThrottle = this.CHART_UPDATE_MS; // Use constant
   private lastChartUpdate = 0;
+  private lastChartXAxisUpdate = 0; // throttle แกน X แยก เพื่อลดการกระพริบ
   private lastPathUpdate = 0; // For map path layer throttling
 
   // ===== Realtime Buffering (Ring Buffer) =====
@@ -1456,19 +1478,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.afrGraphsMinLimit = (minValue !== null && minValue !== undefined && Number.isFinite(minValue)) ? minValue : 0;
         this.afrGraphsMaxLimit = (maxValue !== null && maxValue !== undefined && Number.isFinite(maxValue)) ? maxValue : 30;
 
-        // อัปเดตแกน Y ของกราฟหลัก (detail)
+        // อัปเดตแกน Y ของกราฟหลัก (detail) — ใช้ getter ตามสภาวะกลับด้าน
         this.detailOpts = {
           ...this.detailOpts,
           yaxis: {
             ...this.detailOpts.yaxis,
-            min: this.afrGraphsMinLimit,
-            max: this.afrGraphsMaxLimit
+            min: this.afrYAxisMin,
+            max: this.afrYAxisMax,
+            reversed: this.afrGraphInverted
           },
           annotations: {
             yaxis: [
               {
-                // กำหนดค่าทั้งหมดที่ต้องการสำหรับเส้นแนวนอน
-                y: this.afrLimit, // ใช้ค่าใหม่จาก config
+                y: this.afrGraphInverted ? (this.afrGraphsMinLimit + this.afrGraphsMaxLimit - this.afrLimit) : this.afrLimit,
                 borderColor: '#dc3545',
                 strokeDashArray: 2,
                 label: {
@@ -1477,7 +1499,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                     color: '#fff',
                     background: '#dc3545',
                   },
-                  text: `AFR Limit: ${this.afrLimit.toFixed(1)}`, // อัปเดตข้อความ (แนะนำ .toFixed)
+                  text: `AFR Limit: ${this.afrLimit.toFixed(1)}`,
                   position: 'right',
                   offsetX: 5,
                 }
@@ -1491,8 +1513,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           ...this.brushOpts,
           yaxis: {
             ...this.brushOpts.yaxis,
-            min: this.afrGraphsMinLimit,
-            max: this.afrGraphsMaxLimit
+            min: this.afrYAxisMin,
+            max: this.afrYAxisMax,
+            reversed: this.afrGraphInverted
           }
         };
 
@@ -1506,21 +1529,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.afrGraphsMinLimit = 0;
         this.afrGraphsMaxLimit = 30;
 
-        // อัปเดตแกน Y ด้วยค่า default
+        // อัปเดตแกน Y ด้วยค่า default (ใช้ getter ตามสภาวะกลับด้าน)
         this.detailOpts = {
           ...this.detailOpts,
           yaxis: {
             ...this.detailOpts.yaxis,
-            min: this.afrGraphsMinLimit,
-            max: this.afrGraphsMaxLimit
+            min: this.afrYAxisMin,
+            max: this.afrYAxisMax,
+            reversed: this.afrGraphInverted
           }
         };
         this.brushOpts = {
           ...this.brushOpts,
           yaxis: {
             ...this.brushOpts.yaxis,
-            min: this.afrGraphsMinLimit,
-            max: this.afrGraphsMaxLimit
+            min: this.afrYAxisMin,
+            max: this.afrYAxisMax,
+            reversed: this.afrGraphInverted
           }
         };
         this.refreshDetail();
@@ -1670,7 +1695,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     } else {
       // Realtime mode with late join (2-minute backlog)
       // Initialize empty chart series for realtime mode
-      this.initializeRealtimeChart();
+      // this.initializeRealtimeChart();
       this.initializeRealtimeWithBacklog();
     }
   }
@@ -2599,26 +2624,31 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Uses imperative update via ChartComponent API to avoid full rebuild
    */
   private updateChartIncremental(): void {
-    // Use resampled display buffer (5Hz) instead of raw telemetry buffer
     const displayPoints = this.getChartDisplayPoints();
     if (displayPoints.length === 0) return;
+
+    const firstTs = displayPoints[0].ts;
+    const lastTs = displayPoints[displayPoints.length - 1].ts;
 
     // Use imperative update via ChartComponent if available (more efficient)
     // Note: ApexCharts API uses updateSeries method (not appendSeries)
     if (this.chart?.chart) {
       try {
-        // Build new data points from display buffer
+        // Build new data points from display buffer (x = p.ts จาก getChartDisplayPoints)
         const newData: Array<{x: number; y: number | null}> = displayPoints.map(p => ({
           x: p.ts,
           y: p.afr ?? null
         }));
 
-        // Use updateSeries for efficient update (ApexCharts API)
-        // This is more efficient than full binding rebuild
         (this.chart.chart as any).updateSeries([{
           name: 'AFR',
           data: newData
         }], false); // false = don't animate
+
+        // ยึดช่วงแกน X จากค่าแรกถึงค่าสุดท้าย
+        // (this.chart.chart as any).updateOptions({
+        //   xaxis: { ...this.detailOpts.xaxis, min: firstTs, max: lastTs }
+        // }, false);
 
         // Update brush chart (last 1000 points)
         const brushData = newData.slice(-1000);
@@ -2640,6 +2670,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.detailOpts = {
       ...this.detailOpts,
       series: [{ name: 'AFR', type: 'line', data }]
+      // ,xaxis: {
+      //   ...this.detailOpts.xaxis,
+      //   min: firstTs,
+      //   max: lastTs
+      // }
     };
 
     // Update brush chart (last 1000 points)
@@ -2648,7 +2683,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ...this.brushOpts,
       series: [{ name: 'AFR', type: 'line', data: brushData }]
     };
-
     // Trigger change detection
     this.ngZone.run(() => {
       this.cdr.markForCheck();
@@ -2668,6 +2702,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       // No wrap: single contiguous segment
       for (let i = this.telemetryBufferTail; i < this.telemetryBufferHead; i++) {
         const p = this.telemetryBuffer[i];
+    // Trigger change detection
         if (p) points.push(p);
       }
     } else {
@@ -2805,6 +2840,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.chartDisplayTail = 0;
     this.chartDisplayCount = 0;
     this.currentBucket = null;
+    this.lastChartXAxisUpdate = 0;
 
     console.log('Cleared all WebSocket data and ring buffers');
   }
@@ -4433,6 +4469,37 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
+  /** สลับค่า y ใน series ตาม afrGraphInverted (ใช้เมื่อกลับด้านกราฟ) */
+  private invertSeriesY(series: ApexAxisChartSeries): ApexAxisChartSeries {
+    if (!this.afrGraphInverted) return series;
+    const lo = this.afrGraphsMinLimit;
+    const hi = this.afrGraphsMaxLimit;
+    return series.map(s => {
+      const data = Array.isArray(s.data) ? s.data : [];
+      const invertedData = data.map((pt: any) => {
+        const y = pt?.y;
+        if (y !== null && y !== undefined && Number.isFinite(Number(y))) {
+          return { ...pt, y: lo + hi - Number(y) };
+        }
+        return pt;
+      });
+      return { ...s, data: invertedData };
+    });
+  }
+
+  onAfrGraphInvertChange(): void {
+
+    this.detailOpts = {
+      ...this.detailOpts,
+      yaxis: { ...this.detailOpts.yaxis, min: this.afrYAxisMin, max: this.afrYAxisMax, reversed: this.afrGraphInverted }
+    };
+    this.brushOpts = {
+      ...this.brushOpts,
+      yaxis: { ...this.brushOpts.yaxis, min: this.afrYAxisMin, max: this.afrYAxisMax, reversed: this.afrGraphInverted }
+    };
+    this.refreshDetail();
+    this.refreshBrush();
+  }
 
   private refreshDetail(): void {
     // ถ้า filterData == false ให้ใช้ทุก keys, ถ้าไม่ใช่ให้ใช้ selectedKeys
@@ -4441,13 +4508,40 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!series.length) {
       // เคลียร์แบบปลอดภัย (บางเวอร์ชันของ Apex ไม่ชอบ series = undefined)
       this.detailOpts = { ...this.detailOpts, series: [] };
+
+      // ไม่มี series ก็อัปเดต yaxis + annotation เพื่อให้สลับด้านได้เสมอ
+      // this.detailOpts = {
+      //   ...this.detailOpts,
+      //   series: [],
+      //   yaxis: {
+      //     ...this.detailOpts.yaxis,
+      //     min: this.afrYAxisMin ?? 0,
+      //     max: this.afrYAxisMax ?? 30,
+      //     reversed: this.afrGraphInverted
+      //   },
+      //   annotations: {
+      //     yaxis: [
+      //       {
+      //         y: this.afrGraphInverted ? (this.afrGraphsMinLimit + this.afrGraphsMaxLimit - this.afrLimit) : this.afrLimit,
+      //         borderColor: '#dc3545',
+      //         strokeDashArray: 2,
+      //         label: {
+      //           borderColor: '#dc3545',
+      //           style: { color: '#fff', background: '#dc3545' },
+      //           text: `AFR Limit: ${Number.isFinite(this.afrLimit as number) ? (this.afrLimit as number).toFixed(1) : String(this.afrLimit)}`,
+      //           position: 'right',
+      //           offsetX: 5,
+      //         }
+      //       }
+      //     ]
+      //   }
+      // };
       return;
     }
     const widthArr = new Array(series.length).fill(2);
     const dashArr = keysToUse.map(k => k === 'warningAfr' ? 6 : 0);
     const colorArr = keysToUse.map(k => SERIES_COLORS[k]).filter(Boolean);
-
-    this.detailOpts = {
+ this.detailOpts = {
       ...this.detailOpts,
       series,
       colors: colorArr.length ? colorArr : PAL.series.slice(0, series.length),
@@ -4479,6 +4573,38 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         ]
       }
     };
+    // const seriesToUse = this.invertSeriesY(series);
+    // this.detailOpts = {
+    //   ...this.detailOpts,
+    //   series: seriesToUse,
+    //   colors: colorArr.length ? colorArr : PAL.series.slice(0, series.length),
+    //   stroke: { ...this.detailOpts.stroke, curve: 'smooth', width: widthArr, dashArray: dashArr },
+    //   yaxis: {
+    //     ...this.detailOpts.yaxis,
+    //     min: this.afrYAxisMin ?? 0,
+    //     max: this.afrYAxisMax ?? 30,
+    //     reversed: this.afrGraphInverted
+    //   },
+    //   annotations: {
+    //     yaxis: [
+    //       {
+    //         y: this.afrGraphInverted ? (this.afrGraphsMinLimit + this.afrGraphsMaxLimit - this.afrLimit) : this.afrLimit,
+    //         borderColor: '#dc3545',
+    //         strokeDashArray: 2,
+    //         label: {
+    //           borderColor: '#dc3545',
+    //           style: {
+    //             color: '#fff',
+    //             background: '#dc3545',
+    //           },
+    //           text: `AFR Limit: ${Number.isFinite(this.afrLimit as number) ? (this.afrLimit as number).toFixed(1) : String(this.afrLimit)}`,
+    //           position: 'right',
+    //           offsetX: 5,
+    //         }
+    //       }
+    //     ]
+    //   }
+    // };
   }
 
   private refreshBrush(): void {
@@ -4487,6 +4613,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const series = this.buildSeries(keysToUse);
     if (!series.length) {
       this.brushOpts = { ...this.brushOpts, series: [] };
+
+      // ไม่มี series ก็อัปเดต yaxis เพื่อให้สลับด้านได้เสมอ
+      // this.brushOpts = {
+      //   ...this.brushOpts,
+      //   series: [],
+      //   yaxis: {
+      //     ...this.brushOpts.yaxis,
+      //     min: this.afrYAxisMin ?? 0,
+      //     max: this.afrYAxisMax ?? 30,
+      //     reversed: this.afrGraphInverted
+      //   }
+      // };
       return;
     }
     const colorArr = keysToUse.map(k => SERIES_COLORS[k]).filter(Boolean);
@@ -4505,6 +4643,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         max: this.afrGraphsMaxLimit ?? 30
       }
     };
+    // const seriesToUse = this.invertSeriesY(series);
+    // this.brushOpts = {
+    //   ...this.brushOpts,
+    //   series: seriesToUse,
+    //   colors: colorArr.length ? colorArr : [PAL.series[1]],
+    //   stroke: { ...this.brushOpts.stroke, width: widthArr, dashArray: dashArr },
+    //   yaxis: {
+    //     ...this.brushOpts.yaxis,
+    //     min: this.afrYAxisMin ?? 0,
+    //     max: this.afrYAxisMax ?? 30,
+    //     reversed: this.afrGraphInverted
+    //   }
+    // };
   }
 
 
@@ -5812,6 +5963,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.chartDisplayTail = 0;
     this.chartDisplayCount = 0;
     this.currentBucket = null;
+    this.lastChartXAxisUpdate = 0;
     this.historyPoints = [];
     this.historyDownsampled = [];
   }

@@ -284,6 +284,9 @@
                     </h5>
 
                     <div class="d-flex align-items-center gap-2">
+                      <mat-slide-toggle [(ngModel)]="afrGraphInverted" (change)="onAfrGraphInvertChange()">
+                        กลับด้านกราฟ
+                      </mat-slide-toggle>
                       <!-- <form class="mat-input-form">
                         <mat-form-field class="w-100">
                           <mat-label>Session</mat-label>
