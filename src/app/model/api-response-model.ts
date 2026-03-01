@@ -224,6 +224,7 @@ export interface ApiLoggerAFR {
 
   // จาก countdetect_afr (อาจเป็น null)
   count_detect?: number | null;
+  current_count_detect?: number | null;
   afr?: number | null;
   afr_average?: number | null;
   status?: string | null;
@@ -250,7 +251,8 @@ export interface LoggerItem {
   classType: string;
 
   // metrics จาก AFR (optional)
-  countDetect: number;
+  countDetect?: number | null;
+  currentCountDetect: number;  // จำนวนนับปัจจุบัน (แสดงในคอลัมน์ Count)
   afr?: number | null;
   afrAverage?: number | null;
   status?: string | null;

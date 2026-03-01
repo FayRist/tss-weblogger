@@ -328,7 +328,12 @@
                     </div>
                   </div>
                   <div class="card-body">
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper"
+                         (mousedown)="chartUserInteractionStart()"
+                         (mouseup)="chartUserInteractionEnd()"
+                         (mouseleave)="chartUserInteractionEnd()"
+                         (touchstart)="chartUserInteractionStart()"
+                         (touchend)="chartUserInteractionEnd()">
                       <div id="chart-detail">
                         <apx-chart
                           [series]="detailOpts.series"

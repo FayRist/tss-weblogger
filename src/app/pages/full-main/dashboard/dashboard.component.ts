@@ -154,9 +154,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private sortLoggers(loggers: LoggerItem[]): LoggerItem[] {
     return [...loggers].sort((a, b) => {
-      // 1. เรียงตาม Count (countDetect) จากมากไปน้อย
-      const countA = a.countDetect ?? 0;
-      const countB = b.countDetect ?? 0;
+      // 1. เรียงตาม Count (currentCountDetect) จากมากไปน้อย
+      const countA = a.currentCountDetect ?? 0;
+      const countB = b.currentCountDetect ?? 0;
       if (countA !== countB) {
         return countB - countA; // มาก→น้อย
       }
@@ -329,10 +329,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         filtered = this.allLoggers;
         break;
       case 'allSmokeDetect': // มี warning > 1
-        filtered = this.allLoggers.filter(l => (l.countDetect ?? 0) > 1);
+        filtered = this.allLoggers.filter(l => (l.currentCountDetect ?? 0) > 1);
         break;
       case 'excludeSmokeDetect': // ไม่มี warning เลย
-        filtered = this.allLoggers.filter(l => (l.countDetect ?? 0) === 0);
+        filtered = this.allLoggers.filter(l => (l.currentCountDetect ?? 0) === 0);
         break;
     }
     // เรียงลำดับข้อมูลตามที่กำหนด
@@ -349,8 +349,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     if (filters.length === 0 || filters.includes('all')) return true;
 
     const conds: any[] = [];
-    if (filters.includes('allSmokeDetect')) conds.push((item.countDetect ?? 0) > 0 && !item.warningDetector);
-    if (filters.includes('excludeSmokeDetect')) conds.push(item.countDetect == 0);
+    if (filters.includes('allSmokeDetect')) conds.push((item.currentCountDetect ?? 0) > 0 && !item.warningDetector);
+    if (filters.includes('excludeSmokeDetect')) conds.push(item.currentCountDetect == 0);
 
     return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
   }
@@ -370,7 +370,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       switch (property) {
         case 'carNumber': return Number(item.carNumber);
         case 'afr': return Number(item.afrAverage);
-        case 'countDetect': return Number(item.countDetect);
+        case 'countDetect': return Number(item.currentCountDetect);
         case 'loggerStatus': return (item.loggerStatus + '').toLowerCase() === 'online' ? 1 : 0;
         default: return (item as any)[property];
       }
@@ -444,7 +444,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get allWarning(): LoggerItem[] {
-    return this.allLoggers.filter(x => (x.countDetect ?? 0) > 0);
+    return this.allLoggers.filter(x => (x.currentCountDetect ?? 0) > 0);
   }
 
   navigateToLoggerDetail(LoggerId :any) {
@@ -473,7 +473,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.allLoggers = this.allLoggers.map(l => {
           const match = mode === 'all' || String(l.loggerId) === String(loggerId);
           if (!match) return l;
-          return { ...l, countDetect: 0, afr: 0 };
+          return { ...l, currentCountDetect: 0, afr: 0 };
         });
         this.updateView(this.allLoggers);
         this.cdr.markForCheck();
@@ -654,7 +654,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         const statusChanged = oldStatus !== statusUpdate.status;
         const onlineTimeChanged = statusUpdate.onlineTime && logger.onlineTime?.toString() !== statusUpdate.onlineTime;
         const disconnectTimeChanged = statusUpdate.disconnectTime && logger.disconnectTime?.toString() !== statusUpdate.disconnectTime;
-        const afrCountChanged = statusUpdate.afrCount !== undefined && (logger as any).afrCount !== statusUpdate.afrCount;
+        const afrCountChanged = statusUpdate.afrCount !== undefined && (logger.currentCountDetect ?? null) !== (statusUpdate.afrCount ?? null);
         const afrChanged = statusUpdate.afr !== undefined && (logger.afr ?? null) !== (statusUpdate.afr ?? null);
 
         if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged || afrChanged) {
@@ -664,7 +664,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             ...logger,
             loggerStatus: statusUpdate.status as 'online' | 'offline',
             status: statusUpdate.status,
-            countDetect: statusUpdate.afrCount,
+            currentCountDetect: statusUpdate.afrCount,
             afr: statusUpdate.afr !== undefined ? statusUpdate.afr : logger.afr,
             afrAverage: logger.afrAverage
           };
@@ -679,9 +679,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             updatedLogger.disconnectTime = new Date(statusUpdate.disconnectTime);
           }
 
-          // อัพเดท afrCount ถ้ามี
+          // อัพเดท currentCountDetect จาก afr_count (real-time)
           if (statusUpdate.afrCount !== undefined) {
-            updatedLogger.afrCount = statusUpdate.afrCount;
+            updatedLogger.currentCountDetect = statusUpdate.afrCount;
           }
 
           return updatedLogger;

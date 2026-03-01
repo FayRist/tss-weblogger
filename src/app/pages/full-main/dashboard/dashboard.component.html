@@ -179,8 +179,8 @@
         </th>
         <!-- <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.countDetect || 0}} </td> -->
         <td class="text-center" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"
-            [ngStyle]="(element.countDetect || 0) > countMax ? { color: '#EF4444', border: '2px solid #EF4444', 'border-radius': '4px' } : null">
-          {{element.countDetect || 0}}
+            [ngStyle]="(element.currentCountDetect || 0) > countMax ? { color: '#EF4444', border: '2px solid #EF4444', 'border-radius': '4px' } : null">
+          {{element.currentCountDetect || 0}}
         </td>
       </ng-container>
 

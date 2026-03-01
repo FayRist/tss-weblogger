@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -415,6 +415,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   afrGraphsMaxLimit: number = 0;
   /** เมื่อ true = กลับด้านกราฟ (min/max สลับ, ค่าในกราฟสลับ); false = ปกติ */
   afrGraphInverted: boolean = false;
+
+  /** กำลังแพน/ซูมกราฟ — ไม่อัปเดต series ตอน realtime เพื่อหลีกเลี่ยง ApexCharts screenCTM null */
+  chartUserIsInteracting: boolean = false;
 
   configAFR: any;
 
@@ -1917,7 +1920,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.resetWebSocketStats();
       };
       ws.onmessage = (ev) => {
-        console.log('[Realtime] Received message, length:', ev.data?.length || 0);
+        // console.log('[Realtime] Received message, length:', ev.data?.length || 0);
         this.handleRealtimeMessage(ev.data, loggerId);
       };
       ws.onclose = (e) => {
@@ -2005,7 +2008,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.updateWebSocketStats(data, Date.now());
 
       let payload: any = JSON.parse(data);
-      console.log('[Realtime] Message type:', payload.type, 'has items:', !!payload.items, 'has points:', !!payload.points);
+      // console.log('[Realtime] Message type:', payload.type, 'has items:', !!payload.items, 'has points:', !!payload.points);
 
       // Update status to Online when receiving data
       if (this.loggerStatus !== 'Online') {
@@ -2019,7 +2022,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Handle snapshot (backlog)
       if (payload.type === 'snapshot' && Array.isArray(payload.items)) {
-        console.log('[Realtime] Processing snapshot with', payload.items.length, 'items');
+        // console.log('[Realtime] Processing snapshot with', payload.items.length, 'items');
         payload.items.forEach((item: any) => {
           this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
         });
@@ -2028,7 +2031,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Handle batch (wrapped format)
       if (payload.type === 'batch' && Array.isArray(payload.items)) {
-        console.log('[Realtime] Processing batch with', payload.items.length, 'items');
+        // console.log('[Realtime] Processing batch with', payload.items.length, 'items');
         payload.items.forEach((item: any) => {
           this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
         });
@@ -2037,7 +2040,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Handle race_tick (backward compatible format)
       if (payload.type === 'race_tick' && Array.isArray(payload.points)) {
-        console.log('[Realtime] Processing race_tick with', payload.points.length, 'points');
+        // console.log('[Realtime] Processing race_tick with', payload.points.length, 'points');
         payload.points.forEach((item: any) => {
           this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
         });
@@ -2046,14 +2049,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Handle tick (single update)
       if (payload.type === 'tick' && payload.item) {
-        console.log('[Realtime] Processing tick');
+        // console.log('[Realtime] Processing tick');
         this.addTelemetryPoint(this.parseTelemetryPoint(payload.item, loggerId));
         return;
       }
 
       // Handle batch array (raw array format)
       if (Array.isArray(payload)) {
-        console.log('[Realtime] Processing array with', payload.length, 'items');
+        // console.log('[Realtime] Processing array with', payload.length, 'items');
         payload.forEach((item: any) => {
           this.addTelemetryPoint(this.parseTelemetryPoint(item, loggerId));
         });
@@ -2061,7 +2064,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
 
       // Handle single object (fallback)
-      console.log('[Realtime] Processing single object');
+      // console.log('[Realtime] Processing single object');
       this.addTelemetryPoint(this.parseTelemetryPoint(payload, loggerId));
     } catch (err) {
       console.error('Failed to parse realtime message:', err, 'Data:', data?.substring(0, 200));
@@ -2659,11 +2662,28 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
 
+  /** ใช้เมื่อผู้ใช้เริ่มกดเมาส์/แตะบนกราฟ (แพน/ซูม) — ป้องกันอัปเดต realtime ระหว่างแพน (screenCTM null) */
+  chartUserInteractionStart(): void {
+    this.chartUserIsInteracting = true;
+  }
+
+  /** ใช้เมื่อผู้ใช้ปล่อยเมาส์/แตะ — อนุญาตให้อัปเดตกราฟ realtime อีกครั้ง (ข้อมูลจะ sync ตอนมีจุดใหม่เข้ามา) */
+  chartUserInteractionEnd(): void {
+    this.chartUserIsInteracting = false;
+  }
+
+  @HostListener('document:mouseup')
+  @HostListener('document:touchend')
+  onDocumentPointerUp(): void {
+    this.chartUserIsInteracting = false;
+  }
+
   /**
    * อัปเดตกราฟจาก array กลาง chartDataPoints (ตัวเดียวสำหรับ detailOpts/brushOpts)
    * เรียกเมื่อ restore จาก Redis และเมื่อ realtime รับจุดใหม่
    */
   private updateChartFromGlobalArray(): void {
+    if (this.chartUserIsInteracting) return; // ไม่อัปเดตขณะแพน/ซูม เพื่อหลีกเลี่ยง screenCTM null
     const points = this.chartDataPoints;
     if (!points?.length) return;
     const data: Array<{ x: number; y: number | null }> = points.map(p => ({

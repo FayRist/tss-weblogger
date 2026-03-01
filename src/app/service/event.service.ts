@@ -496,7 +496,8 @@ export class EventService {
           classType: api.class_type,
 
           // ค่าจาก countdetect_afr (อาจเป็น null)
-          countDetect: api.count_detect ?? 0,
+          countDetect: api.count_detect ?? null,
+          currentCountDetect: api.current_count_detect ?? 0,
           afr: api.afr ?? null,
           afrAverage: api.afr_average ?? null,
           status: api.status ?? null,
