@@ -456,6 +456,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
   private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
+  /** โหมด live: แสดงกราฟแค่ 2000 จุด (sliding window) เพื่อลดภาระและความหน่วง */
+  private readonly CHART_LIVE_MAX_POINTS = 2000;
 
   // ===== Map Performance Constants =====
   private readonly MAP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for map
@@ -1619,8 +1621,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.updateMapFromSelection(selectionAsArray);
         this.updateChartsFromSelection(selectionAsArray);
       });
+    // สมัคร WebSocket messages เฉพาะโหมด live เท่านั้น
+    if (!this.isHistoryMode) {
       this.subscribeWebSocketMessages();
     }
+  }
 
   private subscribeWebSocketMessages() {
     this.webSocketService.message$.subscribe((message) => {
@@ -1975,7 +1980,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           .filter((p): p is TelemetryPoint => p != null);
         if (points.length === 0) return;
         const sorted = [...points].sort((a, b) => a.ts - b.ts);
-        this.chartDataPoints = sorted; // เก็บลง array กลางสำหรับกราฟ
+        if (this.isHistoryMode) {
+          this.chartDataPoints = sorted;
+        } else {
+          // โหมด live: เก็บแค่ 2000 จุดล่าสุดสำหรับกราฟ ลดภาระเมื่อกดเข้า page
+          this.chartDataPoints = sorted.length > this.CHART_LIVE_MAX_POINTS
+            ? sorted.slice(-this.CHART_LIVE_MAX_POINTS)
+            : sorted;
+        }
         console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId);
         this.restoreFromSessionCache(points);
       },
@@ -2164,9 +2176,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // อัปเดตกราฟจาก array กลาง: ต่อจุดใหม่เข้า chartDataPoints แล้วอัปเดต (realtime)
     if (!skipChartUpdate) {
       this.chartDataPoints.push(point);
-      const cutoff = Date.now() - this.CHART_WINDOW_MS;
-      while (this.chartDataPoints.length > 0 && (this.chartDataPoints[0]?.ts ?? 0) < cutoff) {
-        this.chartDataPoints.shift();
+      if (this.isHistoryMode) {
+        const cutoff = Date.now() - this.CHART_WINDOW_MS;
+        while (this.chartDataPoints.length > 0 && (this.chartDataPoints[0]?.ts ?? 0) < cutoff) {
+          this.chartDataPoints.shift();
+        }
+      } else {
+        // โหมด live: เก็บแค่ 2000 จุดล่าสุด (sliding window) ลด lag
+        while (this.chartDataPoints.length > this.CHART_LIVE_MAX_POINTS) {
+          this.chartDataPoints.shift();
+        }
       }
       const now = Date.now();
       const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
@@ -2684,7 +2703,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   private updateChartFromGlobalArray(): void {
     if (this.chartUserIsInteracting) return; // ไม่อัปเดตขณะแพน/ซูม เพื่อหลีกเลี่ยง screenCTM null
-    const points = this.chartDataPoints;
+    // โหมด live: ส่งแค่ 2000 จุดล่าสุดเข้า chart เพื่อลดภาระการ render
+    const raw = this.chartDataPoints;
+    const points = this.isHistoryMode ? raw : raw.slice(-this.CHART_LIVE_MAX_POINTS);
     if (!points?.length) return;
     const data: Array<{ x: number; y: number | null }> = points.map(p => ({
       x: p.ts,
@@ -3544,23 +3565,34 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       data: downsampledData
     }];
 
-    // จุดแดงเกินลิมิต (คำนวณใหม่หลังจาก downsample)
+    // จุดแดงเกินลิมิต: แสดง 1 จุดต่อ 1 วินาที ที่มีค่าต่ำกว่า AFR Limit (แทนการแสดงทุกจุด)
     const discrete: any[] = [];
     const limit = this.afrLimit ?? 14;
-    // บน touch device (iPad/Tablet) ใช้ขนาด marker ใหญ่ขึ้นเพื่อให้ tap ได้ง่ายขึ้น
     const markerSize = this.isTouchDevice ? 6 : 4;
     detailSeries.forEach((s, sIdx) => {
-      (s.data as Array<{x:number;y:number|null}>).forEach((pt, i) => {
+      const data = s.data as Array<{ x: number; y: number | null }>;
+      // จัดกลุ่มตามวินาที (x เป็น ms)
+      const pointsBySecond = new Map<number, Array<{ dataPointIndex: number; y: number }>>();
+      data.forEach((pt, i) => {
         const y = pt.y;
         if (typeof y === 'number' && y < limit) {
-          discrete.push({
-            seriesIndex: sIdx,
-            dataPointIndex: i,
-            fillColor: '#ff3b30',
-            strokeColor: '#ff3b30',
-            size: markerSize
-          });
+          const sec = Math.floor(pt.x / 1000);
+          if (!pointsBySecond.has(sec)) {
+            pointsBySecond.set(sec, []);
+          }
+          pointsBySecond.get(sec)!.push({ dataPointIndex: i, y });
         }
+      });
+      // แต่ละวินาทีที่เกิน limit ให้ใส่ marker แค่ 1 จุด (ใช้จุดแรกของวินาทีนั้น)
+      pointsBySecond.forEach((points) => {
+        const first = points[0];
+        discrete.push({
+          seriesIndex: sIdx,
+          dataPointIndex: first.dataPointIndex,
+          fillColor: '#ff3b30',
+          strokeColor: '#ff3b30',
+          size: markerSize
+        });
       });
     });
 
@@ -4521,34 +4553,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!series.length) {
       // เคลียร์แบบปลอดภัย (บางเวอร์ชันของ Apex ไม่ชอบ series = undefined)
       this.detailOpts = { ...this.detailOpts, series: [] };
-
-      // ไม่มี series ก็อัปเดต yaxis + annotation เพื่อให้สลับด้านได้เสมอ
-      // this.detailOpts = {
-      //   ...this.detailOpts,
-      //   series: [],
-      //   yaxis: {
-      //     ...this.detailOpts.yaxis,
-      //     min: this.afrYAxisMin ?? 0,
-      //     max: this.afrYAxisMax ?? 30,
-      //     reversed: this.afrGraphInverted
-      //   },
-      //   annotations: {
-      //     yaxis: [
-      //       {
-      //         y: this.afrGraphInverted ? (this.afrGraphsMinLimit + this.afrGraphsMaxLimit - this.afrLimit) : this.afrLimit,
-      //         borderColor: '#dc3545',
-      //         strokeDashArray: 2,
-      //         label: {
-      //           borderColor: '#dc3545',
-      //           style: { color: '#fff', background: '#dc3545' },
-      //           text: `AFR Limit: ${Number.isFinite(this.afrLimit as number) ? (this.afrLimit as number).toFixed(1) : String(this.afrLimit)}`,
-      //           position: 'right',
-      //           offsetX: 5,
-      //         }
-      //       }
-      //     ]
-      //   }
-      // };
       return;
     }
     const widthArr = new Array(series.length).fill(2);

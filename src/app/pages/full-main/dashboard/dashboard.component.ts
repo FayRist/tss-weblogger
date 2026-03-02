@@ -277,7 +277,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           .getLoggersWithAfr({
             raceId: this.parameterRaceId,
             eventId: this.parameterEventId,
-            circuitName: this.circuitName
+            circuitName: this.circuitName,
+            statusRace: this.statusRace
           })
           .subscribe({
           next: (loggerRes) => {
@@ -288,8 +289,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
               }));
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
-            // เชื่อมต่อ WebSocket หลังจากโหลดข้อมูล loggers แล้ว
-            this.connectWebSocket();
+            // เชื่อมต่อ WebSocket เฉพาะในโหมด live เท่านั้น
+            if ((this.statusRace || 'live').toLowerCase() === 'live') {
+              this.connectWebSocket();
+            } else {
+              // ในโหมด history ให้แน่ใจว่าไม่มีการเชื่อมต่อ WS ค้างอยู่
+              this.disconnectWebSocket();
+            }
           },
           error: (err) => console.error('Error loading logger list:', err)
         });
@@ -500,7 +506,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             .getLoggersWithAfr({
               raceId: this.parameterRaceId,
               eventId: this.parameterEventId,
-              circuitName: this.circuitName
+              circuitName: this.circuitName,
+              statusRace: this.statusRace
             })
             .subscribe({
             next: (loggerRes) => {

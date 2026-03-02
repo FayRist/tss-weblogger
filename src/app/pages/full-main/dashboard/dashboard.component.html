@@ -128,10 +128,18 @@
         <td mat-cell *matCellDef="let e" class="text-center">
           <span
             class="status-badge"
-            [ngClass]="(e.status + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
-            {{ (((e.status ?? '').toString().trim()) || 'OFFLINE') | uppercase }}
+            [ngClass]="(statusRace || 'live').toLowerCase() === 'history'
+              ? 'is-offline'
+              : ((e.status + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline')">
+            {{
+              (
+                (statusRace || 'live').toLowerCase() === 'history'
+                  ? 'OFFLINE'
+                  : (((e.status ?? '').toString().trim()) || 'OFFLINE')
+              ) | uppercase
+            }}
           </span>
-          @if(e.onlineTime){
+          @if(e.onlineTime && (statusRace || 'live').toLowerCase() !== 'history'){
             <span class="status-badge-time">
               {{ e.onlineTime | date:'dd MMM, yyyy HH:mm:ss'  }}
             </span>

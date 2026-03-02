@@ -460,7 +460,7 @@ export class EventService {
     );
   }
 
-  getLoggersWithAfr(params: { raceId?: number; eventId?: number; circuitName?: string; limit?: number; offset?: number }) {
+  getLoggersWithAfr(params: { raceId?: number; eventId?: number; circuitName?: string; limit?: number; offset?: number; statusRace: string }) {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_LOGGERS); // endpoint เดิม ถ้าเปลี่ยน path ใส่ใหม่
     let httpParams = new HttpParams();
 
@@ -479,8 +479,16 @@ export class EventService {
       httpParams = httpParams.set('circuit_name', params.circuitName);
     }
 
+        // status_race=...
+    if (params.statusRace) {
+      httpParams = httpParams.set('status_race', params.statusRace);
+    }
+
     if (params.limit)  httpParams = httpParams.set('limit',  String(params.limit));
     if (params.offset) httpParams = httpParams.set('offset', String(params.offset));
+
+    // ป้องกัน browser cache — หลัง Reset Count แล้วรีเฟรชจะได้ค่า current_count_detect ล่าสุดจาก DB
+    httpParams = httpParams.set('_t', String(Date.now()));
 
     return this.http.get<ApiLoggerAFRResponse>(url, { params: httpParams }).pipe(
       map((response) => {

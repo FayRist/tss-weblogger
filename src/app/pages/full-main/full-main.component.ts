@@ -375,8 +375,9 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
     const isDashboard = await firstValueFrom(this.isDashboard$);
     const isSettingLogger = await firstValueFrom(this.isSettingLogger$);
+    const isRace = await firstValueFrom(this.isRace$);
 
-    if(isDashboard) {
+    if(isDashboard || isRace) {
       this.router.navigate(['/pages', 'race'], {
         queryParams: { eventId, statusRace, circuitName },
         onSameUrlNavigation: 'reload'
