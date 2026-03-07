@@ -1,10 +1,10 @@
 <mat-toolbar class="pt-2">
   <ng-container>
-    <div class="container m-0">
-      <div class="row w-100">
+    <div class="container m-0 dashboard-toolbar-container">
+      <div class="row w-100 g-2 dashboard-toolbar-row">
 
 
-        <div class="col-4 pt-2">
+        <div class="col-12 col-md-6 col-lg-4 pt-2 pt-md-0">
           <form class="mat-input-form">
             <mat-form-field class="w-100">
               <mat-label>Search</mat-label>
@@ -13,7 +13,7 @@
           </form>
         </div>
 
-        <div class="col-4 pt-2">
+        <div class="col-12 col-md-6 col-lg-4 pt-2 pt-md-0">
           <form class="mat-input-form">
             <mat-form-field class="w-100">
               <mat-label>Filter</mat-label>
@@ -50,10 +50,10 @@
       </div>
     </div>
     <span class="example-spacer"></span>
-    <div class="col-3 ps-0 pe-0 d-flex  align-items-center justify-content-end">
+    <div class="dashboard-toolbar-actions ps-0 pe-0 d-flex align-items-center justify-content-end gap-2">
       <button
         type="button"
-        class="btn w-60 h-75 text-light me-3"
+        class="btn h-75 text-light"
         [ngClass]="isSortLocked ? 'btn-success' : 'btn-warning'"
         (click)="toggleSortLock()"
         style="display: inline-flex; align-items: center;">
@@ -108,6 +108,7 @@
 
 <div style="margin: 20px;" class="">
   <div class="row">
+    <div class="table-scroll-xy">
     <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
       mat-table [dataSource]="dataSource" matSort (matSortChange)="announceSortChange($event)" [class.sort-locked]="isSortLocked">
 
@@ -209,7 +210,7 @@
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
       <tr mat-row *matRowDef="let row; columns: displayedColumns;" ></tr>
     </table>
+    </div>
     <mat-paginator [pageSizeOptions]="[5,10,20,40, 50, 100]" [pageSize]="40" showFirstLastButtons></mat-paginator>
   </div>
 </div>
-

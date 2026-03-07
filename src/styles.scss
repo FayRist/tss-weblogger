@@ -102,3 +102,37 @@ body {
             container-text-color: rgb(255, 255, 255),
         ));
 }
+
+.table-scroll-xy {
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    max-height: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll-xy table {
+    min-width: auto;
+}
+
+@media (max-width: 1024px) {
+    .table-scroll-xy {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 55vh;
+    }
+
+    .table-scroll-xy table {
+        min-width: 900px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .table-scroll-xy {
+        max-height: 48vh;
+    }
+
+    .table-scroll-xy table {
+        min-width: 760px;
+    }
+}

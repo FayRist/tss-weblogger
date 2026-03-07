@@ -232,6 +232,29 @@ button[mat-raised-button] {
   align-items: center;
 }
 
+:host ::ng-deep .mode-badge {
+  display: inline-flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  min-height: 28px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+:host ::ng-deep .mode-badge.mode-live {
+  background: #0d6efd;
+  color: #ffffff;
+}
+
+:host ::ng-deep .mode-badge.mode-history {
+  background: #fd7e14;
+  color: #111111;
+}
+
 /* ONLINE: พื้นเขียว, ตัวอักษร #212529 */
 :host ::ng-deep .status-badge.is-online {
   background: #28a745;   /* เขียว */
@@ -415,6 +438,123 @@ button[mat-raised-button] {
   }
   50% {
     opacity: 0.6;
+  }
+}
+
+.logger-page {
+  padding-right: 10px;
+}
+
+.logger-main-row {
+  align-items: stretch;
+}
+
+.logger-meta-grid {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 1.1fr) minmax(120px, 1.1fr) minmax(180px, 1.5fr) minmax(100px, 0.8fr) minmax(140px, 1fr) minmax(150px, 1fr);
+  align-items: stretch;
+}
+
+.logger-meta-item {
+  min-width: 0;
+}
+
+.logger-meta-item .mat-input-form,
+.logger-meta-item .mat-form-field,
+.logger-meta-item .mat-mdc-form-field {
+  width: 100%;
+}
+
+.logger-meta-item--status .container {
+  padding-left: 0 !important;
+  margin-top: 0 !important;
+}
+
+.logger-map-col,
+.logger-chart-col {
+  display: flex;
+}
+
+.logger-map-col > .card,
+.logger-chart-col > .card {
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .logger-meta-grid {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+
+  .logger-meta-item--driver {
+    grid-column: span 2;
+  }
+
+  .logger-meta-item--clear {
+    grid-column: span 2;
+  }
+
+  .race-map-deck,
+  .race-map-canvas {
+    height: 420px;
+    min-height: 320px;
+  }
+
+  .ws-stats-container {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .logger-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logger-meta-item--driver,
+  .logger-meta-item--clear {
+    grid-column: 1 / -1;
+  }
+
+  .logger-page {
+    margin: 12px !important;
+    padding-right: 0;
+  }
+
+  .race-map-deck,
+  .race-map-canvas {
+    height: clamp(240px, 42vh, 340px);
+    min-height: 220px;
+  }
+
+  .logger-meta-grid .btn,
+  .logger-main-row .btn {
+    width: 100% !important;
+  }
+
+  .card-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .card-header h5 {
+    width: 100%;
+    margin-bottom: 0;
+  }
+
+  .card-header .d-flex.align-items-center.gap-2 {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .ws-stats-container {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  :host ::ng-deep .status-badge {
+    min-height: 42px;
   }
 }
 

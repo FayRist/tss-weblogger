@@ -1,8 +1,8 @@
-<mat-toolbar class="pt-2">
+<mat-toolbar class="pt-2 logger-toolbar">
   <mat-toolbar-row>
 
-    <div class="row w-100">
-      <div class="col-4 pt-2">
+    <div class="row w-100 g-2 align-items-stretch">
+      <div class="col-12 col-md-4 pt-2 pt-md-0">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Race</mat-label>
@@ -10,7 +10,7 @@
           </mat-form-field>
         </form>
       </div>
-      <div class="col-4 pt-2">
+      <div class="col-12 col-md-4 pt-2 pt-md-0">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Session</mat-label>
@@ -18,7 +18,7 @@
           </mat-form-field>
         </form>
       </div>
-      <div class="col-4 pt-2">
+      <div class="col-12 col-md-4 pt-2 pt-md-0">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Last Online</mat-label>
@@ -32,10 +32,10 @@
 </mat-toolbar>
 
 
-<div style="margin: 20px 0 0 10px;">
+<div class="logger-page" style="margin: 20px 0 0 10px;">
 
-    <div class="row w-100">
-      <div class="col-2 pt-2">
+    <div class="logger-meta-grid">
+      <div class="logger-meta-item logger-meta-item--car">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>หมายเลขรถ</mat-label>
@@ -43,7 +43,7 @@
           </mat-form-field>
         </form>
       </div>
-      <div class="col-2 pt-2">
+      <div class="logger-meta-item logger-meta-item--logger">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
           <mat-label>Logger ID</mat-label>
@@ -51,7 +51,7 @@
           </mat-form-field>
         </form>
       </div>
-      <div class="col-3 pt-2">
+      <div class="logger-meta-item logger-meta-item--driver">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
             <mat-label>ชื่อนักแข่ง</mat-label>
@@ -60,17 +60,22 @@
         </form>
       </div>
 
-      <div class="col-1 pt-2 d-flex p-0">
+      <div class="logger-meta-item logger-meta-item--count">
         <form class="mat-input-form">
-          <mat-form-field class="w-50">
+          <mat-form-field class="w-100">
           <mat-label>Count</mat-label>
-            <input matInput disabled class="text-center" [value]="countDetect">
+            <input matInput disabled class="text-center" [value]="currentCountDetect">
           </mat-form-field>
         </form>
       </div>
 
-      <div class="col-2 pt-2">
+      <div class="logger-meta-item logger-meta-item--status">
         <div class="container ps-0 mt-1">
+          <span
+              class="mode-badge"
+              [ngClass]="isHistoryMode ? 'mode-history' : 'mode-live'">
+              {{ currentModeLabel }}
+          </span>
           <span
               class="status-badge"
               [ngClass]="(loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
@@ -79,7 +84,7 @@
         </div>
       </div>
 
-      <div class="col-2 pt-2">
+      <div class="logger-meta-item logger-meta-item--clear">
         <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
           Clear Count
         </button>
@@ -105,8 +110,8 @@
     </div> -->
 
     <!-- -Map Race ----------------- -->
-    <div class="row w-100">
-      <div class="col-4 ">
+    <div class="row w-100 g-3 logger-main-row">
+      <div class="col-12 col-md-5 col-lg-4 logger-map-col">
         <div class="card card--flush">
           <div class="card-header card-header--flush d-flex justify-content-between align-items-center">
             <h5 class="m-0">Racer Detail</h5>
@@ -271,7 +276,7 @@
           </div> -->
         </div>
       </div>
-            <div class="col-md-8">
+            <div class="col-12 col-md-7 col-lg-8 logger-chart-col">
               <div class="card" style="margin-bottom: 0px;">
                   <div class="card-header d-flex justify-content-between align-items-center">
                     <h5>
@@ -376,4 +381,3 @@
     <!-- -Map Race ----------------- -->
 
 </div>
-

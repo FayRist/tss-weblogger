@@ -181,15 +181,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   loggerStatus : string = 'Offline';
 
   afr: number = 0;
-  countDetect: number = 0;
+  currentCountDetect: number = 0;
   afrAverage: number = 0;
   raceLab: MapPoint[][] = [];         // ผลลัพธ์รอบ
   startLatLongPoint?: { lat: number; lon: number }; // ตัวกลางเก็บจุด start
   lapCount?: number= 0;
-  private wsReconnectTimeout:any;
+  private wsReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private wsReconnectDelay = 3000; // ms
-  private statusTimeout: any = null; // Timer สำหรับเช็ค status offline หลังจาก 5 วินาที
+  private statusTimeout: ReturnType<typeof setTimeout> | null = null; // Timer สำหรับเช็ค status offline หลังจาก 5 วินาที
   private readonly STATUS_TIMEOUT_MS = 5000; // 5 วินาที
+  private realtimeReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private shouldRealtimeReconnect = true;
+  private realtimeConnectInProgress = false;
+  private componentDestroyed = false;
 
   // Lap split tuning
   private readonly ENTER_RADIUS_M = 30;   // เข้าในรัศมีนี้ = ตัดรอบได้
@@ -441,7 +445,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ===== deck.gl + MapLibre GL JS Configuration =====
   // Constants for performance tuning
-  private readonly WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window
+  private readonly LIVE_RETENTION_MINUTES = 10;
+  private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // 10 minutes rolling window
   private readonly INPUT_HZ = 60; // Expected input frequency
   private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~108,000 points with 20% headroom
   private readonly MAX_SEGS = this.MAX_POINTS - 1; // Segments = points - 1
@@ -451,7 +456,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Chart Performance Constants =====
   // Chart resampling: 5Hz display (200ms buckets) for smooth rendering
   private readonly CHART_BUCKET_MS = 200; // 200ms = 5Hz display rate
-  private readonly CHART_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for chart
+  private readonly CHART_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // 10 minutes rolling window for chart
   private readonly CHART_UPDATE_MS = 150; // Chart update throttle — สูงขึ้นเพื่อลดการกระพริบ
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
@@ -460,7 +465,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_LIVE_MAX_POINTS = 2000;
 
   // ===== Map Performance Constants =====
-  private readonly MAP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes rolling window for map
+  private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // 10 minutes rolling window for map
   private readonly MAP_PATH_FPS = 25; // Path layer update rate (20-30fps range)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
@@ -1303,6 +1308,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   isHistoryMode: boolean = false;
   isRealtimeMode: boolean = true;
 
+  get currentModeLabel(): 'HISTORY' | 'LIVE' {
+    return this.isHistoryMode ? 'HISTORY' : 'LIVE';
+  }
+
   // ===== Canvas Rendering =====
   @ViewChild('trackCanvas') trackCanvas!: ElementRef<HTMLCanvasElement>;
   private canvasCtx: CanvasRenderingContext2D | null = null;
@@ -1325,12 +1334,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private canvasBounds: { minX: number; maxX: number; minY: number; maxY: number; spanX: number; spanY: number; paddedMinX: number; paddedMinY: number; paddedSpanX: number; paddedSpanY: number } | null = null; // Cached bounds for incremental drawing
 
   // ===== Realtime Buffering Configuration =====
-  // Retention window: how long to keep data in memory (default: 1 hour)
+  // Retention window: how long to keep data in memory (default: 10 minutes)
   // This controls how much historical data is available for display/analysis
-  private readonly REALTIME_RETENTION_MS = 60 * 60 * 1000; // 1 hour (configurable, e.g., 60 minutes)
+  private readonly REALTIME_RETENTION_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000;
 
   // Maximum buffer size: computed from expected Hz * retention time + headroom
-  // Default: 60Hz * 3600s = 216,000 points, with 20% headroom = 259,200
+  // Default: 60Hz * 600s = 36,000 points, with 20% headroom = 43,200
   // This ensures we can handle 60Hz input for the full retention window
   private readonly REALTIME_EXPECTED_HZ = 60; // Expected input frequency
   private readonly REALTIME_MAX_BUFFER_POINTS = Math.ceil(
@@ -1686,7 +1695,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           // โหลด background image สำหรับ canvas
           this.loadCanvasBackgroundImage();
-          this.countDetect  = detail.countDetect;
+          this.currentCountDetect  = detail.currentCountDetect;
           this.afr          = detail.afr;
           this.afrAverage   = detail.afrAverage;
           this.loggerStatus       = detail.status || 'Offline';
@@ -1706,10 +1715,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.isHistoryMode) {
       this.loadHistoryData();
     } else {
-      // Realtime: restore from sessionStorage if available (e.g. after timeout then re-enter path)
+      // Realtime: restore from Redis cache first, then connect WS in complete callback.
       this.loadAndRestoreLoggerCache();
-      // Realtime mode with late join (2-minute backlog)
-      this.initializeRealtimeWithBacklog();
     }
   }
 
@@ -1898,17 +1905,62 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Realtime Mode with Late Join =====
   private realtimeWS: WebSocket | null = null;
 
+  private clearRealtimeReconnectTimer(): void {
+    if (this.realtimeReconnectTimeout) {
+      clearTimeout(this.realtimeReconnectTimeout);
+      this.realtimeReconnectTimeout = null;
+    }
+  }
+
+  private scheduleRealtimeReconnect(): void {
+    if (this.componentDestroyed || this.isHistoryMode || !this.shouldRealtimeReconnect) {
+      return;
+    }
+    if (this.realtimeReconnectTimeout) {
+      return;
+    }
+    this.realtimeReconnectTimeout = setTimeout(() => {
+      this.realtimeReconnectTimeout = null;
+      this.initializeRealtimeWithBacklog();
+    }, 3000);
+  }
+
+  private closeRealtimeSocket(): void {
+    this.clearRealtimeReconnectTimer();
+    if (this.realtimeWS) {
+      try {
+        this.realtimeWS.close();
+      } catch {
+        // no-op
+      }
+      this.realtimeWS = null;
+    }
+  }
+
   private initializeRealtimeWithBacklog(): void {
+    if (this.componentDestroyed || this.isHistoryMode || !this.shouldRealtimeReconnect) {
+      return;
+    }
+    if (this.realtimeWS && (this.realtimeWS.readyState === WebSocket.OPEN || this.realtimeWS.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    if (this.realtimeConnectInProgress) {
+      return;
+    }
+
     const loggerId = this.parameterLoggerID || String(this.loggerID);
     if (!loggerId) return;
+
+    this.realtimeConnectInProgress = true;
+    this.clearRealtimeReconnectTimer();
 
     // Reset WebSocket statistics when starting new connection
     this.resetWebSocketStats();
 
-    // Connect with tail_ms=120000 for 2-minute backlog
+    // Connect with tail_ms equal to live retention window.
     // Use wrap=1 for standardized message format (batch type)
     // Use getApiWebSocket() to automatically select local or server URL based on hostname
-    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=120000&wrap=1`;
+    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=${this.REALTIME_RETENTION_MS}&wrap=1`;
     const url = getApiWebSocket(endpoint);
 
     try {
@@ -1916,6 +1968,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.realtimeWS = ws;
 
       ws.onopen = () => {
+        this.realtimeConnectInProgress = false;
         console.log('[Realtime] Connected with backlog:', url);
         // Set status to Online when connected (but wait for actual data)
         // Don't set to Online immediately, wait for first data message
@@ -1929,6 +1982,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.handleRealtimeMessage(ev.data, loggerId);
       };
       ws.onclose = (e) => {
+        this.realtimeConnectInProgress = false;
         console.log('[Realtime] Closed:', e.code, e.reason);
         this.realtimeWS = null;
         // Set status to Offline when disconnected
@@ -1938,12 +1992,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           console.log('[Logger Status] Updated to Offline (WebSocket disconnected)');
         }
         this.clearStatusTimeout();
-        // Reconnect logic if needed
-        if (!this.isHistoryMode) {
-          setTimeout(() => this.initializeRealtimeWithBacklog(), 3000);
-        }
+        this.scheduleRealtimeReconnect();
       };
       ws.onerror = (err) => {
+        this.realtimeConnectInProgress = false;
         console.error('[Realtime] Error:', err);
         // Set status to Offline on error
         if (this.loggerStatus !== 'Offline') {
@@ -1951,11 +2003,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.cdr.detectChanges();
           console.log('[Logger Status] Updated to Offline (WebSocket error)');
         }
+        this.scheduleRealtimeReconnect();
       };
     } catch (err) {
+      this.realtimeConnectInProgress = false;
       console.error('Failed to connect realtime:', err);
       this.loggerStatus = 'Offline';
       this.cdr.detectChanges();
+      this.scheduleRealtimeReconnect();
     }
   }
 
@@ -1970,7 +2025,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
     const loggerKey = loggerId.startsWith('client_') ? loggerId : `client_${loggerId}`;
-    const url = getApiUrl('/realtime/cache') + `?logger=${encodeURIComponent(loggerKey)}&limit=${this.LOGGER_CACHE_MAX_POINTS}`;
+    const url = getApiUrl('/realtime/cache') + `?logger=${encodeURIComponent(loggerKey)}&limit=${this.LOGGER_CACHE_MAX_POINTS}&tail_ms=${this.REALTIME_RETENTION_MS}`;
     this.http.get<{ items?: unknown[] }>(url).subscribe({
       next: (res) => {
         const items = Array.isArray(res?.items) ? res.items : [];
@@ -5922,6 +5977,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngOnDestroy(): void {
+    this.componentDestroyed = true;
+    this.shouldRealtimeReconnect = false;
+    this.realtimeConnectInProgress = false;
+
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
     this.wsSubscriptions.forEach(sub => sub.unsubscribe());
@@ -5935,10 +5994,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // Close realtime WebSocket connection
-    if (this.realtimeWS) {
-      this.realtimeWS.close();
-      this.realtimeWS = null;
-    }
+    this.closeRealtimeSocket();
     this.ro?.disconnect();
     this.map?.remove();
 

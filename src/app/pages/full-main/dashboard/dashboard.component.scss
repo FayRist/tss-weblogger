@@ -195,3 +195,45 @@ td.mat-mdc-cell{
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+.dashboard-toolbar-actions {
+  margin-left: auto;
+}
+
+@media (max-width: 1024px) {
+  :host ::ng-deep .mat-column-carNumber .mat-sort-header-container,
+  :host ::ng-deep .mat-column-loggerStatus .mat-sort-header-container,
+  :host ::ng-deep .mat-column-classType .mat-sort-header-container,
+  :host ::ng-deep .mat-column-firstName .mat-sort-header-container,
+  :host ::ng-deep .mat-column-afr .mat-sort-header-container,
+  :host ::ng-deep .mat-column-countDetect .mat-sort-header-container,
+  :host ::ng-deep .mat-column-loggerId .mat-sort-header-container {
+    font-size: 15px;
+  }
+
+  td.mat-mdc-cell {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-toolbar-actions {
+    width: 100%;
+    justify-content: flex-start !important;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-toolbar-actions .btn {
+    width: auto;
+  }
+
+  :host ::ng-deep .status-badge {
+    min-width: 72px;
+    font-size: 12px;
+  }
+
+  :host ::ng-deep .status-badge-time {
+    font-size: 10px;
+  }
+}

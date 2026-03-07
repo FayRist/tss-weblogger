@@ -57,6 +57,7 @@
       </div>
     </div>
     <div class="row">
+      <div class="table-scroll-xy">
       <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
         mat-table [dataSource]="dataSource" matSort (matSortChange)="announceSortChange($event)">
 
@@ -106,9 +107,10 @@
           </td>
         </ng-container>
 
-        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: displayedColumns;" ></tr>
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;" ></tr>
       </table>
+      </div>
       <mat-paginator [pageSizeOptions]="[5,10,20,40, 50, 100]" [pageSize]="10" showFirstLastButtons></mat-paginator>
     </div>
   </div>

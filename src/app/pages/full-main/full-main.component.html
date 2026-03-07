@@ -1,4 +1,4 @@
-<mat-toolbar style="background-color:#212529;">
+<mat-toolbar class="full-main-toolbar" style="background-color:#212529;">
   <ng-container>
     <button (click)="drawer.toggle()" mat-icon-button class="example-icon" aria-label="menu">
       <mat-icon>menu</mat-icon>
@@ -7,10 +7,10 @@
 <!-- ถ้าเป็น /pages/dashboard ให้โชว์ฟอร์ม; ถ้าไม่ใช่ ให้โชว์ข้อความ Data Logger -->
       <span>Data Logger</span>
 
-      <div class="container">
-        <div class="row w-100">
+      <div class="container full-main-toolbar-container">
+        <div class="row w-100 g-2 align-items-center">
           <mat-chip-set aria-label="Fish selection">
-            <div class="col-6">
+            <div class="col-12 full-main-chip-col">
             @if ((isDashboard$  | async) || (isRace$  | async) || (isSettingLogger$  | async) ) {
                 <mat-chip matButton  [matMenuTriggerFor]="Event"  style="width: auto; display: inline-flex; align-items: center;">Event : {{ eventNameSelect }} <mat-icon style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon></mat-chip>
                 <mat-menu #Event="matMenu">

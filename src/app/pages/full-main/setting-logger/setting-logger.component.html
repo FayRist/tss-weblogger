@@ -12,6 +12,7 @@
 
     <div style="margin: 20px;" class="">
       <div class="row">
+        <div class="table-scroll-xy">
         <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
           mat-table [dataSource]="dataSource" matSort (matSortChange)="announceSortChange($event)">
 
@@ -127,6 +128,7 @@
           <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
           <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
         </table>
+        </div>
         <mat-paginator [pageSizeOptions]="[5,10,20,30]" [pageSize]="10" showFirstLastButtons></mat-paginator>
 
       </div>

@@ -112,6 +112,7 @@ export interface LoggerRaceDetailRes {
 
   // ฟิลด์ใหม่จาก countdetect_afr (อาจเป็น null)
   countDetect?: number | null;
+  currentCountDetect?: number | null;
   afr?: number | null;
   afrAverage?: number | null;
   status?: string | null;
@@ -138,6 +139,7 @@ export interface LoggerRaceDetailModel {
 
   // ฟิลด์ใหม่ (ทำให้เป็น number/string เสมอเพื่อตัดปัญหา strictNullChecks)
   countDetect: number;      // default 0
+  currentCountDetect: number;      // default 0
   afr: number;              // default 0
   afrAverage: number;       // default 0
   status: string;           // default ''

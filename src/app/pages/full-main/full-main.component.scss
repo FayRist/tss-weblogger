@@ -9,6 +9,39 @@ mat-chip {
   }
 }
 
+.full-main-toolbar {
+  min-height: 60px;
+}
+
+@media (max-width: 1024px) {
+  .full-main-toolbar {
+    min-height: 68px;
+  }
+
+  .full-main-toolbar-container {
+    max-width: calc(100vw - 140px);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .full-main-toolbar {
+    min-height: 84px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .full-main-toolbar-container {
+    max-width: calc(100vw - 110px);
+  }
+
+  .full-main-chip-col {
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 4px;
+  }
+}
+
 
 
 

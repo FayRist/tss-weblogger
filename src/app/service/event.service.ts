@@ -67,6 +67,7 @@ export class EventService {
 
         // ป้องกัน null/undefined → ให้เป็น number/string เสมอ
         countDetect: Number(data.countDetect ?? 0),
+        currentCountDetect: Number(data.currentCountDetect ?? 0),
         afr: Number(data.afr ?? 0),
         afrAverage: Number(data.afrAverage ?? 0),
         status: String(data.status ?? ''),
