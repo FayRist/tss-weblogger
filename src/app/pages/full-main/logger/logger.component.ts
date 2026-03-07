@@ -445,10 +445,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ===== deck.gl + MapLibre GL JS Configuration =====
   // Constants for performance tuning
-  private readonly LIVE_RETENTION_MINUTES = 10;
-  private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // 10 minutes rolling window
+  // Backlog/retention window for late-join and re-entry behavior.
+  // Current default = 2 minutes (ลดโอกาสหน่วง/กระตุกตาม requirement ปัจจุบัน)
+  // หากอนาคตต้องการย้อนหลังมากขึ้น ให้ปรับเป็น 10 ได้ที่ค่าด้านล่างนี้
+  // และ backend REDIS_HISTORY_RETENTION_MINUTES ให้ตรงกัน.
+  private readonly LIVE_RETENTION_MINUTES = 2;
+  private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window
   private readonly INPUT_HZ = 60; // Expected input frequency
-  private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~108,000 points with 20% headroom
+  private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~8,640 points @2min, ~43,200 @10min
   private readonly MAX_SEGS = this.MAX_POINTS - 1; // Segments = points - 1
   private readonly LINE_WIDTH_PX = 2; // Adjustable line width
   private readonly MARKER_RADIUS_PX = 4; // Adjustable marker radius
@@ -456,7 +460,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Chart Performance Constants =====
   // Chart resampling: 5Hz display (200ms buckets) for smooth rendering
   private readonly CHART_BUCKET_MS = 200; // 200ms = 5Hz display rate
-  private readonly CHART_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // 10 minutes rolling window for chart
+  private readonly CHART_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for chart
   private readonly CHART_UPDATE_MS = 150; // Chart update throttle — สูงขึ้นเพื่อลดการกระพริบ
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
@@ -465,7 +469,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_LIVE_MAX_POINTS = 2000;
 
   // ===== Map Performance Constants =====
-  private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // 10 minutes rolling window for map
+  private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for map
   private readonly MAP_PATH_FPS = 25; // Path layer update rate (20-30fps range)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
@@ -1334,7 +1338,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private canvasBounds: { minX: number; maxX: number; minY: number; maxY: number; spanX: number; spanY: number; paddedMinX: number; paddedMinY: number; paddedSpanX: number; paddedSpanY: number } | null = null; // Cached bounds for incremental drawing
 
   // ===== Realtime Buffering Configuration =====
-  // Retention window: how long to keep data in memory (default: 10 minutes)
+  // Retention window: how long to keep data in memory (default: 2 minutes)
   // This controls how much historical data is available for display/analysis
   private readonly REALTIME_RETENTION_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000;
 
@@ -1344,7 +1348,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly REALTIME_EXPECTED_HZ = 60; // Expected input frequency
   private readonly REALTIME_MAX_BUFFER_POINTS = Math.ceil(
     this.REALTIME_EXPECTED_HZ * (this.REALTIME_RETENTION_MS / 1000) * 1.2 // 20% headroom
-  ); // ~259,200 points for 60Hz * 1 hour
+  ); // ~8,640 points at 2 minutes / ~43,200 points at 10 minutes
 
   // Legacy constants (mapped to new config for backward compatibility)
   private readonly MAX_BUFFER_SIZE = this.REALTIME_MAX_BUFFER_POINTS;
@@ -1362,7 +1366,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private telemetryBufferHead = 0; // Current write position
   private telemetryBufferTail = 0; // Oldest valid position
   private telemetryBufferCount = 0; // Number of valid points
-  private readonly TELEMETRY_BUFFER_SIZE = Math.ceil(this.INPUT_HZ * (this.REALTIME_RETENTION_MS / 1000) * 1.2); // ~216,000 with 20% headroom
+  private readonly TELEMETRY_BUFFER_SIZE = Math.ceil(this.INPUT_HZ * (this.REALTIME_RETENTION_MS / 1000) * 1.2); // ~8,640 at 2m / ~43,200 at 10m
 
   // ===== Chart Display Buffer (5Hz Resampled) =====
   // Separate buffer for chart display (resampled to 5Hz)
