@@ -1592,6 +1592,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
     this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? '';
     this.circuitName   = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
+    this.currentLoggerId = String(this.parameterLoggerID || '').trim();
 
     // performance: batched realtime UI flush - initialize batch subscription
     this.rtBatchSubscription = this.rtBatch$.pipe(
@@ -1637,7 +1638,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // สมัคร WebSocket messages เฉพาะโหมด live เท่านั้น
     if (!this.isHistoryMode) {
       this.subscribeWebSocketMessages();
+      this.initializeStatusBroadcastForLive();
     }
+  }
+
+  private initializeStatusBroadcastForLive(): void {
+    const statusListSub = this.webSocketService.statusList$.subscribe(statusList => {
+      if (statusList && Array.isArray(statusList)) {
+        this.handleStatusUpdate(statusList);
+      }
+    });
+    this.wsSubscriptions.push(statusListSub);
+    this.webSocketService.connectStatus();
   }
 
   private subscribeWebSocketMessages() {
@@ -1676,6 +1688,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       .subscribe({
         next: (detail) => {
           this.loggerID     = detail.loggerId;
+          this.currentLoggerId = String(detail.loggerId ?? this.parameterLoggerID ?? '').trim();
           this.carNumber    = detail.carNumber;
           this.firstName    = detail.firstName;
           this.lastName     = detail.lastName;
@@ -3298,25 +3311,24 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   /**
    * อัปเดต status ของ logger จาก WebSocket status list
    */
-  private handleStatusUpdate(statusList: Array<{ logger_key: string; status: string; last_seen?: string; is_connected?: boolean; online_time?: string; disconnect_time?: string }>): void {
+  private handleStatusUpdate(statusList: Array<{ logger_key: string; status: string; last_seen?: string; is_connected?: boolean; online_time?: string; disconnect_time?: string; afr_count?: number; afr?: number }>): void {
     if (!this.currentLoggerId || !statusList || statusList.length === 0) {
       return;
     }
 
-    const currentLoggerKey = String(this.currentLoggerId);
+    const currentLoggerKey = this.normalizeLoggerKey(this.currentLoggerId);
     const statusItem = statusList.find(item =>
-      String(item.logger_key) === currentLoggerKey ||
-      String(item.logger_key) === `client_${currentLoggerKey}` ||
-      String(item.logger_key) === currentLoggerKey.replace('client_', '')
+      this.normalizeLoggerKey(item.logger_key) === currentLoggerKey
     );
 
     if (statusItem) {
       const status = (statusItem.status || '').toString().toLowerCase().trim();
       const newStatus = status === 'online' ? 'Online' : 'Offline';
+      let hasUiChange = false;
 
       if (this.loggerStatus !== newStatus) {
         this.loggerStatus = newStatus;
-        this.cdr.detectChanges();
+        hasUiChange = true;
         console.log(`[Logger Status] Updated to: ${newStatus} for logger ${currentLoggerKey}`);
       }
 
@@ -3337,19 +3349,54 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
         if (selectedDate) {
           this.onlineLastTime = this.formatDateTime(selectedDate);
-          this.cdr.detectChanges();
+          hasUiChange = true;
         }
       } else if (!statusItem.online_time && !statusItem.disconnect_time) {
         // ถ้าไม่มีทั้งสองค่า ให้เคลียร์เวลา
         this.onlineLastTime = "";
-        this.cdr.detectChanges();
+        hasUiChange = true;
+      }
+
+      // IMPORTANT: update count only for the currently opened logger (strict logger_key match above)
+      if (statusItem.afr_count !== undefined && statusItem.afr_count !== null) {
+        const nextCount = Number(statusItem.afr_count);
+        if (Number.isFinite(nextCount) && this.currentCountDetect !== nextCount) {
+          this.currentCountDetect = nextCount;
+          hasUiChange = true;
+        }
+      }
+
+      if (statusItem.afr !== undefined && statusItem.afr !== null) {
+        const nextAfr = Number(statusItem.afr);
+        if (Number.isFinite(nextAfr) && this.afr !== nextAfr) {
+          this.afr = nextAfr;
+          hasUiChange = true;
+        }
       }
 
       // รีเซ็ต timer เมื่อได้รับ status update
       if (newStatus === 'Online') {
         this.resetStatusTimeout();
       }
+
+      if (hasUiChange) {
+        this.cdr.detectChanges();
+      }
     }
+  }
+
+  private normalizeLoggerKey(value: unknown): string {
+    let key = String(value ?? '').trim();
+    if (!key) {
+      return '';
+    }
+    if (key.startsWith('client_')) {
+      key = key.slice(7);
+    }
+    if (key.toLowerCase().startsWith('tss')) {
+      key = key.slice(3);
+    }
+    return key.trim();
   }
 
   /**
@@ -6298,13 +6345,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     });
 
-    // dialogRef.afterClosed().subscribe(result => {
-    //   // console.log('The dialog was closed');
-    //   if(result == 'success'){
-    //     // this.toastr.success('Reset ทั้งหมด เรียบร้อย')
-    //     // this.afrAverage
-    //   }
-    // });
+    dialogRef.afterClosed().subscribe(result => {
+      const isSuccess = !!result && (result === 'success' || result.success === true);
+      if (!isSuccess) {
+        return;
+      }
+
+      // Update current page immediately so Clear Count reflects without waiting.
+      this.currentCountDetect = 0;
+      this.cdr.detectChanges();
+
+      // Keep flow consistent with existing data source from backend.
+      this.getDetailLoggerById();
+    });
   }
 
   /**
