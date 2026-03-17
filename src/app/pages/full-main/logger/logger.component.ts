@@ -32,6 +32,7 @@ import { APP_CONFIG, getApiUrl, getApiWebSocket, getMapCenterForCircuit } from '
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
+import { AuthService } from '../../../core/auth/auth.service';
 // deck.gl imports
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -1392,7 +1393,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     private eventService: EventService,
     private webSocketService: WebSocketService,
     private dataProcessingService: DataProcessingService,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    private auth: AuthService
   ) {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
@@ -1409,6 +1411,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Initialize telemetry ring buffer
     this.telemetryBuffer = new Array(this.TELEMETRY_BUFFER_SIZE);
     this.chartDisplayBuffer = new Array(this.CHART_MAX_DISPLAY_POINTS);
+  }
+
+  isReadOnlyRaceTeamUser(): boolean {
+    return this.auth.current?.role === 'race_team_user';
   }
 
   downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
@@ -1482,6 +1488,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   async loadAndApplyConfig() {
+    if (this.isReadOnlyRaceTeamUser()) {
+      this.afrLimit = 13.5;
+      this.countMax = 3;
+      this.afrGraphsMinLimit = 0;
+      this.afrGraphsMaxLimit = 30;
+      return;
+    }
+
     const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
@@ -2174,11 +2188,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const afr = payload.AFR != null ? Number(payload.AFR) : (payload.afr != null ? Number(payload.afr) : undefined);
     const rpm = payload.RPM != null ? Number(payload.RPM) : (payload.rpm != null ? Number(payload.rpm) : undefined);
-    const velocity = payload.velocity != null ? Number(payload.velocity) : undefined;
+    const incomingVelocity = payload.velocity != null
+      ? Number(payload.velocity)
+      : (payload.speed != null ? Number(payload.speed) : undefined);
     const timeVal = payload.timestamp ?? payload.time ?? Date.now();
     const ts = typeof timeVal === 'number'
       ? timeVal
       : (Number.isFinite(Number(timeVal)) ? Number(timeVal) : Date.parse(String(timeVal)) || Date.now());
+
+    let velocity = Number.isFinite(incomingVelocity as number) ? (incomingVelocity as number) : undefined;
+    if (this.isReadOnlyRaceTeamUser() && this.isRealtimeMode) {
+      velocity = this.resolveRaceTeamVelocityKmh(loggerId, lat, lon, ts, velocity);
+      this.currentCarSpeedKmh = Number.isFinite(velocity as number) ? (velocity as number) : null;
+    }
 
     return {
       loggerId,
@@ -2190,6 +2212,35 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       velocity
       // Note: raw payload is NOT stored to keep memory usage low
     };
+  }
+
+  private resolveRaceTeamVelocityKmh(
+    loggerId: string,
+    lat: number,
+    lon: number,
+    ts: number,
+    incomingVelocity?: number
+  ): number | undefined {
+    const hasIncoming = Number.isFinite(incomingVelocity as number);
+    const prev = this.lastSpeedCalcPointByLogger[loggerId];
+    let velocity = hasIncoming ? (incomingVelocity as number) : undefined;
+
+    if (!hasIncoming && prev && Number.isFinite(lat) && Number.isFinite(lon)) {
+      const dtMs = ts - prev.ts;
+      if (dtMs > 0 && dtMs <= this.SPEED_CALC_MAX_GAP_MS) {
+        const distMeters = this.haversineMeters({ lat: prev.lat, lon: prev.lon }, { lat, lon });
+        const calcKmh = (distMeters / (dtMs / 1000)) * 3.6;
+        if (Number.isFinite(calcKmh) && calcKmh >= 0 && calcKmh <= this.SPEED_MAX_ACCEPT_KMH) {
+          velocity = calcKmh;
+        }
+      }
+    }
+
+    if (Number.isFinite(lat) && Number.isFinite(lon) && Number.isFinite(ts)) {
+      this.lastSpeedCalcPointByLogger[loggerId] = { lat, lon, ts };
+    }
+
+    return velocity;
   }
 
   private addTelemetryPoint(point: TelemetryPoint, options?: { skipTimeTrim?: boolean; skipChartUpdate?: boolean }): void {
@@ -2988,6 +3039,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     lastReceiveTime: Date.now(),
     statusColor: 'red' as 'red' | 'yellow' | 'orange' | 'green'
   };
+  currentCarSpeedKmh: number | null = null;
+  private lastSpeedCalcPointByLogger: Record<string, { lat: number; lon: number; ts: number }> = {};
+  private readonly SPEED_CALC_MAX_GAP_MS = 1500;
+  private readonly SPEED_MAX_ACCEPT_KMH = 420;
   private wsStatsWindow: Array<{ bytes: number; timestamp: number }> = [];
   private readonly WS_STATS_WINDOW_MS = 1000; // 1 second rolling window
   private wsStatsUpdateInterval: any = null;
@@ -6008,7 +6063,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return 'red';                          // < 0.05 Mbps = แดง
   }
 
-  getFormattedSpeed(): string {
+  getFormattedNetworkSpeed(): string {
     const mbps = this.wsStats.mbps;
     if (mbps >= 1) {
       return `${mbps.toFixed(2)} Mbps`;
@@ -6017,6 +6072,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     } else {
       return `${(mbps * 1000000).toFixed(0)} bps`;
     }
+  }
+
+  getFormattedCarSpeed(): string {
+    if (!Number.isFinite(this.currentCarSpeedKmh as number)) {
+      return '-';
+    }
+    return `${(this.currentCarSpeedKmh as number).toFixed(1)} km/h`;
   }
 
   getFormattedPacketRate(): string {
@@ -6094,6 +6156,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.historyPoints = [];
     this.historyDownsampled = [];
     this.chartDataPoints = [];
+    this.currentCarSpeedKmh = null;
+    this.lastSpeedCalcPointByLogger = {};
   }
 
   //////////// RACE /////////////////////////////////

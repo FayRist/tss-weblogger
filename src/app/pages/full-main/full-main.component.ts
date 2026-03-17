@@ -16,6 +16,7 @@ import { EventService } from '../../service/event.service';
 import { TimeService } from '../../service/time.service';
 import { ToastrService } from 'ngx-toastr';
 import { ConfigAfrModalComponent } from './config-afr-modal/config-afr-modal.component';
+import { APP_CONFIG } from '../../app.config';
 
 function insideParen(text: any): string | null {
   const s = String(text ?? '');               // บังคับเป็น primitive string
@@ -68,6 +69,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
   private time = inject(TimeService);
   currentTime = this.time.now;                        // ใช้ใน template ได้เลย
   startOfDay = computed(() => new Date(this.time.now().setHours(0,0,0,0)));
+  readonly menuVisibility = APP_CONFIG.AUTH.MENU_VISIBILITY;
 
   eventNameSelect:String = '';
   SessionNameSelect:String = '';
@@ -153,6 +155,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
         this.eventService.getLoggerByDate(now).subscribe({
           next: ({ items, count }) => {
             if (items.length <= 0){
+              this.navigateToHistoryEventFallback();
               return;
             }
 
@@ -167,7 +170,10 @@ export class FullMainComponent implements OnInit, OnDestroy {
               });
             }
           },
-          error: (e) => console.error(e),
+          error: (e) => {
+            console.error(e);
+            this.navigateToHistoryEventFallback();
+          },
         });
       }else{
         if(eventId){
@@ -220,6 +226,15 @@ export class FullMainComponent implements OnInit, OnDestroy {
       }
     }
 
+  }
+
+  canShowMenu(menuKey: keyof typeof APP_CONFIG.AUTH.MENU_VISIBILITY): boolean {
+    const role = this.auth.current?.role;
+    if (!role) {
+      return false;
+    }
+    const allowed = this.menuVisibility[menuKey] as readonly string[];
+    return allowed.includes(role);
   }
 
     /** สร้าง observable อ่านค่าจาก URL (รองรับทั้ง path params และ query params) */
@@ -310,6 +325,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
       this.eventService.getLoggerByDate(now).subscribe({
         next: ({ items, count }) => {
           if (items.length <= 0){
+            this.navigateToHistoryEventFallback();
             return
           }
           this.eventNameSelect = items[0].eventName;
@@ -321,8 +337,18 @@ export class FullMainComponent implements OnInit, OnDestroy {
             });
 
         },
-        error: (e) => console.error(e),
+        error: (e) => {
+          console.error(e);
+          this.navigateToHistoryEventFallback();
+        },
       });
+  }
+
+  private navigateToHistoryEventFallback(): void {
+    this.router.navigate(['/pages', 'event'], {
+      queryParams: { statusRace: 'history' },
+      onSameUrlNavigation: 'reload'
+    });
   }
 
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }

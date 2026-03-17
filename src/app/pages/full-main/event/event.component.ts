@@ -52,32 +52,40 @@ export class EventComponent implements OnInit {
         active: 1
       }];
   private subscriptions: Subscription[] = [];
+  private showHistoryOnly = false;
 
   RaceStatus = RaceStatus;           // <-- ให้ template อ้าง enum ได้
 
   constructor(private router: Router, private route: ActivatedRoute,
-      private eventService: EventService, private toastr: ToastrService, public time: TimeService) {
+      private eventService: EventService, private toastr: ToastrService, public time: TimeService, private authService: AuthService) {
+  }
+
+  isReadOnlyRaceTeamUser(): boolean {
+    return this.authService.current?.role === 'race_team_user';
   }
 
 
 
   statusOf = (e: eventModel) => getRaceStatus(this.time.now(), e.event_start, e.event_end);
   ngOnInit() {
+    this.showHistoryOnly = (this.route.snapshot.queryParamMap.get('statusRace') ?? '').toLowerCase() === 'history';
     this.loadEvent();
 
-    const form_code = `map_list`
-    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
-        (config: any) => {
-            this.mapsList = config.map((item: any) => ({
-                name: item.config_name,
-                value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
-            }));
-        },
-        error => {
-            console.error('Error loading matchList:', error);
-        }
-    );
-    this.subscriptions.push(MatchSub);
+    if (!this.isReadOnlyRaceTeamUser()) {
+      const form_code = `map_list`
+      const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
+          (config: any) => {
+              this.mapsList = config.map((item: any) => ({
+                  name: item.config_name,
+                  value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
+              }));
+          },
+          error => {
+              console.error('Error loading matchList:', error);
+          }
+      );
+      this.subscriptions.push(MatchSub);
+    }
 
   }
 
@@ -90,8 +98,16 @@ export class EventComponent implements OnInit {
   loadEvent(){
     const eventData = this.eventService.getEvent().subscribe(
       eventRes => {
-        this.allEvent = []
-        this.allEvent = (eventRes || []).slice().sort((a: any, b: any) => {
+        let list = (eventRes || []).slice();
+        if (this.showHistoryOnly) {
+          const nowMs = this.time.now().getTime();
+          list = list.filter((e: any) => {
+            const end = e?.event_end instanceof Date ? e.event_end.getTime() : new Date(e?.event_end).getTime();
+            return Number.isFinite(end) && end <= nowMs;
+          });
+        }
+
+        this.allEvent = list.sort((a: any, b: any) => {
           const aTime = a?.event_start instanceof Date ? a.event_start.getTime() : new Date(a?.event_start).getTime();
           const bTime = b?.event_start instanceof Date ? b.event_start.getTime() : new Date(b?.event_start).getTime();
           return aTime - bTime;

@@ -95,6 +95,18 @@ export const APP_CONFIG = {
     SUPPORTED_FILE_TYPES: ['.txt', '.csv']
   },
 
+  // Auth / RBAC UI visibility
+  AUTH: {
+    MENU_VISIBILITY: {
+      DASHBOARD: ['super_admin', 'admin', 'mechanic_user', 'race_team_user', 'scruitineer'],
+      ALL_SEASONS: ['super_admin', 'admin', 'race_team_user'],
+      SETTING_LOGGER: ['super_admin', 'admin'],
+      MAP_CONFIG: ['super_admin', 'admin'],
+      AFR_CONFIG: ['super_admin', 'admin'],
+      LOGOUT: ['super_admin', 'admin', 'mechanic_user', 'race_team_user', 'scruitineer'],
+    } as const
+  },
+
   // UI Settings
   UI: {
     THEME: {

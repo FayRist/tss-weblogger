@@ -68,7 +68,7 @@
   <mat-drawer #drawer mode="over" class="toolbar" style="width:250px;">
     <mat-action-list class="side-content">
 
-      @if ((role$ | async) === 'admin' || (role$ | async) === 'scruitineer') {
+      @if (canShowMenu('DASHBOARD')) {
       <!-- เห็นได้ทั้ง admin + scruitineer -->
       <button (click)="drawer.toggle(); navigateToDashboardOnDate()" mat-list-item>
         <div class="row">
@@ -78,7 +78,7 @@
       </button>
       }
 
-      @if ((role$ | async) === 'admin') {
+      @if (canShowMenu('ALL_SEASONS')) {
       <!-- เฉพาะ admin เท่านั้น -->
       <button (click)="drawer.toggle(); navigateToListAllSeason()" mat-list-item >
         <div class="row">
@@ -94,35 +94,42 @@
         </div>
       </button> -->
 
+      @if (canShowMenu('SETTING_LOGGER')) {
       <button (click)="drawer.toggle(); navigateToListSettingLogger()" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/setting-logger.png"></div>
           <div class="col-10 pt-1">ตั้งค่า Logger</div>
         </div>
       </button>
+      }
 
+      @if (canShowMenu('MAP_CONFIG')) {
       <button (click)="drawer.toggle(); navigateToListConfigAFR2()" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/list-config.png"></div>
           <div class="col-10 pt-1">Map Config</div>
         </div>
       </button>
+      }
 
+      @if (canShowMenu('AFR_CONFIG')) {
       <button (click)="drawer.toggle(); navigateToListConfigAFR('0ms','0ms')" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/config-setting.png"></div>
           <div class="col-10 pt-1">AFR Config</div>
         </div>
       </button>
-
+      }
 
       }
+      @if (canShowMenu('LOGOUT')) {
       <button (click)="drawer.toggle(); navigateToLogout()" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/exit-icon.png"></div>
           <div class="col-10 pt-1">Logout</div>
         </div>
       </button>
+      }
 
     </mat-action-list>
   </mat-drawer>

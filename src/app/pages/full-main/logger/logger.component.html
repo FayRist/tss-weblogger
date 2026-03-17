@@ -1,3 +1,5 @@
+@if (!isReadOnlyRaceTeamUser()) {
+
 <mat-toolbar class="pt-2 logger-toolbar">
   <mat-toolbar-row>
 
@@ -31,6 +33,7 @@
   </mat-toolbar-row>
 </mat-toolbar>
 
+}
 
 <div class="logger-page" style="margin: 20px 0 0 10px;">
 
@@ -43,6 +46,7 @@
           </mat-form-field>
         </form>
       </div>
+      @if (!isReadOnlyRaceTeamUser()) {
       <div class="logger-meta-item logger-meta-item--logger">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
@@ -51,6 +55,7 @@
           </mat-form-field>
         </form>
       </div>
+      }
       <div class="logger-meta-item logger-meta-item--driver">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
@@ -84,11 +89,13 @@
         </div>
       </div>
 
-      <div class="logger-meta-item logger-meta-item--clear">
-        <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
-          Clear Count
-        </button>
-      </div>
+      @if (!isReadOnlyRaceTeamUser()) {
+        <div class="logger-meta-item logger-meta-item--clear">
+          <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
+            Clear Count
+          </button>
+        </div>
+      }
     </div>
 
     <!-- ข้อมูลจุดเริ่มต้น -->
@@ -119,8 +126,12 @@
               <!-- WebSocket Statistics -->
               <div class="ws-stats-container d-flex align-items-center gap-3">
                 <div class="ws-stat-item">
-                  <small class="text-muted">Speed:</small>
-                  <span class="fw-bold">{{ getFormattedSpeed() }}</span>
+                  <small class="text-muted">Network:</small>
+                  <span class="fw-bold">{{ getFormattedNetworkSpeed() }}</span>
+                </div>
+                <div class="ws-stat-item" *ngIf="isReadOnlyRaceTeamUser()">
+                  <small class="text-muted">Car Speed:</small>
+                  <span class="fw-bold">{{ getFormattedCarSpeed() }}</span>
                 </div>
                 <div class="ws-stat-item">
                   <small class="text-muted">Rate:</small>

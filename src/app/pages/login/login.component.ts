@@ -58,20 +58,41 @@ export class LoginComponent {
   onSubmit() {
     this.errorMsg = '';
     this.isLoading = true;
-    const { ok, error } = this.auth.login(this.username.trim(), this.password);
-    this.isLoading = false;
-    if (!ok) { this.errorMsg = error ?? 'Login failed'; return; }
-    // this.router.navigate(['/pages/dashboard']);
+    this.auth.login(this.username.trim(), this.password).subscribe(({ ok, error }) => {
+      this.isLoading = false;
+      if (!ok) {
+        this.errorMsg = error ?? 'Login failed';
+        return;
+      }
 
-    // ส่งเป็น UTC เสมอ
-    const now = toDate(this.time.now());
-    this.eventService.getLoggerByDate(now).subscribe({
-      next: ({ items, count }) => {
+      // ส่งเป็น UTC เสมอ
+      const now = toDate(this.time.now());
+      this.eventService.getLoggerByDate(now).subscribe({
+        next: ({ items }) => {
+          if (!items || items.length === 0) {
+            this.router.navigate(['/pages', 'event'], {
+              queryParams: { statusRace: 'history' }
+            });
+            return;
+          }
           this.router.navigate(['/pages', 'dashboard'], {
-            queryParams: { eventId: items[0].eventId, raceId: items[0].idList, segment: items[0].segmentValue, class: items[0].classValue, circuitName: items[0].circuitName, statusRace: 'live'},
+            queryParams: {
+              eventId: items[0].eventId,
+              raceId: items[0].idList,
+              segment: items[0].segmentValue,
+              class: items[0].classValue,
+              circuitName: items[0].circuitName,
+              statusRace: 'live'
+            },
           });
-      },
-      error: (e) => console.error(e),
+        },
+        error: (e) => {
+          console.error(e);
+          this.router.navigate(['/pages', 'event'], {
+            queryParams: { statusRace: 'history' }
+          });
+        },
+      });
     });
   }
 }

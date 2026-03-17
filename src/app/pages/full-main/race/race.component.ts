@@ -50,8 +50,11 @@ export class RaceComponent implements OnInit, OnDestroy {
 
   constructor(private router: Router, private route: ActivatedRoute
     , private eventService: EventService, private toastr: ToastrService
-    , public time: TimeService) {
+    , public time: TimeService, private authService: AuthService) {
 
+  }
+  isReadOnlyRaceTeamUser(): boolean {
+    return this.authService.current?.role === 'race_team_user';
   }
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);

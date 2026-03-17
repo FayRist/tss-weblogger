@@ -31,6 +31,7 @@ import { LoggerItem } from '../../../model/api-response-model';
 import { TimeService } from '../../../service/time.service';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
+import { AuthService } from '../../../core/auth/auth.service';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
@@ -130,12 +131,22 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     private eventService: EventService,
     private toastr: ToastrService,
     private fb: FormBuilder,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private auth: AuthService
   ) {
     this.loadAndApplyConfig();
   }
 
+  isReadOnlyRaceTeamUser(): boolean {
+    return this.auth.current?.role === 'race_team_user';
+  }
+
   async loadAndApplyConfig() {
+    if (this.isReadOnlyRaceTeamUser()) {
+      this.countMax = 3;
+      return;
+    }
+
     const form_code = `max_count, limit_afr`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
@@ -235,6 +246,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   statusRace:string = '';
 
   ngOnInit() {
+    if (this.isReadOnlyRaceTeamUser()) {
+      this.displayedColumns = this.displayedColumns.filter((col) => col !== 'resetLimit');
+    }
+
     // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
     const queryParamsSub = this.route.queryParamMap.pipe(
       startWith(this.route.snapshot.queryParamMap) // ให้ emit ค่าเริ่มต้นก่อน

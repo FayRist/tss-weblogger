@@ -18,12 +18,12 @@ const routes: Routes = [
   }, {
     path: 'event',
     canActivate: [roleGuard],
-    data: { roles: ['admin'] },
+    data: { roles: ['admin', 'race_team_user'] },
     loadComponent: () => import('./event/event.component').then(m => m.EventComponent)
   }, {
     path: 'race',
     canActivate: [roleGuard],
-    data: { roles: ['admin'] },
+    data: { roles: ['admin', 'race_team_user'] },
     loadComponent: () => import('./race/race.component').then(m => m.RaceComponent)
   }, {
     path: 'logger',

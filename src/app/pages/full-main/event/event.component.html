@@ -12,7 +12,9 @@
             <th class="text-center w-5"> </th>
             <th class="text-center w-15">สถานะ</th>
             <th class="text-center">
-              <button type="button" class="btn btn-secondary w-50" (click)="openAdd('0ms', '0ms')">เพิ่ม Event</button>
+              @if (!isReadOnlyRaceTeamUser()) {
+                <button type="button" class="btn btn-secondary w-50" (click)="openAdd('0ms', '0ms')">เพิ่ม Event</button>
+              }
             </th>
           </tr>
         </thead>
@@ -37,38 +39,39 @@
                 </div>
               </td>
               <td class="text-center">
-                <div class="row d-flex justify-content-center">
-                  <div class="col-12">
-                    <button
-                      type="button"
-                      class="w-100 p-0 btn"
-                      [class]="eventList.active == 1 ? 'btn-info' : 'btn-secondary'"
-                      [disabled]="eventList.active == 0 && (statusOf(eventList) == RaceStatus.Live || statusOf(eventList) == RaceStatus.Finished)"
-                      (click)="eventListActive(eventList.event_name ,eventList.event_id, eventList.active, 'event')">
-                      {{ eventList.active == 1 ? 'active' : 'inactive' }}
-                    </button>
-                  </div>
-                </div>
-              </td>
-              <td class="text-center">
-                  <div class="row d-flex justify-content-center"
-                    [class.pointer-events-none]="statusOf(eventList) === RaceStatus.Finished"
-                    [class.opacity-50]="statusOf(eventList) === RaceStatus.Finished">
-                    @if (statusOf(eventList) == RaceStatus.Live) {
-                      <div class="col-6">
-                          <button type="button" class="btn btn-danger w-100 p-0" (click)="openEnd('0ms', '0ms', eventList.event_id)">จบ event</button>
-                      </div>
-                    }
-                    <div class="col-2 d-flex justify-content-center">
-                      @if (statusOf(eventList) !== RaceStatus.Finished) {
-                        <!-- @if (statusOf(eventList) == RaceStatus.Live) {
-                          <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_finish.png" (click)="openEnd('0ms', '0ms', eventList.event_id)">
-                        } -->
-                        <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
-                        <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.event_id)">
-                      }
+                @if (!isReadOnlyRaceTeamUser()) {
+                  <div class="row d-flex justify-content-center">
+                    <div class="col-12">
+                      <button
+                        type="button"
+                        class="w-100 p-0 btn"
+                        [class]="eventList.active == 1 ? 'btn-info' : 'btn-secondary'"
+                        [disabled]="eventList.active == 0 && (statusOf(eventList) == RaceStatus.Live || statusOf(eventList) == RaceStatus.Finished)"
+                        (click)="eventListActive(eventList.event_name ,eventList.event_id, eventList.active, 'event')">
+                        {{ eventList.active == 1 ? 'active' : 'inactive' }}
+                      </button>
                     </div>
                   </div>
+                }
+              </td>
+              <td class="text-center">
+                  @if (!isReadOnlyRaceTeamUser()) {
+                    <div class="row d-flex justify-content-center"
+                      [class.pointer-events-none]="statusOf(eventList) === RaceStatus.Finished"
+                      [class.opacity-50]="statusOf(eventList) === RaceStatus.Finished">
+                      @if (statusOf(eventList) == RaceStatus.Live) {
+                        <div class="col-6">
+                            <button type="button" class="btn btn-danger w-100 p-0" (click)="openEnd('0ms', '0ms', eventList.event_id)">จบ event</button>
+                        </div>
+                      }
+                      <div class="col-2 d-flex justify-content-center">
+                        @if (statusOf(eventList) !== RaceStatus.Finished) {
+                          <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', eventList.event_id)">
+                          <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', eventList.event_id)">
+                        }
+                      </div>
+                    </div>
+                  }
               </td>
             </tr>
           }
