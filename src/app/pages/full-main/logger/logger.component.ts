@@ -423,6 +423,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   /** กำลังแพน/ซูมกราฟ — ไม่อัปเดต series ตอน realtime เพื่อหลีกเลี่ยง ApexCharts screenCTM null */
   chartUserIsInteracting: boolean = false;
+  /** เมื่อ true จะบังคับ viewport ตามช่วงล่าสุดทุกครั้งที่มี realtime update */
+  followRealtimeViewport: boolean = false;
+  private wheelInteractionTimer: ReturnType<typeof setTimeout> | null = null;
 
   configAFR: any;
 
@@ -462,7 +465,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // Chart resampling: 5Hz display (200ms buckets) for smooth rendering
   private readonly CHART_BUCKET_MS = 200; // 200ms = 5Hz display rate
   private readonly CHART_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for chart
-  private readonly CHART_UPDATE_MS = 150; // Chart update throttle — สูงขึ้นเพื่อลดการกระพริบ
+  private readonly CHART_UPDATE_MS = 220; // Chart update throttle — เพิ่มเล็กน้อยเพื่อลดการกระพริบ
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
   private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
@@ -2807,6 +2810,19 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   /** ใช้เมื่อผู้ใช้เริ่มกดเมาส์/แตะบนกราฟ (แพน/ซูม) — ป้องกันอัปเดต realtime ระหว่างแพน (screenCTM null) */
   chartUserInteractionStart(): void {
     this.chartUserIsInteracting = true;
+    this.followRealtimeViewport = false;
+  }
+
+  onChartWheel(event: WheelEvent): void {
+    event.preventDefault();
+    this.chartUserInteractionStart();
+    if (this.wheelInteractionTimer) {
+      clearTimeout(this.wheelInteractionTimer);
+    }
+    this.wheelInteractionTimer = setTimeout(() => {
+      this.chartUserIsInteracting = false;
+      this.wheelInteractionTimer = null;
+    }, 180);
   }
 
   /** ใช้เมื่อผู้ใช้ปล่อยเมาส์/แตะ — อนุญาตให้อัปเดตกราฟ realtime อีกครั้ง (ข้อมูลจะ sync ตอนมีจุดใหม่เข้ามา) */
@@ -2836,12 +2852,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }));
     const brushData = data.slice(-1000);
 
-    if (this.chart?.chart) {
+    if (this.chart) {
       try {
-        (this.chart.chart as any).updateSeries([{
+        this.chart.updateSeries([{
           name: 'AFR',
           data
         }], false);
+        if (this.followRealtimeViewport) {
+          this.applyLatestViewport(points);
+        }
         this.brushOpts = {
           ...this.brushOpts,
           series: [{ name: 'AFR', type: 'line', data: brushData }]
@@ -2857,11 +2876,44 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ...this.detailOpts,
       series: [{ name: 'AFR', type: 'line', data }]
     };
+    if (this.followRealtimeViewport) {
+      this.detailOpts = {
+        ...this.detailOpts,
+        xaxis: {
+          ...this.detailOpts.xaxis,
+          min: points[0].ts,
+          max: points[points.length - 1].ts,
+        }
+      };
+    }
     this.brushOpts = {
       ...this.brushOpts,
       series: [{ name: 'AFR', type: 'line', data: brushData }]
     };
     this.ngZone.run(() => this.cdr.markForCheck());
+  }
+
+  private applyLatestViewport(points: TelemetryPoint[]): void {
+    if (!points.length) return;
+    const minX = points[0].ts;
+    const maxX = points[points.length - 1].ts;
+    try {
+      if (this.chart) {
+        this.chart.zoomX(minX, maxX);
+      }
+      const apexAny = (window as any)?.ApexCharts;
+      apexAny?.exec?.('detailChart', 'zoomX', minX, maxX);
+    } catch (err) {
+      console.warn('[Chart] applyLatestViewport failed:', err);
+    }
+  }
+
+  goToLatestRealtimeViewport(): void {
+    // this.chartUserIsInteracting = false;
+    this.followRealtimeViewport = true;
+    const raw = this.chartDataPoints;
+    const points = this.isHistoryMode ? raw : raw.slice(-this.CHART_LIVE_MAX_POINTS);
+    this.applyLatestViewport(points);
   }
 
   /**
@@ -6139,6 +6191,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.webSocketService.disconnectStatus();
     this.disconnectWebSocket();
     this.clearStatusTimeout();
+    if (this.wheelInteractionTimer) {
+      clearTimeout(this.wheelInteractionTimer);
+      this.wheelInteractionTimer = null;
+    }
 
     // Persist current buffers to sessionStorage so re-entering path can restore (e.g. after timeout)
     // this.saveLoggerCache();
