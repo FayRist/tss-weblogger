@@ -6,6 +6,12 @@ export const roleGuard: CanActivateFn = (route: ActivatedRouteSnapshot) => {
   const roles = (route.data?.['roles'] as Role[]) ?? [];
   const auth = inject(AuthService);
   const router = inject(Router);
+
+  if (!auth.isLoggedIn()) {
+    router.navigate(['/login'], { replaceUrl: true });
+    return false;
+  }
+
   if (roles.length === 0 || auth.hasAnyRole(...roles)) return true;
   // ไม่มีสิทธิ์ → ส่งไปหน้า dashboard (หรือ 403 page)
   router.navigate(['/pages/dashboard']);

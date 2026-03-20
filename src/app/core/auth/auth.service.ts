@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable, of } from 'rxjs';
+import { BehaviorSubject, Observable, Subscription, of } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 import { APP_CONFIG, getApiUrl } from '../../app.config';
 import { hashPassword } from '../../utility/password.util';
+import { NavigationEnd, Router } from '@angular/router';
 
 export type Role = 'super_admin' | 'admin' | 'mechanic_user' | 'race_team_user' | 'scruitineer';
 
@@ -17,6 +18,8 @@ export interface AuthState {
   allRaceAccess: boolean;
   token: string;
   passwordProof?: string;
+  lastActivityAt: number;
+  expiresAt: number;
 }
 
 interface LoginApiResponse {
@@ -38,18 +41,77 @@ interface LoginApiResponse {
 }
 
 const LS_KEY = 'auth_state_v2';
+const TIMEOUT_NOTICE_KEY = 'auth_timeout_notice';
+const SESSION_TIMEOUT_PROD_MS = 4 * 60 * 60 * 1000;
+// const SESSION_TIMEOUT_TEST_MS = 1 * 60 * 1000;
+const USE_TEST_TIMEOUT = false;
+// const SESSION_TIMEOUT_MS = USE_TEST_TIMEOUT ? SESSION_TIMEOUT_TEST_MS : SESSION_TIMEOUT_PROD_MS;
+const ACTIVITY_THROTTLE_MS = 5000;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private _user$ = new BehaviorSubject<AuthState | null>(this.readFromLS());
   user$ = this._user$.asObservable();
+  private sessionTimer: ReturnType<typeof setTimeout> | null = null;
+  private routerSub: Subscription | null = null;
+  private listenersAttached = false;
+  private lastActivityPersistAt = 0;
 
-  constructor(private http: HttpClient) {}
+  private readonly activityEvents: readonly string[] = [
+    'click',
+    'keydown',
+    'touchstart',
+    'scroll',
+    'mousemove',
+  ];
+
+  constructor(private http: HttpClient, private router: Router) {
+    if (this.current?.token) {
+      this.startSessionMonitoring();
+    }
+  }
 
   private readFromLS(): AuthState | null {
     try {
-      return JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) {
+        return null;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<AuthState> | null;
+      if (!parsed?.token) {
+        localStorage.removeItem(LS_KEY);
+        return null;
+      }
+
+      const now = Date.now();
+      const lastActivityAt = Number(parsed.lastActivityAt || now);
+      const expiresAt = Number(parsed.expiresAt || (lastActivityAt + SESSION_TIMEOUT_PROD_MS));
+
+      if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+        localStorage.removeItem(LS_KEY);
+        localStorage.setItem(TIMEOUT_NOTICE_KEY, '1');
+        return null;
+      }
+
+      const state: AuthState = {
+        userId: Number(parsed.userId || 0),
+        username: String(parsed.username || ''),
+        role: (parsed.role || 'race_team_user') as Role,
+        roleId: Number(parsed.roleId || 0),
+        permissions: Array.isArray(parsed.permissions) ? parsed.permissions : [],
+        allowedRaceIds: Array.isArray(parsed.allowedRaceIds) ? parsed.allowedRaceIds.map(Number) : [],
+        allRaceAccess: !!parsed.allRaceAccess,
+        token: String(parsed.token),
+        passwordProof: parsed.passwordProof,
+        lastActivityAt,
+        expiresAt,
+      };
+
+      this.writeToLS(state);
+      return state;
     } catch {
+      localStorage.removeItem(LS_KEY);
       return null;
     }
   }
@@ -76,6 +138,7 @@ export class AuthService {
         }
 
         const u = res.data.user;
+        const now = Date.now();
         const state: AuthState = {
           userId: Number(u.user_id || 0),
           username: u.username,
@@ -86,10 +149,13 @@ export class AuthService {
           allRaceAccess: !!u.all_race_access,
           token: res.data.access_token,
           passwordProof: hashPassword(password),
+          lastActivityAt: now,
+          expiresAt: now + SESSION_TIMEOUT_PROD_MS,
         };
 
         this._user$.next(state);
         this.writeToLS(state);
+        this.startSessionMonitoring();
         return { ok: true };
       }),
       catchError((err) => {
@@ -109,10 +175,17 @@ export class AuthService {
     this.http.post(apiUrl, {}, { headers }).pipe(
       catchError(() => of(null)),
       tap(() => {
-        this._user$.next(null);
-        this.writeToLS(null);
+        this.clearSession(false);
       })
     ).subscribe();
+  }
+
+  logoutDueToTimeout(): void {
+    this.clearSession(true);
+    this.router.navigate(['/login'], {
+      queryParams: { reason: 'timeout' },
+      replaceUrl: true,
+    });
   }
 
   get current(): AuthState | null {
@@ -120,7 +193,29 @@ export class AuthService {
   }
 
   isLoggedIn(): boolean {
-    return !!this.current?.token;
+    const user = this.current;
+    if (!user?.token) {
+      return false;
+    }
+
+    if (this.isExpired(user)) {
+      this.logoutDueToTimeout();
+      return false;
+    }
+
+    return true;
+  }
+
+  consumeTimeoutNotice(): boolean {
+    const hasNotice = localStorage.getItem(TIMEOUT_NOTICE_KEY) === '1';
+    if (hasNotice) {
+      localStorage.removeItem(TIMEOUT_NOTICE_KEY);
+    }
+    return hasNotice;
+  }
+
+  markUserActivity(): void {
+    this.bumpSessionFromActivity();
   }
 
   hasAnyRole(...roles: Role[]): boolean {
@@ -148,5 +243,124 @@ export class AuthService {
     const userState = this._user$.value;
     if (!userState?.passwordProof) return false;
     return hashPassword(password) === userState.passwordProof;
+  }
+
+  private isExpired(state: AuthState | null): boolean {
+    if (!state?.expiresAt) {
+      return true;
+    }
+    return state.expiresAt <= Date.now();
+  }
+
+  private clearSession(showTimeoutNotice: boolean): void {
+    if (showTimeoutNotice) {
+      localStorage.setItem(TIMEOUT_NOTICE_KEY, '1');
+    }
+    this.stopSessionMonitoring();
+    this._user$.next(null);
+    this.writeToLS(null);
+  }
+
+  private startSessionMonitoring(): void {
+    if (!this.current?.token) {
+      return;
+    }
+
+    this.attachActivityListeners();
+    this.attachRouterListener();
+    this.scheduleSessionTimer();
+  }
+
+  private stopSessionMonitoring(): void {
+    if (this.sessionTimer) {
+      clearTimeout(this.sessionTimer);
+      this.sessionTimer = null;
+    }
+
+    if (this.routerSub) {
+      this.routerSub.unsubscribe();
+      this.routerSub = null;
+    }
+
+    if (this.listenersAttached) {
+      for (const eventName of this.activityEvents) {
+        window.removeEventListener(eventName, this.onUserActivity, true);
+      }
+      this.listenersAttached = false;
+    }
+  }
+
+  private scheduleSessionTimer(): void {
+    if (this.sessionTimer) {
+      clearTimeout(this.sessionTimer);
+      this.sessionTimer = null;
+    }
+
+    const expiresAt = this.current?.expiresAt;
+    if (!expiresAt) {
+      return;
+    }
+
+    const delay = Math.max(0, expiresAt - Date.now());
+    this.sessionTimer = setTimeout(() => {
+      if (this.isLoggedIn()) {
+        this.scheduleSessionTimer();
+        return;
+      }
+    }, delay);
+  }
+
+  private attachRouterListener(): void {
+    if (this.routerSub) {
+      return;
+    }
+
+    this.routerSub = this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        this.bumpSessionFromActivity();
+      }
+    });
+  }
+
+  private attachActivityListeners(): void {
+    if (this.listenersAttached) {
+      return;
+    }
+
+    for (const eventName of this.activityEvents) {
+      window.addEventListener(eventName, this.onUserActivity, { capture: true, passive: true });
+    }
+    this.listenersAttached = true;
+  }
+
+  private onUserActivity = (): void => {
+    this.bumpSessionFromActivity();
+  };
+
+  private bumpSessionFromActivity(): void {
+    const current = this.current;
+    if (!current?.token) {
+      return;
+    }
+
+    if (this.isExpired(current)) {
+      this.logoutDueToTimeout();
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastActivityPersistAt < ACTIVITY_THROTTLE_MS) {
+      return;
+    }
+
+    this.lastActivityPersistAt = now;
+    const updated: AuthState = {
+      ...current,
+      lastActivityAt: now,
+      expiresAt: now + SESSION_TIMEOUT_PROD_MS,
+    };
+    this._user$.next(updated);
+    this.writeToLS(updated);
+    this.scheduleSessionTimer();
   }
 }

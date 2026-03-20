@@ -283,3 +283,70 @@ export interface ApiConfigData {
   update_by?: string;
   update_date?: string | Date;
 }
+
+
+export interface ApiUserResponse {
+  count: number;
+  data: UserData[];
+  success: boolean;
+}
+
+
+export interface UserData {
+  id: number;
+  username: string;
+  password_hash: string;
+  email: string;
+  role_id: number;
+  created_at: string;
+}
+
+export interface ApiRoleResponse {
+  count: number;
+  data: RoleData[];
+  success: boolean;
+}
+
+export interface RoleData {
+  id: number;
+  name: string;
+  description: string;
+}
+
+export interface ApiPermissionResponse {
+  count: number;
+  data: PermissionData[];
+  success: boolean;
+}
+
+export interface PermissionData {
+  id: number;
+  permissions_name: string;
+  description: string;
+}
+
+export interface ApiUserAdminPermissionResponse {
+  count: number;
+  data: UserAdminPermissionData[];
+  success: boolean;
+}
+
+export interface UserAdminPermissionData {
+  id: number;
+  role_id: number;
+  permission_id: number;
+  permission: string;
+}
+
+export interface ApiUserRacePermissionResponse {
+  count: number;
+  data: UserRacePermissionData[];
+  success: boolean;
+}
+
+export interface UserRacePermissionData {
+  id: number;
+  user_id: number;
+  race_id: number;
+  car_number: number;
+}

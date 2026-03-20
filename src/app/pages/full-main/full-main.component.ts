@@ -371,6 +371,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
 
   navigateToListConfigAFR2() { this.router.navigate(['/pages', 'admin-config']); }
+  navigateToUserManagement() { this.router.navigate(['/pages', 'user-management']); }
   navigateToListConfigAFR(enterAnimationDuration: string, exitAnimationDuration: string) {
     // this.router.navigate(['/pages', 'setting-config-afr']);
     const dialogRef = this.dialog.open(ConfigAfrModalComponent, {

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -7,10 +7,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
 import { TimeService } from '../../service/time.service';
+import Swal from 'sweetalert2';
 
 function toDate(v: unknown): Date {
   if (v instanceof Date) return v;
@@ -37,7 +38,7 @@ function toDate(v: unknown): Date {
     MatButtonModule
   ]
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   username = '';
   password = '';
   isLoading = false;
@@ -47,8 +48,23 @@ export class LoginComponent {
   currentTime = this.time.now;
   constructor(private auth: AuthService
     , private router: Router
+    , private route: ActivatedRoute
     , private eventService: EventService
   ) {}
+
+  ngOnInit(): void {
+    const reason = this.route.snapshot.queryParamMap.get('reason');
+    const hasTimeoutNotice = reason === 'timeout' || this.auth.consumeTimeoutNotice();
+    if (hasTimeoutNotice) {
+      this.showTimeoutAlert();
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { reason: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
+  }
 
   // ใช้แทน navigateToMainPage() เดิมบนปุ่ม
   navigateToMainPage() {
@@ -93,6 +109,17 @@ export class LoginComponent {
           });
         },
       });
+    });
+  }
+
+  private showTimeoutAlert(): void {
+    void Swal.fire({
+      icon: 'warning',
+      title: 'Session Timeout',
+      text: 'Your connection has timed out. Please log in again.',
+      confirmButtonText: 'OK',
+      // allowOutsideClick: false,
+      allowEscapeKey: true,
     });
   }
 }

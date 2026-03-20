@@ -347,7 +347,6 @@ export class EventService {
 
     return this.http.get<ApiConfigResponse>(url, { params }).pipe(
       map(response => {
-        console.log('Event Delete successfully:', response);
         return response?.data;
       }),
       catchError(error => handleHttpError('deleting Event', error))

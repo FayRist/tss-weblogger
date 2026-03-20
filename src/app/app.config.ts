@@ -68,6 +68,10 @@ export const APP_CONFIG = {
 
       // Users (สำหรับอนาคต)
       GET_USERS: '/users/getUsers',
+      GET_ROLES: '/users/getRole',
+      GET_PERMISSION: '/users/getPermissions',
+      GET_USER_ADMIN_PERMISSIONS: '/users/getUserAdminPermissions',
+      GET_USER_RACE_PERMISSIONS: '/users/getUserRacePermissions',
       ADD_USER: '/users/addUser',
       UPDATE_USER: '/users/updateUser',
       DELETE_USER: '/users/deleteUser',
@@ -101,6 +105,7 @@ export const APP_CONFIG = {
       DASHBOARD: ['super_admin', 'admin', 'mechanic_user', 'race_team_user', 'scruitineer'],
       ALL_SEASONS: ['super_admin', 'admin', 'race_team_user'],
       SETTING_LOGGER: ['super_admin', 'admin'],
+      USER_MANAGEMENT: ['super_admin', 'admin'],
       MAP_CONFIG: ['super_admin', 'admin'],
       AFR_CONFIG: ['super_admin', 'admin'],
       LOGOUT: ['super_admin', 'admin', 'mechanic_user', 'race_team_user', 'scruitineer'],

@@ -1,0 +1,72 @@
+
+.card-bg-transparen {
+  --bs-bg-opacity: 1;
+  background-color: transparent !important;
+}
+
+
+.table-scroll-xy {
+  width: 100%;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  min-width: 980px;
+}
+
+th.mat-sort-header-sorted {
+  color: black;
+}
+
+.mat-mdc-table .mat-mdc-header-cell {
+  align-content: center !important;
+  background: #212529 !important;
+}
+
+:host ::ng-deep .mat-column-id .mat-sort-header-container,
+:host ::ng-deep .mat-column-username .mat-sort-header-container,
+:host ::ng-deep .mat-column-passwordHash .mat-sort-header-container,
+:host ::ng-deep .mat-column-email .mat-sort-header-container,
+:host ::ng-deep .mat-column-roleId .mat-sort-header-container,
+:host ::ng-deep .mat-column-createdAt .mat-sort-header-container,
+:host ::ng-deep .mat-column-setting .mat-sort-header-container {
+  font-size: 18px;
+  width: 100%;
+  justify-content: center;
+}
+
+td.mat-mdc-cell {
+  font-size: 18px;
+}
+
+.mat-column-id {
+  width: 7%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-username,
+.mat-column-email {
+  width: 18%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-passwordHash {
+  width: 10%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-roleId {
+  width: 10%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-createdAt {
+  width: 20%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-setting {
+  width: 17%;
+  border-right: 1px solid #343a40;
+}

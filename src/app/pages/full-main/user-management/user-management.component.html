@@ -1,0 +1,75 @@
+<div style="margin: 20px;" class="">
+  <div class="row">
+    <div class="col-6">
+      <h3>User Management</h3>
+    </div>
+  </div>
+  <hr style="margin: 0.3rem 0; color: #FFF;" >
+
+  <div class="row">
+    <div class="col-4">
+      <form class="mat-input-form">
+        <mat-form-field class="w-100">
+          <mat-label>Search</mat-label>
+          <input matInput (keyup)="searchFilter($event)" placeholder="ID, Username, Email, Role" #input>
+        </mat-form-field>
+      </form>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="table-scroll-xy">
+      <table class="logger-table table table-dark table-striped table-hover mat-elevation-z8"
+        mat-table [dataSource]="dataSource" matSort (matSortChange)="announceSortChange($event)">
+
+        <ng-container matColumnDef="id">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by id">ID</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ element.id }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="username">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by username">Username</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ element.username }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="passwordHash">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by username">Password</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ maskedPassword() }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="email">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by email">Email</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ element.email }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="roleId">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by role id">Role ID</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ element.roleId }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="createdAt">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by created at">Created At</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ element.createdAt }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="setting">
+          <th mat-header-cell *matHeaderCellDef class="text-center">
+            <button type="button" class="btn btn-secondary w-100" (click)="openAddUser()">เพิ่ม User</button>
+          </th>
+          <td class="text-center" mat-cell *matCellDef="let element">
+            <div class="row d-flex justify-content-center">
+              <div class="col-2 d-flex justify-content-center">
+                <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', element.id)">
+                <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', element.id)">
+              </div>
+            </div>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </div>
+    <mat-paginator [pageSizeOptions]="[5, 10, 20, 40, 50, 100]" [pageSize]="10" showFirstLastButtons></mat-paginator>
+  </div>
+</div>
