@@ -118,7 +118,7 @@
 
     <!-- -Map Race ----------------- -->
     <div class="row w-100 g-3 logger-main-row">
-      <div class="col-12 col-md-5 col-lg-4 logger-map-col">
+      <div [ngClass]="isReadOnlyRaceTeamUser() ? 'col-12 col-lg-8 logger-map-col' : 'col-12 col-md-5 col-lg-4 logger-map-col'">
         <div class="card card--flush">
           <div class="card-header card-header--flush d-flex justify-content-between align-items-center">
             <h5 class="m-0">Racer Detail</h5>
@@ -287,6 +287,39 @@
           </div> -->
         </div>
       </div>
+
+      @if (isReadOnlyRaceTeamUser()) {
+        <div class="col-12 col-lg-4 logger-side-col">
+          <div class="row g-3 logger-side-metrics-row">
+            <div class="col-12">
+              <div class="card logger-metric-card h-100">
+                <div class="card-body">
+                  <span class="logger-metric-label">Car Speed</span>
+                  <h3 class="logger-metric-value">{{ getFormattedCarSpeed() }}</h3>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="card logger-metric-card h-100">
+                <div class="card-body">
+                  <span class="logger-metric-label">AFR Realtime</span>
+                  <h3 class="logger-metric-value">{{ afr | number:'1.2-2' }}</h3>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="card logger-metric-card h-100">
+                <div class="card-body">
+                  <span class="logger-metric-label">Count</span>
+                  <h3 class="logger-metric-value">{{ currentCountDetect }}</h3>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      } @else {
             <div class="col-12 col-md-7 col-lg-8 logger-chart-col">
               <div class="card" style="margin-bottom: 0px;">
                   <div class="card-header d-flex justify-content-between align-items-center">
@@ -394,6 +427,7 @@
                   </div>
               </div>
             </div>
+      }
     </div>
     <!-- -Map Race ----------------- -->
 

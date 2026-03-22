@@ -473,13 +473,53 @@ button[mat-raised-button] {
 }
 
 .logger-map-col,
-.logger-chart-col {
+.logger-chart-col,
+.logger-side-col {
   display: flex;
 }
 
 .logger-map-col > .card,
 .logger-chart-col > .card {
   width: 100%;
+}
+
+.logger-side-col {
+  align-items: stretch;
+}
+
+.logger-side-metrics-row {
+  width: 100%;
+  margin: 0;
+}
+
+.logger-metric-card {
+  width: 100%;
+  border: 1px solid #2b3035;
+  background: linear-gradient(150deg, #121619 0%, #181f24 100%);
+  color: #ffffff;
+}
+
+.logger-metric-card .card-body {
+  min-height: 135px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.logger-metric-label {
+  display: block;
+  color: #9aa7b2;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.logger-metric-value {
+  margin: 0;
+  color: #4fc3f7;
+  font-weight: 700;
+  font-size: clamp(1.45rem, 2.5vw, 2rem);
 }
 
 @media (max-width: 1024px) {
@@ -526,6 +566,10 @@ button[mat-raised-button] {
   .race-map-canvas {
     height: clamp(240px, 42vh, 340px);
     min-height: 220px;
+  }
+
+  .logger-metric-card .card-body {
+    min-height: 110px;
   }
 
   .logger-meta-grid .btn,
