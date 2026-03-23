@@ -37,7 +37,7 @@
 
 <div class="logger-page" style="margin: 20px 0 0 10px;">
 
-    <div class="logger-meta-grid">
+    <div class="logger-meta-grid" [ngClass]="isReadOnlyRaceTeamUser() ? 'logger-meta-grid--race-team' : ''">
       <div class="logger-meta-item logger-meta-item--car">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
@@ -56,7 +56,7 @@
         </form>
       </div>
       }
-      <div class="logger-meta-item logger-meta-item--driver">
+      <div class="logger-meta-item logger-meta-item--driver" >
         <form class="mat-input-form">
           <mat-form-field class="w-100">
             <mat-label>ชื่อนักแข่ง</mat-label>
@@ -64,6 +64,7 @@
           </mat-form-field>
         </form>
       </div>
+      @if (!isReadOnlyRaceTeamUser()) {
 
       <div class="logger-meta-item logger-meta-item--count">
         <form class="mat-input-form">
@@ -74,6 +75,7 @@
         </form>
       </div>
 
+      }
       <div class="logger-meta-item logger-meta-item--status">
         <div class="container ps-0 mt-1">
           <!-- <span

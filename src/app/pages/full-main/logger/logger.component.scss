@@ -372,18 +372,18 @@ button[mat-raised-button] {
   border-radius: 6px;
   border: 1px solid #2B3035;
   font-size: 0.75rem;
-  
+
   .ws-stat-item {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
-    
+
     small {
       font-size: 0.65rem;
       opacity: 0.7;
     }
-    
+
     .fw-bold {
       font-size: 0.8rem;
       color: #FFFFFF;
@@ -397,7 +397,7 @@ button[mat-raised-button] {
   align-items: center;
   justify-content: center;
   padding: 4px 8px;
-  
+
   .status-light {
     width: 12px;
     height: 12px;
@@ -406,25 +406,25 @@ button[mat-raised-button] {
     transition: all 0.3s ease;
     animation: pulse 2s infinite;
   }
-  
+
   &.status-red .status-light {
     background-color: #dc3545;
     color: #dc3545;
     box-shadow: 0 0 8px #dc3545;
   }
-  
+
   &.status-yellow .status-light {
     background-color: #ffc107;
     color: #ffc107;
     box-shadow: 0 0 8px #ffc107;
   }
-  
+
   &.status-orange .status-light {
     background-color: #fd7e14;
     color: #fd7e14;
     box-shadow: 0 0 8px #fd7e14;
   }
-  
+
   &.status-green .status-light {
     background-color: #28a745;
     color: #28a745;
@@ -470,6 +470,29 @@ button[mat-raised-button] {
 .logger-meta-item--status .container {
   padding-left: 0 !important;
   margin-top: 0 !important;
+}
+
+.logger-meta-grid--race-team {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.logger-meta-grid--race-team .logger-meta-item {
+  display: flex;
+  align-items: stretch;
+}
+
+.logger-meta-grid--race-team .logger-meta-item--status .container {
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.logger-meta-grid--race-team .status-badge {
+  width: 100%;
+  min-height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logger-map-col,
@@ -535,6 +558,15 @@ button[mat-raised-button] {
     grid-column: span 2;
   }
 
+  .logger-meta-grid--race-team {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .logger-meta-grid--race-team .logger-meta-item--driver,
+  .logger-meta-grid--race-team .logger-meta-item--clear {
+    grid-column: auto;
+  }
+
   .race-map-deck,
   .race-map-canvas {
     height: 420px;
@@ -555,6 +587,15 @@ button[mat-raised-button] {
   .logger-meta-item--driver,
   .logger-meta-item--clear {
     grid-column: 1 / -1;
+  }
+
+  .logger-meta-grid--race-team {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .logger-meta-grid--race-team .logger-meta-item--driver,
+  .logger-meta-grid--race-team .logger-meta-item--clear {
+    grid-column: auto;
   }
 
   .logger-page {

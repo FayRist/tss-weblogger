@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { CarLogger } from '../../../public/models/car-logger.model';
-import { APP_CONFIG } from '../app.config';
+import { APP_CONFIG, getApiWebSocket } from '../app.config';
 
 export interface WebSocketMessage {
   type: string;
@@ -115,7 +115,7 @@ export class WebSocketService {
       this.wsRealtime = new WebSocket(url);
       this.wsRealtime.onopen = () => console.log('[WS realtime] open:', url);
       this.wsRealtime.onmessage = (ev) => {
-        console.log('[WS realtime] message len:', typeof ev.data === 'string' ? ev.data.length : -1);
+        // console.log('[WS realtime] message len:', typeof ev.data === 'string' ? ev.data.length : -1);
         this.handleRealtimeMessage(ev.data);
       };
       this.wsRealtime.onclose = (e) => { console.log('[WS realtime] close:', e.code, e.reason); this.wsRealtime = null; };
@@ -186,8 +186,7 @@ export class WebSocketService {
   connectStatus(): void {
     try {
       if (this.wsStatus && this.wsStatus.readyState === WebSocket.OPEN) return;
-      const base = typeof location !== 'undefined' ? `ws://${location.host}` : APP_CONFIG.API.URL_SOCKET_SERVER.replace(/^http/, 'ws');
-      const url = `${base}/ws/logger-status`;
+      const url = getApiWebSocket(APP_CONFIG.API.ENDPOINTS.WEB_LOGGER_STATUS);
       this.wsStatus = new WebSocket(url);
       this.wsStatus.onopen = () => console.log('[WS status] open:', url);
       this.wsStatus.onmessage = (ev) => {

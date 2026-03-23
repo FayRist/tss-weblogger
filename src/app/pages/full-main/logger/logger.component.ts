@@ -191,6 +191,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private wsReconnectDelay = 3000; // ms
   private statusTimeout: ReturnType<typeof setTimeout> | null = null; // Timer สำหรับเช็ค status offline หลังจาก 5 วินาที
   private readonly STATUS_TIMEOUT_MS = 5000; // 5 วินาที
+  private readonly DB_COUNT_SYNC_COOLDOWN_MS = 8000;
+  private lastDbCountSyncAt = 0;
+  private dbCountSyncInFlight = false;
   private realtimeReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private shouldRealtimeReconnect = true;
   private realtimeConnectInProgress = false;
@@ -2205,6 +2208,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.currentCarSpeedKmh = Number.isFinite(velocity as number) ? (velocity as number) : null;
     }
 
+    if (Number.isFinite(afr as number) && this.afr !== (afr as number)) {
+      this.afr = afr as number;
+    }
+
     return {
       loggerId,
       ts,
@@ -3419,77 +3426,139 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * อัปเดต status ของ logger จาก WebSocket status list
    */
   private handleStatusUpdate(statusList: Array<{ logger_key: string; status: string; last_seen?: string; is_connected?: boolean; online_time?: string; disconnect_time?: string; afr_count?: number; afr?: number }>): void {
-    if (!this.currentLoggerId || !statusList || statusList.length === 0) {
+    if (!statusList || statusList.length === 0) {
       return;
     }
 
-    const currentLoggerKey = this.normalizeLoggerKey(this.currentLoggerId);
+    const currentLoggerSource =
+      this.currentLoggerId ||
+      (this.loggerID !== undefined && this.loggerID !== null ? String(this.loggerID) : '') ||
+      String(this.parameterLoggerID || '').trim();
+    const currentLoggerKey = this.normalizeLoggerKey(currentLoggerSource);
+    if (!currentLoggerKey) {
+      return;
+    }
+
     const statusItem = statusList.find(item =>
       this.normalizeLoggerKey(item.logger_key) === currentLoggerKey
     );
 
-    if (statusItem) {
-      const status = (statusItem.status || '').toString().toLowerCase().trim();
-      const newStatus = status === 'online' ? 'Online' : 'Offline';
-      let hasUiChange = false;
+    if (!statusItem) {
+      this.syncCountFromDbIfNeeded('missing_status');
+      return;
+    }
 
-      if (this.loggerStatus !== newStatus) {
-        this.loggerStatus = newStatus;
+    const status = (statusItem.status || '').toString().toLowerCase().trim();
+    const newStatus = status === 'online' ? 'Online' : 'Offline';
+    let hasUiChange = false;
+
+    if (this.loggerStatus !== newStatus) {
+      this.loggerStatus = newStatus;
+      hasUiChange = true;
+      // console.log(`[Logger Status] Updated to: ${newStatus} for logger ${currentLoggerKey}`);
+    }
+
+    // อัพเดท onlineLastTime จาก online_time หรือ disconnect_time
+    if (statusItem.online_time || statusItem.disconnect_time) {
+      let selectedDate: Date | null = null;
+
+      if (statusItem.online_time && statusItem.disconnect_time) {
+        const onlineTime = new Date(statusItem.online_time);
+        const disconnectTime = new Date(statusItem.disconnect_time);
+        // เลือกเวลาที่ใหม่กว่า
+        selectedDate = onlineTime > disconnectTime ? onlineTime : disconnectTime;
+      } else if (statusItem.online_time) {
+        selectedDate = new Date(statusItem.online_time);
+      } else if (statusItem.disconnect_time) {
+        selectedDate = new Date(statusItem.disconnect_time);
+      }
+
+      if (selectedDate) {
+        this.onlineLastTime = this.formatDateTime(selectedDate);
         hasUiChange = true;
-        console.log(`[Logger Status] Updated to: ${newStatus} for logger ${currentLoggerKey}`);
       }
+    } else if (!statusItem.online_time && !statusItem.disconnect_time) {
+      // ถ้าไม่มีทั้งสองค่า ให้เคลียร์เวลา
+      this.onlineLastTime = "";
+      hasUiChange = true;
+    }
 
-      // อัพเดท onlineLastTime จาก online_time หรือ disconnect_time
-      if (statusItem.online_time || statusItem.disconnect_time) {
-        let selectedDate: Date | null = null;
-
-        if (statusItem.online_time && statusItem.disconnect_time) {
-          const onlineTime = new Date(statusItem.online_time);
-          const disconnectTime = new Date(statusItem.disconnect_time);
-          // เลือกเวลาที่ใหม่กว่า
-          selectedDate = onlineTime > disconnectTime ? onlineTime : disconnectTime;
-        } else if (statusItem.online_time) {
-          selectedDate = new Date(statusItem.online_time);
-        } else if (statusItem.disconnect_time) {
-          selectedDate = new Date(statusItem.disconnect_time);
-        }
-
-        if (selectedDate) {
-          this.onlineLastTime = this.formatDateTime(selectedDate);
-          hasUiChange = true;
-        }
-      } else if (!statusItem.online_time && !statusItem.disconnect_time) {
-        // ถ้าไม่มีทั้งสองค่า ให้เคลียร์เวลา
-        this.onlineLastTime = "";
+    // IMPORTANT: update count only for the currently opened logger (strict logger_key match above)
+    if (statusItem.afr_count !== undefined && statusItem.afr_count !== null) {
+      const nextCount = Number(statusItem.afr_count);
+      if (Number.isFinite(nextCount) && this.currentCountDetect !== nextCount) {
+        this.currentCountDetect = nextCount;
         hasUiChange = true;
-      }
-
-      // IMPORTANT: update count only for the currently opened logger (strict logger_key match above)
-      if (statusItem.afr_count !== undefined && statusItem.afr_count !== null) {
-        const nextCount = Number(statusItem.afr_count);
-        if (Number.isFinite(nextCount) && this.currentCountDetect !== nextCount) {
-          this.currentCountDetect = nextCount;
-          hasUiChange = true;
-        }
-      }
-
-      if (statusItem.afr !== undefined && statusItem.afr !== null) {
-        const nextAfr = Number(statusItem.afr);
-        if (Number.isFinite(nextAfr) && this.afr !== nextAfr) {
-          this.afr = nextAfr;
-          hasUiChange = true;
-        }
-      }
-
-      // รีเซ็ต timer เมื่อได้รับ status update
-      if (newStatus === 'Online') {
-        this.resetStatusTimeout();
-      }
-
-      if (hasUiChange) {
-        this.cdr.detectChanges();
       }
     }
+
+    if (statusItem.afr !== undefined && statusItem.afr !== null) {
+      const nextAfr = Number(statusItem.afr);
+      if (Number.isFinite(nextAfr) && this.afr !== nextAfr) {
+        this.afr = nextAfr;
+        hasUiChange = true;
+      }
+    }
+
+    // รีเซ็ต timer เมื่อได้รับ status update
+    if (newStatus === 'Online') {
+      this.resetStatusTimeout();
+    } else {
+      this.syncCountFromDbIfNeeded('offline');
+    }
+
+    if (hasUiChange) {
+      this.cdr.detectChanges();
+    }
+  }
+
+  private syncCountFromDbIfNeeded(reason: 'offline' | 'missing_status'): void {
+    if (this.isHistoryMode) {
+      return;
+    }
+    if (!this.parameterRaceId || !this.parameterLoggerID) {
+      return;
+    }
+
+    const now = Date.now();
+    if (this.dbCountSyncInFlight || (now - this.lastDbCountSyncAt) < this.DB_COUNT_SYNC_COOLDOWN_MS) {
+      return;
+    }
+
+    this.dbCountSyncInFlight = true;
+    this.lastDbCountSyncAt = now;
+
+    this.eventService
+      .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID)
+      .subscribe({
+        next: (detail) => {
+          let hasUiChange = false;
+
+          const nextCount = Number(detail?.currentCountDetect);
+          if (Number.isFinite(nextCount) && this.currentCountDetect !== nextCount) {
+            this.currentCountDetect = nextCount;
+            hasUiChange = true;
+          }
+
+          if (reason === 'offline') {
+            const nextAfr = Number(detail?.afr);
+            if (Number.isFinite(nextAfr) && this.afr !== nextAfr) {
+              this.afr = nextAfr;
+              hasUiChange = true;
+            }
+          }
+
+          if (hasUiChange) {
+            this.cdr.detectChanges();
+          }
+        },
+        error: () => {
+          // keep silent: this is best-effort sync for offline/missing status windows
+        },
+        complete: () => {
+          this.dbCountSyncInFlight = false;
+        }
+      });
   }
 
   private normalizeLoggerKey(value: unknown): string {
@@ -3522,6 +3591,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (this.loggerStatus !== 'Offline') {
         console.log('[Logger Status] No data received for 5 seconds, setting status to Offline');
         this.loggerStatus = 'Offline';
+        this.syncCountFromDbIfNeeded('offline');
         this.cdr.detectChanges();
       }
       this.statusTimeout = null;
