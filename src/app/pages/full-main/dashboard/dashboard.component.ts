@@ -348,8 +348,39 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   searchFilter(event: Event) {
-    const filterValue = (event.target as HTMLInputElement).value;
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    const filterValue = (event.target as HTMLInputElement).value ?? '';
+    const keyword = filterValue.trim().toLowerCase();
+    this.dataSource.filter = keyword;
+
+    if (keyword) {
+      const matchedResults = this.dataSource.data
+        .map((element) => {
+          const matchedValues = [
+            { field: 'carNumber', value: String(element.carNumber ?? '') },
+            { field: 'loggerId', value: String(element.loggerId ?? '') },
+            { field: 'firstName', value: String(element.firstName ?? '') },
+            { field: 'lastName', value: String(element.lastName ?? '') },
+          ].filter((item) => item.value.toLowerCase().includes(keyword));
+
+          return matchedValues.length > 0
+            ? {
+                loggerId: element.loggerId,
+                carNumber: element.carNumber,
+                matchedValues,
+              }
+            : null;
+        })
+        .filter((item): item is { loggerId: number; carNumber: string; matchedValues: { field: string; value: string }[] } => item !== null);
+
+      console.log('[Dashboard Search] keyword:', keyword);
+      console.log('[Dashboard Search] matched results:', matchedResults);
+    } else {
+      console.log('[Dashboard Search] cleared keyword');
+    }
+
+    if (this.dataSource.paginator) {
+      this.dataSource.paginator.firstPage();
+    }
   }
 
   private filterLoggers(loggers: LoggerItem[], filter: FilterKey): LoggerItem[] {
@@ -372,6 +403,22 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
+    this.dataSource.filterPredicate = (element: LoggerItem, filter: string): boolean => {
+      const keyword = (filter || '').trim().toLowerCase();
+      if (!keyword) {
+        return true;
+      }
+
+      const searchableFields = [
+        String(element.carNumber ?? '').toLowerCase(),
+        String(element.loggerId ?? '').toLowerCase(),
+        String(element.firstName ?? '').toLowerCase(),
+        String(element.lastName ?? '').toLowerCase(),
+      ];
+
+      return searchableFields.some((value) => value.includes(keyword));
+    };
+
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
 
