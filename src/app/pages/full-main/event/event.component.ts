@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -320,7 +320,7 @@ export class DialogAnimationsModalEdit implements OnInit {
   });
 
 
-  constructor(private eventService: EventService, private toastr: ToastrService) {
+  constructor(private eventService: EventService, private toastr: ToastrService, private cdr: ChangeDetectorRef) {
     this.typeModal = 'เพิ่ม'
     if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
       this.range.patchValue({
@@ -337,8 +337,14 @@ export class DialogAnimationsModalEdit implements OnInit {
         (config: any) => {
             this.mapsList = config.map((item: any) => ({
                 name: item.config_name,
-                value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
+                value: String(item.value ?? item.id ?? '') // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
             }));
+
+            if (this.data.event_data && Object.keys(this.data.event_data).length > 0) {
+              this.circuitName = String(this.data.event_data[0].circuit_name ?? '');
+            }
+
+            this.cdr.markForCheck();
         },
         error => {
             console.error('Error loading matchList:', error);
@@ -350,7 +356,7 @@ export class DialogAnimationsModalEdit implements OnInit {
       console.log(this.data.event_data[0]);
       this.eventId = this.data.event_data[0].event_id;
       this.eventName = this.data.event_data[0].event_name;
-      this.circuitName = this.data.event_data[0].circuit_name;
+      this.circuitName = String(this.data.event_data[0].circuit_name ?? '');
       // this.seasonId = this.data.event_data[0].season_id;
 
       this.dateSessionStart = this.data.event_data[0].event_start;

@@ -1,0 +1,16 @@
+button {
+  margin-right: 8px;
+}
+
+
+.card-bg-transparen {
+  --bs-bg-opacity: 1;
+  background-color: transparent !important;
+}
+
+.card-bg-gray {
+  --bs-bg-opacity: 1;
+  background-color: #ffffff !important;
+  // border-radius: 15px;
+}
+

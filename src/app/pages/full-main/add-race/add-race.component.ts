@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, model, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, model, OnInit, signal } from '@angular/core';
 import {
   MAT_DIALOG_DATA,
   MatDialog,
@@ -50,23 +50,23 @@ export interface eventPayLoad {
 
 
 @Component({
-  selector: 'app-add-event',
+  selector: 'app-add-race',
   imports: [MatButtonModule, MatDialogClose,
     MatDialogTitle, MatDialogContent, MatTabsModule,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
     MatDatepickerModule, MatCheckboxModule, MatRadioModule],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './add-event.component.html',
-  styleUrl: './add-event.component.scss'
+  templateUrl: './add-race.component.html',
+  styleUrl: './add-race.component.scss'
 })
-export class AddEventComponent implements OnInit {
+export class AddRaceComponent implements OnInit {
   NameTab: String = "เพิ่ม รายการแข่ง";
 
   seasonName: String = '';
   eventName: String = '';
   raceName: String = '';
-  eventId: number = 0;
+  eventId: string = '';
   seasonId: number = 0;
   circuitName: String = '';
 
@@ -92,7 +92,7 @@ export class AddEventComponent implements OnInit {
 
   private subscriptions: Subscription[] = [];
 
-  readonly dialogRef = inject(MatDialogRef<AddEventComponent>);
+  readonly dialogRef = inject(MatDialogRef<AddRaceComponent>);
   readonly data:any = inject<RaceModel>(MAT_DIALOG_DATA);
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
@@ -123,17 +123,13 @@ export class AddEventComponent implements OnInit {
 
    // แถวที่ใช้แสดงใน <tbody>
   selectedSessions: SessionRow[] = [];
-  constructor(private eventService: EventService, private toastr: ToastrService) {
+  constructor(private eventService: EventService, private toastr: ToastrService, private cdr: ChangeDetectorRef) {
   }
 
-    labels = [
-      // 'รายการแข่ง',
-      'Event',
-      'Race'];
   ngOnInit() {
     // this.NameTab = this.labels[0];
     this.NameTab = this.data.NameTab;
-
+    this.eventId = String(this.data.event_id ?? '');
     this.selectedSessions = this.order.map(key => ({
       key,
       label: this.labelMap[key],
@@ -151,8 +147,13 @@ export class AddEventComponent implements OnInit {
   loadDropDownEvent(){
     const eventData = this.eventService.getDropDownEvent().subscribe(
       eventRes => {
-        this.eventList = []
-        this.eventList = eventRes;
+        this.eventList = eventRes.map((item: any) => ({
+          ...item,
+          value: String(item.value ?? ''),
+        }));
+
+        this.eventId = String(this.data.event_id ?? this.eventId ?? '');
+        this.cdr.markForCheck();
       },
       error => {
         console.error('Error loading matchList:', error);
@@ -165,8 +166,10 @@ export class AddEventComponent implements OnInit {
         (config: any) => {
             this.mapsList = config.map((item: any) => ({
                 name: item.config_name,
-                value: item.value || item.id.toString() // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
+                value: String(item.value ?? item.id ?? '') // ใช้ id เป็นค่าสำรอง ถ้า value เป็น null
             }));
+
+            this.cdr.markForCheck();
         },
         error => {
             console.error('Error loading matchList:', error);
@@ -175,11 +178,6 @@ export class AddEventComponent implements OnInit {
     this.subscriptions.push(MatchSub);
   }
 
-
-
-  changeName(event: any) {
-    this.NameTab = this.labels[event.index];
-  }
 
   readonly range = new FormGroup({
       start: new FormControl<Date | null>(new Date()),
@@ -246,59 +244,7 @@ export class AddEventComponent implements OnInit {
     if (!dt) return;
     row.end = (row.start && dt < row.start) ? new Date(row.start) : dt;
   }
-  submitSeason(){
-    const payload = {
-      id: null,
-      season_name: this.seasonName,
-    }
 
-    this.eventService.addNewSeason(payload).subscribe(
-        response => {
-          console.log('added Logger successfully:', response);
-          this.toastr.success(`เพิ่ม รายการแข่ง ${this.seasonName} เรียบร้อยแล้ว`);
-          this.dialogRef.close('success');
-
-        },
-        error => {
-          console.error('Error adding/updating match:', error);
-            this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม รายการแข่งขัน');
-        }
-      );
-  }
-
-  //   seasonName: String = '';
-  // eventName: String = '';
-  // raceName: String = '';
-  // eventId: number = 0;
-  // circuitName: String = '';
-  // seasonId: number = 0;
-  submitEvent(){
-
-    const payload = {
-      eventid: null,
-      seasonid: this.seasonId,
-      eventname: this.eventName,
-      circuitname: this.circuitName,
-      eventstart: this.range.controls.start.value,
-      eventend: this.range.controls.end.value,
-    }
-
-    this.eventService.addNewEvent(payload).subscribe(
-        response => {
-          console.log('added Event successfully:', response);
-          // this.rows = {};
-          // this.loadMatch();
-          // this.modalService.dismissAll();
-          this.toastr.success(`เพิ่ม Event ${this.seasonName} เรียบร้อยแล้ว`);
-          this.dialogRef.close('success');
-
-        },
-        error => {
-          console.error('Error adding/updating match:', error);
-            this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม รายการแข่งขัน');
-        }
-      );
-  }
 
   submitRace(){
     const payload: any[] =[]
@@ -323,11 +269,11 @@ export class AddEventComponent implements OnInit {
 
     this.eventService.addNewRace(payload).subscribe(
         response => {
-          console.log('added Event successfully:', response);
+          console.log('added Race successfully:', response);
           // this.rows = {};
           // this.loadMatch();
           // this.modalService.dismissAll();
-          this.toastr.success(`เพิ่ม Event ${this.seasonName} เรียบร้อยแล้ว`);
+          this.toastr.success(`เพิ่ม Race ${this.seasonName} เรียบร้อยแล้ว`);
           this.dialogRef.close('success');
 
         },
@@ -336,13 +282,6 @@ export class AddEventComponent implements OnInit {
             this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม รายการแข่งขัน');
         }
       );
-    // const payload = {
-    //   eventId: this.eventId,
-    //   seasonId: this.seasonId,
-    //   classValue: this.classValue,
-    //   sessionValue: this.classValue,
-    //   segmentValue: this.segmentValue
-    // }
   }
 
 

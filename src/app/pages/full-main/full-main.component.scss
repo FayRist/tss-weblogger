@@ -1,7 +1,7 @@
 mat-chip {
   display: inline-flex;
   align-items: center;
-  
+
   mat-icon {
     display: inline-flex;
     align-items: center;
@@ -10,35 +10,66 @@ mat-chip {
 }
 
 .full-main-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 60px;
+  height: 60px;
+  padding: 0 8px;
+  overflow: hidden;
+}
+
+.toolbar-title {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.full-main-toolbar-center {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.full-main-chip-set {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  padding-bottom: 2px;
+}
+
+.full-main-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.back-btn {
+  white-space: nowrap;
 }
 
 @media (max-width: 1024px) {
-  .full-main-toolbar {
-    min-height: 68px;
-  }
-
-  .full-main-toolbar-container {
-    max-width: calc(100vw - 140px);
+  .toolbar-title {
+    font-size: 14px;
   }
 }
 
 @media (max-width: 767.98px) {
-  .full-main-toolbar {
-    min-height: 84px;
-    padding-top: 6px;
-    padding-bottom: 6px;
+  .full-main-toolbar-actions {
+    margin-left: auto;
   }
 
-  .full-main-toolbar-container {
-    max-width: calc(100vw - 110px);
-  }
-
-  .full-main-chip-col {
-    width: 100%;
-    overflow-x: auto;
-    white-space: nowrap;
+  .full-main-chip-set {
     padding-bottom: 4px;
+  }
+
+  .toolbar-title {
+    font-size: 13px;
   }
 }
 

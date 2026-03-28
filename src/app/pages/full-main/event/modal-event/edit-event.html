@@ -37,7 +37,7 @@
                   <mat-form-field class="w-100">
                   <mat-label>เลือก สนาม</mat-label>
                       <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="circuitName">
-                        @for (maps of mapsList; track maps) {
+                        @for (maps of mapsList; track maps.value) {
                           <mat-option [value]="maps.value">{{maps.name}}</mat-option>
                         }
                       </mat-select>

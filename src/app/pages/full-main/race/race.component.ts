@@ -16,8 +16,6 @@ import { MaterialModule } from '../../../material.module';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
 import { optionModel, RaceModel } from '../../../model/season-model';
-import { getQueryParamAsNumber } from '../../../utility/rxjs-utils';
-import { AddEventComponent } from '../add-event/add-event.component';
 import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
 import { ToastrService } from 'ngx-toastr';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
@@ -26,6 +24,7 @@ import { AuthService } from '../../../core/auth/auth.service';
 import { MatIcon } from '@angular/material/icon';
 import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
 import { TimeService } from '../../../service/time.service';
+import { AddRaceComponent } from '../add-race/add-race.component';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule,
@@ -83,18 +82,18 @@ export class RaceComponent implements OnInit, OnDestroy {
     }
 
     this.allRace = [
-      {
-        id_list: 1,
-        event_id: 1,
-        season_id: 1,
-        category_name: 'Thailand Super Pickup D2',
-        segment_value: 'pickup',
-        session_value: 'race5',
-        class_value: 'c',
-        session_start: new Date('6/9/2024 15:10:00'),
-        session_end: new Date('6/9/2024 15:30:00'),
-        active: 1,
-      }
+      // {
+      //   id_list: 1,
+      //   event_id: 1,
+      //   season_id: 1,
+      //   category_name: 'Thailand Super Pickup D2',
+      //   segment_value: 'pickup',
+      //   session_value: 'race5',
+      //   class_value: 'c',
+      //   session_start: new Date('6/9/2024 15:10:00'),
+      //   session_end: new Date('6/9/2024 15:30:00'),
+      //   active: 1,
+      // }
     ];
     this.loadDropDownEvent();
   }
@@ -190,6 +189,8 @@ export class RaceComponent implements OnInit, OnDestroy {
 
     const RaceSub = this.eventService.getRace(eventId, statusRace).subscribe(
       race => {
+        console.log("race : ",race);
+
         this.allRace = [...race].sort((a, b) =>
           (rank(a) - rank(b)) ||                  // 1) เรียงตาม session_value
           (startOf(a) - startOf(b)) ||            // 2) ถ้าเท่ากันให้ดูเวลาเริ่ม
@@ -217,13 +218,15 @@ export class RaceComponent implements OnInit, OnDestroy {
       arrayData = this.allRace.filter(x => x.id_list == raceId);
     }
 
-    const dialogRef = this.dialog.open(AddEventComponent, {
+    const dialogRef = this.dialog.open(AddRaceComponent, {
       width: "100vw",
       maxWidth: "750px",
       enterAnimationDuration,
       exitAnimationDuration,
       autoFocus: false,
-      data: {race_data: arrayData,
+      data: {
+        race_data: arrayData,
+        event_id: Number(this.CurrentEventId),
         NameTab: 'Race'
       }
     });

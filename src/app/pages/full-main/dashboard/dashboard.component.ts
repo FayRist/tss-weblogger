@@ -105,17 +105,15 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       name: 'Logger ทั้งหมด',
       value: 'all'
     },{
-      name: 'เฉพาะ ควันคำ',
+      name: 'เฉพาะ ควันดำ',
       value: 'allSmokeDetect'
     },{
-      name: 'ยกเว้น ควันคำ',
+      name: 'ยกเว้น ควันดำ',
       value: 'excludeSmokeDetect'
     }
   ];
   filterLogger = new FormControl<FilterKey>('all', { nonNullable: true });
-  private wasAllSelected = this.filterLogger.value.includes('all');
   private _formBuilder = inject(FormBuilder);
-  filterIsAnd = false;
   isChecked = true;
   formGroup = this._formBuilder.group({
     sortType: [true, Validators.requiredTrue],
@@ -189,7 +187,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   updateView(allLoggers: LoggerItem[] = []): void {
-    const filters = this.filterLogger.value ?? ['all'];
+    const filter = this.filterLogger.value ?? 'all';
 
     // ถ้าล็อคตำแหน่งอยู่ ให้ใช้ snapshot และอัปเดตข้อมูลจาก allLoggers แต่คงตำแหน่งเดิม
     if (this.isSortLocked && this.lockedLoggersSnapshot) {
@@ -210,19 +208,18 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           };
         }
         return lockedLogger;
-      }).filter(logger => {
-        // กรองตาม filter
-        return this.matchesFilters(logger, filters);
       });
 
-      this.onShowAllLoggers = updatedSnapshot;
-      this.lockedLoggersSnapshot = updatedSnapshot; // อัปเดต snapshot
+      const filteredSnapshot = this.filterLoggers(updatedSnapshot, filter);
+
+      this.onShowAllLoggers = filteredSnapshot;
+      this.lockedLoggersSnapshot = filteredSnapshot; // อัปเดต snapshot
       this.dataSource.data = this.onShowAllLoggers;
       return;
     }
 
     // FILTER
-    let filtered = allLoggers.filter(x => this.matchesFilters(x, filters));
+    let filtered = this.filterLoggers(allLoggers, filter);
 
     // SORT: เรียงตาม Count (มาก→น้อย) / Status(online→offline) / NBR. (น้อย→มาก)
     filtered = this.sortLoggers(filtered);
@@ -344,18 +341,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    let filtered: LoggerItem[] = [];
-    switch (value) {
-      case 'all':
-        filtered = this.allLoggers;
-        break;
-      case 'allSmokeDetect': // มี warning > 1
-        filtered = this.allLoggers.filter(l => (l.currentCountDetect ?? 0) > 1);
-        break;
-      case 'excludeSmokeDetect': // ไม่มี warning เลย
-        filtered = this.allLoggers.filter(l => (l.currentCountDetect ?? 0) === 0);
-        break;
-    }
+    const filtered = this.filterLoggers(this.allLoggers, value);
     // เรียงลำดับข้อมูลตามที่กำหนด
     this.onShowAllLoggers = this.sortLoggers(filtered);
     this.dataSource.data = this.onShowAllLoggers;
@@ -366,14 +352,17 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.dataSource.filter = filterValue.trim().toLowerCase();
   }
 
-  private matchesFilters(item: LoggerItem, filters: FilterKey): boolean {
-    if (filters.length === 0 || filters.includes('all')) return true;
-
-    const conds: any[] = [];
-    if (filters.includes('allSmokeDetect')) conds.push((item.currentCountDetect ?? 0) > 0 && !item.warningDetector);
-    if (filters.includes('excludeSmokeDetect')) conds.push(item.currentCountDetect == 0);
-
-    return this.filterIsAnd ? conds.every(Boolean) : conds.some(Boolean);
+  private filterLoggers(loggers: LoggerItem[], filter: FilterKey): LoggerItem[] {
+    switch (filter) {
+      case 'all':
+        return loggers;
+      case 'allSmokeDetect':
+        return loggers.filter(l => (l.currentCountDetect ?? 0) > 0);
+      case 'excludeSmokeDetect':
+        return loggers.filter(l => (l.currentCountDetect ?? 0) === 0);
+      default:
+        return loggers;
+    }
   }
 
   /** ค่า AFR ที่ใช้แสดง (ล่าสุดก่อน ถ้าไม่มีใช้ค่าเฉลี่ย) */

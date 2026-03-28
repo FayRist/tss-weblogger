@@ -1,0 +1,187 @@
+<h2 mat-dialog-title>เพิ่ม {{ NameTab }}</h2>
+<mat-dialog-content>
+        <div class="card card-bg-transparen">
+          <!-- <div class="card-header">
+          </div> -->
+          <div class="card-body">
+
+            <div class="row">
+              <!-- <div class="col-6">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                    <mat-label>เลือก รายการ</mat-label>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="seasonId">
+                        @for (season of seasonList; track season) {
+                          <mat-option [value]="season.value">{{season.name}}</mat-option>
+                        }
+                      </mat-select>
+                  </mat-form-field>
+                </form>
+              </div> -->
+              <div class="col-12">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                    <mat-label>เลือก Event</mat-label>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="eventId" [disabled]="true">
+                        @for (events of eventList; track events.value) {
+                          <mat-option [value]="events.value">{{events.name}}</mat-option>
+                        }
+                      </mat-select>
+                  </mat-form-field>
+                </form>
+              </div>
+            </div>
+
+            <hr style="margin: 0.3rem 0; color: #FFF;" >
+
+            <div class="row mt-3">
+              <!-- <div class="col-6">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>ชื่อ Race</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="raceName">
+                  </mat-form-field>
+                </form>
+              </div> -->
+
+              <div class="col-6">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>รุ่น</mat-label>
+                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="segmentValue">
+                        @for (segment of raceSegment; track segment) {
+                          <mat-option [value]="segment.value">{{segment.name}}</mat-option>
+                        }
+                      </mat-select>
+                  </mat-form-field>
+                </form>
+              </div>
+              <div class="col-6">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>Class</mat-label>
+                      <mat-select [ngModelOptions]="{standalone: true}" multiple [(ngModel)]="classValue">
+                        @for (classS of classList; track classS) {
+                          <mat-option [value]="classS.value">{{classS.name}}</mat-option>
+                        }
+                      </mat-select>
+                  </mat-form-field>
+                </form>
+              </div>
+            </div>
+
+
+            <div class="row mt-3">
+              <div class="col-12"><p class="h6 text-light">ตัวเลือกสร้าง Session</p></div>
+              <div class="col-2">
+                <section class="example-section">
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="testsession"
+                    (change)="onToggleSession('practice', $event.checked)">
+                    Practice
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="practice"
+                    (change)="onToggleSession('testsession', $event.checked)">
+                    Test Session
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="qualifying"
+                    (change)="onToggleSession('qualifying', $event.checked)">
+                    Qualifying
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="race1"
+                    (change)="onToggleSession('race1', $event.checked)">
+                    Race 1
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="race2"
+                    (change)="onToggleSession('race2', $event.checked)">
+                    Race 2
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="race3"
+                    (change)="onToggleSession('race3', $event.checked)">
+                    Race 3
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="race4"
+                    (change)="onToggleSession('race4', $event.checked)">
+                    Race 4
+                  </mat-checkbox>
+
+                  <mat-checkbox class="example-margin text-light"
+                    [(ngModel)]="race5"
+                    (change)="onToggleSession('race5', $event.checked)">
+                    Race 5
+                  </mat-checkbox>
+                </section>
+              </div>
+              <div class="col-10 ">
+                <div class="card card-bg-gray w-100" style="height: 280px;">
+                  <div class="card-body bg-transparen p-0">
+                    <div class="table-scroll-xy">
+                    <table class="table table-striped table-hover w-100" >
+                      <thead>
+                        <tr>
+                          <th class="text-center">Session</th>
+                          <th class="text-center" style="width: 35%">วันที่เริ่ม Session</th>
+                          <th class="text-center" style="width: 35%;">วันที่จบ Session</th>
+                        </tr>
+                      </thead>
+                       <tbody>
+                          @for (row of selectedSessions; track row.key) {
+                            <tr>
+                              <td class="text-center">{{ row.label }}</td>
+                              <td class="text-center">
+                                <input
+                                  type="datetime-local"
+                                    [value]="toInput(row.start)"
+                                    step="60"
+                                    (change)="onStartChange(row, $event)" />
+                              </td>
+                              <td class="text-center">
+                                <input
+                                  type="datetime-local"
+                                    [value]="toInput(row.end)"
+                                    [min]="toInput(row.start)"
+                                    step="60"
+                                    (change)="onEndChange(row, $event)" />
+                              </td>
+                            </tr>
+                          }
+                          @empty {
+                            <tr>
+                              <td colspan="3" class="text-center text-muted">ยังไม่ได้เลือก Session</td>
+                            </tr>
+                          }
+                        </tbody>
+                    </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer mt-3">
+            <div class="row">
+              <div class="col-12 d-flex justify-content-end mt-2">
+                  <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
+                  <button type="button" class="btn btn-success"   matButton cdkFocusInitial (click)="submitRace()">ยืนยัน</button>
+              </div>
+            </div>
+          </div>
+        </div>
+</mat-dialog-content>
+
+<!-- <mat-dialog-actions>
+  <button type="button" class="btn btn-danger" matButton mat-dialog-close>close</button>
+  <button type="button" class="btn btn-success"   matButton mat-dialog-close cdkFocusInitial>submit</button>
+</mat-dialog-actions> -->
