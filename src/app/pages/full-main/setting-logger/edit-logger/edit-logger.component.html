@@ -8,7 +8,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Logger ID </mat-label>
-                    <input matInput disabled class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="logger_id">
+                    <input matInput  class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="logger_id">
                   </mat-form-field>
                 </form>
               </div>
@@ -17,7 +17,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>NBR. </mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="car_number">
+                    <input matInput class="text-center" [disabled]="!isUnlocked" [ngModelOptions]="{standalone: true}" [(ngModel)]="car_number">
                   </mat-form-field>
                 </form>
               </div>
@@ -26,7 +26,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Class</mat-label>
-                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="classValue">
+                      <mat-select [disabled]="!isUnlocked" [ngModelOptions]="{standalone: true}" [(ngModel)]="classValue">
                         @for (classS of classList; track classS) {
                           <mat-option [value]="classS.value">{{classS.name}}</mat-option>
                         }
@@ -39,7 +39,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>First Name</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="firstName">
+                    <input matInput class="text-center" [disabled]="!isUnlocked" [ngModelOptions]="{standalone: true}" [(ngModel)]="firstName">
                   </mat-form-field>
                 </form>
               </div>
@@ -47,7 +47,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Last Name</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="lastName">
+                    <input matInput class="text-center" [disabled]="!isUnlocked" [ngModelOptions]="{standalone: true}" [(ngModel)]="lastName">
                   </mat-form-field>
                 </form>
               </div>
@@ -56,7 +56,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Team Name</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="teamName">
+                    <input matInput class="text-center" [disabled]="!isUnlocked" [ngModelOptions]="{standalone: true}" [(ngModel)]="teamName">
                   </mat-form-field>
                 </form>
               </div>
@@ -66,6 +66,9 @@
 </mat-dialog-content>
 
 <mat-dialog-actions>
+  <button type="button" class="btn btn-warning" matButton (click)="toggleUnlock()">
+    {{ isUnlocked ? 'ล็อค' : 'ปลดล็อค' }}
+  </button>
   <button type="button" class="btn btn-danger" matButton mat-dialog-close>close</button>
   <button type="button" class="btn btn-success"   matButton cdkFocusInitial (click)="onNoClick()">submit</button>
 </mat-dialog-actions>

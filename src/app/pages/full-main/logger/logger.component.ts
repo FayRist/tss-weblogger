@@ -453,10 +453,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== deck.gl + MapLibre GL JS Configuration =====
   // Constants for performance tuning
   // Backlog/retention window for late-join and re-entry behavior.
-  // Current default = 2 minutes (ลดโอกาสหน่วง/กระตุกตาม requirement ปัจจุบัน)
-  // หากอนาคตต้องการย้อนหลังมากขึ้น ให้ปรับเป็น 10 ได้ที่ค่าด้านล่างนี้
-  // และ backend REDIS_HISTORY_RETENTION_MINUTES ให้ตรงกัน.
-  private readonly LIVE_RETENTION_MINUTES = 2;
+  // Current default = 10 minutes (สำหรับ race live ทั้ง online และ connection lost)
+  // และ backend REDIS_HISTORY_RETENTION_MINUTES ควรตั้งค่าให้ตรงกัน.
+  private readonly LIVE_RETENTION_MINUTES = 10;
   private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window
   private readonly INPUT_HZ = 60; // Expected input frequency
   private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~8,640 points @2min, ~43,200 @10min
@@ -1741,7 +1740,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.initializeDataLoading();
 
           // Initialize canvas after view init
-          setTimeout(() => this.initializeCanvas(), 0);
+          if (!this.isReadOnlyRaceTeamUser()) {
+            setTimeout(() => this.initializeCanvas(), 0);
+          }
         },
         error: (err) => console.error('getDetailLoggerInRace error:', err),
       });
@@ -1762,14 +1763,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     try {
       // Try to load from WebSocket history endpoint first
       const loggerId = this.parameterLoggerID || String(this.loggerID);
-      if (loggerId) {
-          console.log('Loading history data for logger:', loggerId, 'race:', this.parameterRaceId);
+      const historyTargetId = this.isReadOnlyRaceTeamUser()
+        ? String(this.carNumber || '').trim()
+        : loggerId;
+      if (historyTargetId) {
+          console.log('Loading history data for logger:', historyTargetId, 'race:', this.parameterRaceId);
 
           // แสดง toast notification ว่ากำลังโหลดข้อมูล
           this.toastr.info('Loading history data...', 'Please wait', { timeOut: 2000 });
 
           this.eventService
-            .getDataLoggerInRace(this.parameterRaceId, this.parameterLoggerID)
+            .getDataLoggerInRace(this.parameterRaceId, historyTargetId)
             .subscribe({
               next: (dataArray) => {
                 if (!dataArray || dataArray.length === 0) {
@@ -1929,13 +1933,21 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
               },
               error: (err) => {
                 console.error('Error loading history data:', err);
+                if (err?.status === 403) {
+                  this.toastr.error('ไม่มีสิทธิ์เข้าถึงข้อมูลย้อนหลังของรถคันนี้', 'Access denied', { timeOut: 5000 });
+                  return;
+                }
                 this.toastr.error('Failed to load history data: ' + (err.message || 'Unknown error'), 'Error', { timeOut: 5000 });
               }
           });
       }
     } catch (err: any) {
       console.error('Failed to load history:', err);
-      this.toastr.error('Failed to load history data: ' + (err.message || 'Unknown error'), 'Error');
+      if (err?.status === 403) {
+        this.toastr.error('ไม่มีสิทธิ์เข้าถึงข้อมูลย้อนหลังของรถคันนี้', 'Access denied');
+      } else {
+        this.toastr.error('Failed to load history data: ' + (err.message || 'Unknown error'), 'Error');
+      }
     }
   }
 
@@ -2433,6 +2445,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initializeCanvas(): void {
+    if (this.isReadOnlyRaceTeamUser()) {
+      return;
+    }
+
     if (!this.trackCanvas?.nativeElement) {
       console.warn('[Canvas] Canvas element not found, retrying...');
       // Retry after a short delay
@@ -5686,6 +5702,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Initialize MapLibre map with deck.gl overlay or canvas (if no circuit match)
    */
   private initializeDeckMap(): void {
+    if (this.isReadOnlyRaceTeamUser()) {
+      return;
+    }
+
     // Get center for current circuit
     const center = getMapCenterForCircuit(this.circuitName);
 
@@ -6055,7 +6075,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private ro?: ResizeObserver;
   ngAfterViewInit(): void {
     setTimeout(() => {
-      this.initializeCanvas();
+      if (!this.isReadOnlyRaceTeamUser()) {
+        this.initializeCanvas();
+      }
       this.calculateSvgScale();
       if (!this.circuitName) {
         this.initializeSvgTransformForCircuit();
@@ -6063,7 +6085,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.initializeSvgTransformForCircuit();
       }
       // Initialize deck.gl map
-      this.initializeDeckMap();
+      if (!this.isReadOnlyRaceTeamUser()) {
+        this.initializeDeckMap();
+      }
     }, 0);
 
     this.ro = new ResizeObserver(() => {

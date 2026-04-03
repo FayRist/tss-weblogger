@@ -70,10 +70,17 @@ export class ConfigAfrModalComponent  implements OnInit {
   countMax: number = 0;
   countMin: number = 0;
   afrLimit: number = 0;
+  countTime: number = 0;
+
 
   afrGraphsMinLimit: number = 0;
   afrGraphsMaxLimit: number = 0;
 
+  // CountTimeMax = 60;
+  // CountTimeMin = 0;
+  // CountTimeStep = 1;
+  // CountTimeThumbLabelSlider = true;
+  // CountTimeShowTicksSlider = true;
 
   CountMaxSlider = 30;
   CountMinSlider = 0;
@@ -99,7 +106,7 @@ export class ConfigAfrModalComponent  implements OnInit {
 
 
   constructor(
-    private eventService: EventService, 
+    private eventService: EventService,
     private authService: AuthService,
     private toastr: ToastrService,
     private cdr: ChangeDetectorRef
@@ -111,17 +118,18 @@ export class ConfigAfrModalComponent  implements OnInit {
 
   getAllConfig(){
 
-    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max`
+    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max,time_count`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
         this.configAFR = [];
         this.configAFR = config;
-        
+
         // แปลงค่า string เป็น number และตั้งค่า
         const limitAfrItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0];
         const maxCountItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0];
         const graphsAfrMinItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0];
         const graphsAfrMaxItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0];
+        const timeCountItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'time_count')[0];
 
         if (limitAfrItem) {
           this.afrLimit = Number(limitAfrItem.value) || 0;
@@ -134,6 +142,9 @@ export class ConfigAfrModalComponent  implements OnInit {
         }
         if (graphsAfrMaxItem) {
           this.afrGraphsMaxLimit = Number(graphsAfrMaxItem.value) || 0;
+        }
+        if (timeCountItem) {
+          this.countTime = Number(timeCountItem.value) || 0;
         }
 
         // ตั้งค่า flag และ trigger change detection
@@ -155,6 +166,7 @@ export class ConfigAfrModalComponent  implements OnInit {
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value =this.countMax.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value =this.afrGraphsMinLimit.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value =this.afrGraphsMaxLimit.toString();
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'time_count')[0].value =this.countTime.toString();
 
     this.eventService.updateConfig(this.configAFR).subscribe(
         response => {

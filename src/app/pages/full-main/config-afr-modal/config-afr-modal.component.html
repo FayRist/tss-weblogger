@@ -7,7 +7,15 @@
           <div class="card-body">
             <div class="row">
               <div class="col-12">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>Time to count AFR</mat-label>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="countTime">
+                  </mat-form-field>
+                </form>
+              </div>
 
+              <div class="col-12">
                 <div class="slider-label-container">
                   <label id="slider-name-label" class="slider-name-label">Count Max</label>
                   <label class="slider-value-label">{{countMax}}</label>
@@ -63,11 +71,8 @@
 
                   <input [(ngModel)]="afrGraphsMinLimit" matSliderStartThumb>
                   <input [(ngModel)]="afrGraphsMaxLimit" matSliderEndThumb>
-
                 </mat-slider>
-
               </div>
-
               <!-- <div class="col-4">
                 <mat-card class="zone zone-picker">
                     <mat-form-field>

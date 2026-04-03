@@ -19,6 +19,7 @@ import { EventService } from '../../../../service/event.service';
 import { ExcelRowPayLoad } from '../add-logger/add-logger.component';
 import { CLASS_SEGMENT_LIST } from '../../../../constants/race-data';
 import { MatSelectModule } from '@angular/material/select';
+import { HttpErrorResponse } from '@angular/common/http';
 
 @Component({
   selector: 'app-edit-logger',
@@ -42,6 +43,8 @@ export class EditLoggerComponent implements OnInit {
   classList = CLASS_SEGMENT_LIST;
   circuit_name = this.data.circuit_name;
   event_id = this.data.event_id;
+  isUnlocked = false;
+  existingLoggers = this.data.existingLoggers ?? [];
 
 
 
@@ -51,10 +54,29 @@ export class EditLoggerComponent implements OnInit {
 
   }
 
+  toggleUnlock(): void {
+    this.isUnlocked = !this.isUnlocked;
+  }
+
   onNoClick(): void {
+    const nextLoggerId = String(this.logger_id ?? '').trim();
+    if (!nextLoggerId) {
+      this.toastr.error('กรุณากรอก Logger ID', 'ข้อมูลไม่ครบถ้วน');
+      return;
+    }
+
+    const duplicateLogger = this.existingLoggers.find(item =>
+      Number(item.id) !== Number(this.id) && String(item.loggerId ?? '').trim() === nextLoggerId
+    );
+
+    if (duplicateLogger) {
+      this.toastr.error(`Logger ID ${nextLoggerId} ซ้ำกับ NBR. ${duplicateLogger.carNumber}`, 'พบข้อมูลซ้ำ');
+      return;
+    }
+
     const payload = {
       id: this.id,   // <- map ชื่อคีย์
-      logger_id: this.logger_id,   // <- map ชื่อคีย์
+      logger_id: nextLoggerId,   // <- map ชื่อคีย์
       car_number: this.car_number,
       first_name: this.firstName,
       last_name: this.lastName,
@@ -72,7 +94,14 @@ export class EditLoggerComponent implements OnInit {
         },
         error => {
           console.error('Error adding/updating match:', error);
-           this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข match');
+          let errorMessage = 'เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Logger';
+          if (error instanceof HttpErrorResponse) {
+            const apiDescription = error.error?.description;
+            if (typeof apiDescription === 'string' && apiDescription.trim() !== '') {
+              errorMessage = apiDescription;
+            }
+          }
+          this.toastr.error(errorMessage);
         }
     );
   }
