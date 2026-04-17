@@ -32,19 +32,14 @@
           <td class="text-center" mat-cell *matCellDef="let element">{{ element.username }}</td>
         </ng-container>
 
-        <ng-container matColumnDef="passwordHash">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by username">Password</th>
-          <td class="text-center" mat-cell *matCellDef="let element">{{ maskedPassword() }}</td>
-        </ng-container>
-
         <ng-container matColumnDef="email">
           <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by email">Email</th>
           <td class="text-center" mat-cell *matCellDef="let element">{{ element.email }}</td>
         </ng-container>
 
         <ng-container matColumnDef="roleId">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by role id">Role ID</th>
-          <td class="text-center" mat-cell *matCellDef="let element">{{ element.roleId }}</td>
+          <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by role id">Role Name</th>
+          <td class="text-center" mat-cell *matCellDef="let element">{{ getRoleName(element.roleId) }}</td>
         </ng-container>
 
         <ng-container matColumnDef="createdAt">
@@ -59,6 +54,11 @@
           <td class="text-center" mat-cell *matCellDef="let element">
             <div class="row d-flex justify-content-center">
               <div class="col-2 d-flex justify-content-center">
+
+                @if( element.roleId  === 4){
+                  <img  class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_race.png" (click)="openRacePermission('0ms', '0ms', element.id)">
+                }
+
                 <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', element.id)">
                 <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', element.id)">
               </div>

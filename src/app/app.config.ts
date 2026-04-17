@@ -72,8 +72,11 @@ export const APP_CONFIG = {
       GET_PERMISSION: '/users/getPermissions',
       GET_USER_ADMIN_PERMISSIONS: '/users/getUserAdminPermissions',
       GET_USER_RACE_PERMISSIONS: '/users/getUserRacePermissions',
+      GET_USER_RACE_PERMISSION_ROWS: '/users/getUserRacePermissionRows',
+      GET_RACE_LOGGER_CANDIDATES: '/users/getRaceLoggerCandidates',
       ADD_USER: '/users/addUser',
       UPDATE_USER: '/users/updateUser',
+      SET_USER_RACE_PERMISSIONS: '/users/setUserRacePermissions',
       DELETE_USER: '/users/deleteUser',
 
       // Authentication (สำหรับอนาคต)

@@ -49,12 +49,12 @@ const routes: Routes = [
     data: { roles: ['admin'] },
     loadComponent: () => import('./admin-config/admin-config.component').then(m => m.AdminConfigComponent)
   },
-  //  {
-  //   path: 'user-management',
-  //   canActivate: [roleGuard],
-  //   data: { roles: ['admin'] },
-  //   loadComponent: () => import('./user-management/user-management.component').then(m => m.UserManagementComponent)
-  // },
+   {
+    path: 'user-management',
+    canActivate: [roleGuard],
+    data: { roles: ['admin'] },
+    loadComponent: () => import('./user-management/user-management.component').then(m => m.UserManagementComponent)
+  },
 ];
 
 @NgModule({
