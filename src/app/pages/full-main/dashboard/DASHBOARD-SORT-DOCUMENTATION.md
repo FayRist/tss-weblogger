@@ -14,9 +14,10 @@
 ลำดับการเรียงแบบหลายชั้น (multi-key sort):
 1. `currentCountDetect` มาก -> น้อย
 2. ถ้า Count เท่ากัน: `status`/`loggerStatus` ที่เป็น `online` มาก่อน `offline`
-3. ถ้ายังเท่ากัน: `carNumber` น้อย -> มาก
+3. ถ้า Count เท่ากันและเป็น `offline` ทั้งคู่: เรียง `onlineTime` ใหม่ -> เก่า
+4. ถ้ายังเท่ากัน: `carNumber` น้อย -> มาก
 
-สรุปสั้น: `Count desc` -> `Status online first` -> `NBR asc`
+สรุปสั้น: `Count desc` -> `Status online first` -> `(offline) onlineTime desc` -> `NBR asc`
 
 ## 2) Data Source ที่ใช้ในการ sort
 
@@ -34,7 +35,7 @@
 2. เรียก `updateView(allLoggers)`
 3. `updateView` ทำงานตามลำดับ:
    - คำนวณ filter จาก `filterLogger`
-   - กรองข้อมูลด้วย `matchesFilters(...)`
+   - กรองข้อมูลด้วย `filterLoggers(...)`
    - เรียงข้อมูลด้วย `sortLoggers(...)`
    - เซ็ตผลลัพธ์ไปที่ `onShowAllLoggers` และ `dataSource.data`
 
@@ -60,28 +61,21 @@
 ### ตอนกดล็อค
 - เซ็ต `isSortLocked = true`
 - เก็บ snapshot ปัจจุบันไว้ที่ `lockedLoggersSnapshot`
-- รีเซ็ต `MatSort` state และปิดการ sort ของตารางชั่วคราว (`dataSource.sort = null`)
+- ตารางยังรับค่า realtime ได้ แต่ตำแหน่งแถวคงตาม snapshot
 
 ### ตอนปลดล็อค
 - เซ็ต `isSortLocked = false`
 - ล้าง snapshot
-- เปิด `MatSort` กลับมา
 - เรียก `updateView(this.allLoggers)` เพื่อจัดอันดับใหม่ตามค่าปัจจุบัน
 
 ## 6) User Sort (MatSort) กับ Business Sort
 
-ตารางเปิด `matSort` ที่ header (ผู้ใช้คลิก sort รายคอลัมน์ได้)
-
-มี `sortingDataAccessor` กำหนดค่าที่ใช้เรียงสำหรับบางคอลัมน์ เช่น:
-- `carNumber` -> number
-- `afr` -> `afrAverage`
-- `countDetect` -> `currentCountDetect`
-- `loggerStatus` -> map เป็น `online=1`, `offline=0`
+ปัจจุบันหน้า Dashboard ถูกกำหนดให้ใช้ Business Sort เพียงแบบเดียว
+โดยไม่เปิดให้ผู้ใช้คลิกหัวตารางเพื่อเปลี่ยนลำดับ (ปิด interactive sort)
 
 หมายเหตุ:
-- Business sort หลักถูกใช้ใน flow `updateView/applyFilter`
-- ส่วน MatSort เป็น interactive sort ที่เกิดจากการคลิกหัวตาราง
-- หากล็อคตำแหน่งอยู่ ระบบจะปิดการคลิก sort ทั้งทาง logic และ CSS (`table.sort-locked .mat-sort-header`)
+- ลำดับที่เห็นบนตารางมาจาก `updateView(...)` และ `sortLoggers(...)` เท่านั้น
+- ผู้ใช้ยังค้นหา (search), filter และแบ่งหน้าได้ตามปกติ แต่ไม่สามารถ override ลำดับด้วยการคลิกหัวตาราง
 
 ## 7) Filter ที่มีผลกับข้อมูลก่อน sort
 
@@ -94,15 +88,14 @@
 
 ## 8) จุดสังเกตสำหรับรอบแก้ไขถัดไป
 
-มีความต่างของเงื่อนไข `allSmokeDetect` สองจุด:
-- ใน `applyFilter(...)` ใช้ `(currentCountDetect ?? 0) > 1`
-- ใน `matchesFilters(...)` ใช้ `(currentCountDetect ?? 0) > 0` และเช็ค `!warningDetector`
-
-ถ้าต้องการให้ behavior คงที่ทุก flow ควรกำหนดเกณฑ์เดียวกัน (เช่น `> 0` หรือ `> 1`) และใช้ในทุกจุดที่ filter
+ถ้าต้องการปรับความหมายของเวลาในกลุ่ม `offline` ภายหลัง:
+- ตอนนี้ใช้ `onlineTime` ตาม requirement ของงานนี้
+- หากต้องการสื่อความหมายว่า "เพิ่งหลุดล่าสุด" มากขึ้น อาจเปลี่ยนไปใช้ `disconnectTime`
 
 ## 9) สรุปแบบใช้งาน
 
-- ค่า Priority หลักของ Dashboard ตอนนี้คือ: `Count desc -> Online first -> Car number asc`
+- ค่า Priority หลักของ Dashboard ตอนนี้คือ:
+  `Count desc -> Online first -> (offline) onlineTime desc -> Car number asc`
 - ข้อมูล live จะ re-rank ทันทีเมื่อไม่ล็อค
 - ถ้าล็อคตำแหน่ง รายการจะไม่สลับอันดับแม้ค่าเปลี่ยน
-- ผู้ใช้ยัง sort เองได้ผ่าน MatSort เมื่อไม่ได้ล็อค
+- ผู้ใช้ไม่สามารถ sort เองผ่านการคลิกหัวตาราง (เพื่อคงลำดับตามธุรกิจเสมอ)

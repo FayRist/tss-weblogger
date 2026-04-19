@@ -471,8 +471,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
   private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
-  /** โหมด live: แสดงกราฟแค่ 2000 จุด (sliding window) เพื่อลดภาระและความหน่วง */
-  private readonly CHART_LIVE_MAX_POINTS = 2000;
+  /** โหมด live: ให้รองรับย้อนหลังเต็ม retention window (10 นาทีตาม config) */
+  private readonly CHART_LIVE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
 
   // ===== Map Performance Constants =====
   private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for map
@@ -482,7 +482,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   arrayLoggerCache: TelemetryPoint[] = [];
   /** ตัวเดียวสำหรับ feed กราฟ (detailOpts/brushOpts): เริ่มต้นว่าง, เติมจาก Redis ถ้ามี, ต่อด้วย realtime */
   private chartDataPoints: TelemetryPoint[] = [];
-  private readonly LOGGER_CACHE_MAX_POINTS = 5000;
+  /** จำนวนจุดที่ดึงจาก Redis ตอน re-entry ต้องพอสำหรับ retention ทั้งหน้าต่าง */
+  private readonly LOGGER_CACHE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
 
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;

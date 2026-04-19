@@ -18,10 +18,12 @@ export const APP_CONFIG = {
     HOST: 'http://localhost:7005',
     BASE_URL: 'http://localhost:7005/api',
     HOST_SERVER: 'http://localhost:7005',
-    BASE_URL_SERVER: 'http://43.228.85.167:7001/api',
+    // BASE_URL_SERVER: 'http://43.229.135.137:7001/api',
+    BASE_URL_SERVER: '/api',
 
     URL_SOCKET_LOCAL: 'ws://localhost:7005',
-    URL_SOCKET_SERVER: 'ws://43.228.85.167:7001',
+    // URL_SOCKET_SERVER: 'ws://43.229.135.137:7001',
+    URL_SOCKET_SERVER: 'ws://43.229.135.137',
     ENDPOINTS: {
       // Config
       GET_CONFIG: '/configWeb/getAllConfig',
@@ -72,8 +74,11 @@ export const APP_CONFIG = {
       GET_PERMISSION: '/users/getPermissions',
       GET_USER_ADMIN_PERMISSIONS: '/users/getUserAdminPermissions',
       GET_USER_RACE_PERMISSIONS: '/users/getUserRacePermissions',
+      GET_USER_RACE_PERMISSION_ROWS: '/users/getUserRacePermissionRows',
+      GET_RACE_LOGGER_CANDIDATES: '/users/getRaceLoggerCandidates',
       ADD_USER: '/users/addUser',
       UPDATE_USER: '/users/updateUser',
+      SET_USER_RACE_PERMISSIONS: '/users/setUserRacePermissions',
       DELETE_USER: '/users/deleteUser',
 
       // Authentication (สำหรับอนาคต)
@@ -202,7 +207,7 @@ function resolveBaseApiUrl(): string {
   }
 
   // server IP ของคุณ
-  if (hostname === '43.228.85.167') {
+  if (hostname === '43.229.135.137') {
     return APP_CONFIG.API.BASE_URL_SERVER;
   }
 
