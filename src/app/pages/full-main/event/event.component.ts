@@ -64,6 +64,11 @@ export class EventComponent implements OnInit {
     return this.authService.current?.role === 'race_team_user';
   }
 
+  canManageEventRace(): boolean {
+    const role = this.authService.current?.role;
+    return role === 'super_admin' || role === 'admin';
+  }
+
 
 
   statusOf = (e: eventModel) => getRaceStatus(this.time.now(), e.event_start, e.event_end);
@@ -370,11 +375,11 @@ export class DialogAnimationsModalEdit implements OnInit {
 
   onSubmitEvent(): void {
     let payload = {
-      event_name: this.eventName,
-      event_id: this.eventId,
-      circuit_name: this.circuitName,
-      event_start: this.range.controls.start.value,
-      event_end: this.range.controls.end.value,
+      eventid: this.eventId,
+      eventname: this.eventName,
+      circuitname: this.circuitName,
+      eventstart: this.range.controls.start.value,
+      eventend: this.range.controls.end.value,
     }
 
     this.eventService.updateEditEvent(payload).subscribe(
@@ -423,8 +428,8 @@ export class DialogAnimationsModalDelete {
       return;
     }
     const payload = {
-      event_id : this.eventId,
-      event_name : this.eventName
+      eventid: Number(this.eventId),
+      eventname: this.eventName
     }
 
     this.eventService.deleteEvent(payload).subscribe(

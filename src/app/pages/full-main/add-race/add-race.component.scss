@@ -14,3 +14,33 @@ button {
   // border-radius: 15px;
 }
 
+.session-time-table {
+  table-layout: fixed;
+}
+
+.session-time-table th,
+.session-time-table td {
+  vertical-align: middle;
+}
+
+.session-time-table td {
+  min-width: 0;
+}
+
+.session-time-input,
+:host ::ng-deep .session-time-table .flatpickr-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+:host ::ng-deep .session-time-table .flatpickr-wrapper {
+  display: block;
+  width: 100%;
+}
+
+:host ::ng-deep .flatpickr-calendar {
+  z-index: 1200;
+}
+

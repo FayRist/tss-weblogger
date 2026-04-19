@@ -12,7 +12,7 @@
             <th class="text-center w-5"> </th>
             <th class="text-center w-15">สถานะ</th>
             <th class="text-center">
-              @if (!isReadOnlyRaceTeamUser()) {
+              @if (canManageEventRace()) {
                 <button type="button" class="btn btn-secondary w-50" (click)="openAdd('0ms', '0ms')">เพิ่ม Event</button>
               }
             </th>
@@ -39,7 +39,7 @@
                 </div>
               </td>
               <td class="text-center">
-                @if (!isReadOnlyRaceTeamUser()) {
+                @if (canManageEventRace()) {
                   <div class="row d-flex justify-content-center">
                     <div class="col-12">
                       <button
@@ -55,7 +55,7 @@
                 }
               </td>
               <td class="text-center">
-                  @if (!isReadOnlyRaceTeamUser()) {
+                  @if (canManageEventRace()) {
                     <div class="row d-flex justify-content-center"
                       [class.pointer-events-none]="statusOf(eventList) === RaceStatus.Finished"
                       [class.opacity-50]="statusOf(eventList) === RaceStatus.Finished">

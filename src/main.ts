@@ -8,6 +8,8 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideToastr } from 'ngx-toastr';
 import { authInterceptor } from './app/core/auth/auth.interceptor';
 
+import { provideFlatpickrDefaults } from 'angularx-flatpickr';
+
 bootstrapApplication(AppComponent, {
   providers: [
     provideRouter(
@@ -18,5 +20,10 @@ bootstrapApplication(AppComponent, {
     provideHttpClient(withInterceptors([authInterceptor])),
     provideAnimations(),      // ✅ ต้องมี (หรือใช้ provideAnimationsAsync())
     provideToastr(),          // ✅ แทน ToastrModule.forRoot()
+    provideFlatpickrDefaults({
+      enableTime: true,
+      time24hr: true,
+      dateFormat: 'd/m/Y H:i',
+    }),
   ],
 }).catch(console.error);

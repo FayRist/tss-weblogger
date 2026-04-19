@@ -55,6 +55,11 @@ export class RaceComponent implements OnInit, OnDestroy {
   isReadOnlyRaceTeamUser(): boolean {
     return this.authService.current?.role === 'race_team_user';
   }
+
+  canManageEventRace(): boolean {
+    const role = this.authService.current?.role;
+    return role === 'super_admin' || role === 'admin';
+  }
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
   ngOnInit() {
@@ -462,8 +467,8 @@ export class DialogAnimationsRaceModalDelete {
       return;
     }
     const payload = {
-      raceMatchId: this.raceMatchId,
-      raceName: this.raceName,
+      id_list: this.raceMatchId,
+      category_name: this.raceName,
     }
 
     this.eventService.deleteRace(payload).subscribe(
