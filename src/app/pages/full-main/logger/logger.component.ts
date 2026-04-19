@@ -1,5 +1,5 @@
 import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -33,6 +33,7 @@ import { DataProcessingService } from '../../../service/data-processing.service'
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
 import { AuthService } from '../../../core/auth/auth.service';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 // deck.gl imports
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -1392,7 +1393,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   constructor(
     private router: Router,
-    private route: ActivatedRoute,
     private cdr: ChangeDetectorRef,
     private toastr: ToastrService,
     private http: HttpClient,
@@ -1400,7 +1400,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     private webSocketService: WebSocketService,
     private dataProcessingService: DataProcessingService,
     private ngZone: NgZone,
-    private auth: AuthService
+    private auth: AuthService,
+    private navContext: NavigationContextService
   ) {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
@@ -1602,16 +1603,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ---------- ตั้งค่า DEFAULT ----------
 
   ngOnInit() {
-    // ===== Mode Detection from URL =====
-    const statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? 'live';
+    const ctx = this.navContext.snapshot;
+    const statusRace = ctx.raceMode ?? 'live';
     this.isHistoryMode = statusRace === 'history';
     this.isRealtimeMode = !this.isHistoryMode;
 
-    this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
-    this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
-    this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? '';
-    this.circuitName   = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
+    this.parameterRaceId = Number(ctx.raceId ?? 0);
+    this.parameterSegment = ctx.segment ?? '';
+    this.parameterClass = ctx.classCode ?? '';
+    this.parameterLoggerID = ctx.loggerId ?? '';
+    this.circuitName = ctx.circuit ?? '';
     this.currentLoggerId = String(this.parameterLoggerID || '').trim();
 
     // performance: batched realtime UI flush - initialize batch subscription

@@ -5,7 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSelectModule } from '@angular/material/select';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { AddLoggerComponent } from './add-logger/add-logger.component';
 import { EditLoggerComponent } from './edit-logger/edit-logger.component';
 import { DeleteLoggerComponent } from './delete-logger/delete-logger.component';
@@ -13,7 +13,7 @@ import { LoggerModel } from '../../../model/season-model';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
 import { ToastrService } from 'ngx-toastr';
-import { parseClassQueryToCombined } from '../../../utility/race-param.util';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 import * as XLSX from 'xlsx';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
@@ -102,38 +102,18 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
 
   constructor(
     // private router: Router, private route: ActivatedRoute,
-    private router: Router, private route: ActivatedRoute,
-    private eventService: EventService, private toastr: ToastrService) {
+    private router: Router,
+    private eventService: EventService, private toastr: ToastrService,
+    private navContext: NavigationContextService) {
 
   }
   ngOnInit() {
-    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
-    const queryParamsSub = this.route.queryParamMap.subscribe(params => {
-      const eventId = params.get('eventId') ?? '';
-      this.circuitName = params.get('circuitName') ?? '';
-
-      if (eventId) {
-        this.CurrentEventId = Number(eventId);
-      } else {
-        this.CurrentEventId = null;
-      }
-
-      // Reload ข้อมูลเมื่อ query params เปลี่ยน
+    const contextSub = this.navContext.context$.subscribe(ctx => {
+      this.CurrentEventId = ctx.eventId;
+      this.circuitName = ctx.circuit ?? '';
       this.loadLogger(this.circuitName, this.CurrentEventId);
     });
-    this.subscriptions.push(queryParamsSub);
-
-    // โหลดข้อมูลครั้งแรก
-    const eventId = this.route.snapshot.queryParamMap.get('eventId') ?? '';
-    this.circuitName = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
-
-    if (eventId) {
-      this.CurrentEventId = Number(eventId);
-    } else {
-      this.CurrentEventId = null;
-    }
-
-    this.loadLogger(this.circuitName, this.CurrentEventId);
+    this.subscriptions.push(contextSub);
   }
 
   addLogger(enterAnimationDuration: string, exitAnimationDuration: string): void {

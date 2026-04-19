@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import {MatInputModule} from '@angular/material/input';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -25,6 +25,7 @@ import { MatIcon } from '@angular/material/icon';
 import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
 import { TimeService } from '../../../service/time.service';
 import { AddRaceComponent } from '../add-race/add-race.component';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 @Component({
   selector: 'app-race',
   imports: [ FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, MaterialModule,
@@ -47,9 +48,10 @@ export class RaceComponent implements OnInit, OnDestroy {
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
 
-  constructor(private router: Router, private route: ActivatedRoute
+  constructor(private router: Router
     , private eventService: EventService, private toastr: ToastrService
-    , public time: TimeService, private authService: AuthService) {
+    , public time: TimeService, private authService: AuthService,
+    private navContext: NavigationContextService) {
 
   }
   isReadOnlyRaceTeamUser(): boolean {
@@ -63,28 +65,18 @@ export class RaceComponent implements OnInit, OnDestroy {
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
   ngOnInit() {
-    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
-    const queryParamsSub = this.route.queryParamMap.subscribe(params => {
-      const eventId = params.get('eventId') ?? '';
-      const statusRace = params.get('statusRace') ?? '';
-      this.circuitName = params.get('circuitName') ?? '';
+    const contextSub = this.navContext.context$.subscribe(ctx => {
+      this.CurrentEventId = ctx.eventId;
+      this.statusRace = ctx.raceMode;
+      this.circuitName = ctx.circuit ?? '';
 
-      if (eventId) {
-        this.CurrentEventId = eventId;
-        this.loadRace(eventId, statusRace);
+      if (this.CurrentEventId) {
+        this.loadRace(this.CurrentEventId, this.statusRace);
+      } else {
+        this.allRace = [];
       }
     });
-    this.subscriptions.push(queryParamsSub);
-
-    // โหลดข้อมูลครั้งแรก
-    let eventId = this.route.snapshot.queryParamMap.get('eventId') ?? '';
-    this.statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
-    this.circuitName = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
-    this.CurrentEventId = eventId;
-
-    if (eventId) {
-      this.loadRace(eventId, this.statusRace);
-    }
+    this.subscriptions.push(contextSub);
 
     this.allRace = [
       // {
@@ -118,6 +110,7 @@ export class RaceComponent implements OnInit, OnDestroy {
         // this.dialogRef.close('success');
         this.toastr.success(`เริ่มการแข่ง ${this.getSessionName(sessionName)} `);
         // this.loadEvent();
+        this.navContext.patchContext({ raceMode: 'live' });
         this.loadRace(eventId, 'live');
 
       },
@@ -212,9 +205,16 @@ export class RaceComponent implements OnInit, OnDestroy {
 
 
   navigateToDashboard(raceId: number, segmentType: string, classType: string) {
-    this.router.navigate(['/pages', 'dashboard'], {
-      queryParams: { eventId: this.CurrentEventId, raceId, segment: segmentType, class: classType, circuitName: this.circuitName, statusRace: this.statusRace }   // ➜ /pages/dashboard?raceId=10&class=c
+    this.navContext.patchContext({
+      eventId: Number(this.CurrentEventId),
+      raceId,
+      segment: segmentType,
+      classCode: classType,
+      circuit: this.circuitName,
+      raceMode: this.statusRace === 'history' ? 'history' : 'live',
+      loggerId: null,
     });
+    this.router.navigate(['/pages', 'dashboard']);
   }
 
   openAdd(enterAnimationDuration: string, exitAnimationDuration: string, raceId: number = 0): void {

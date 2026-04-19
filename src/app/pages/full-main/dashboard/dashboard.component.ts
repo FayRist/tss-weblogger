@@ -2,7 +2,7 @@ import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, i
 import {MatProgressBarModule} from '@angular/material/progress-bar';
 import {MatCardModule} from '@angular/material/card';
 import {MatChipsModule} from '@angular/material/chips';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,9 +19,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 import { merge, Subscription, startWith } from 'rxjs';
-import { RACE_SEGMENT } from '../../../constants/race-data';
-import { parseClassQueryToCombined } from '../../../utility/race-param.util';
-import { getQueryParamsOnce, formControlWithInitial } from '../../../utility/rxjs-utils';
+import { formControlWithInitial } from '../../../utility/rxjs-utils';
 import {MatTableDataSource, MatTableModule} from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { CommonModule } from '@angular/common';
@@ -30,6 +28,7 @@ import { TimeService } from '../../../service/time.service';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
 import { AuthService } from '../../../core/auth/auth.service';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
@@ -121,12 +120,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private route: ActivatedRoute,
     private eventService: EventService,
     private toastr: ToastrService,
     private fb: FormBuilder,
     private cdr: ChangeDetectorRef,
-    private auth: AuthService
+    private auth: AuthService,
+    private navContext: NavigationContextService
   ) {
     this.loadAndApplyConfig();
   }
@@ -252,16 +251,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.displayedColumns = this.displayedColumns.filter((col) => col !== 'resetLimit');
     }
 
-    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
-    const queryParamsSub = this.route.queryParamMap.pipe(
-      startWith(this.route.snapshot.queryParamMap) // ให้ emit ค่าเริ่มต้นก่อน
-    ).subscribe(qp => {
-      this.parameterRaceId  = Number(qp.get('raceId') ?? 0);
-      this.parameterEventId  = Number(qp.get('eventId') ?? 0);
-      this.parameterSegment = qp.get('segment') ?? '';
-      this.parameterClass   = qp.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
-      this.circuitName   = qp.get('circuitName') ?? '';
-      this.statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
+    const contextSub = this.navContext.context$.subscribe(ctx => {
+      this.parameterRaceId = Number(ctx.raceId ?? 0);
+      this.parameterEventId = Number(ctx.eventId ?? 0);
+      this.parameterSegment = ctx.segment ?? '';
+      this.parameterClass = ctx.classCode ?? '';
+      this.circuitName = ctx.circuit ?? '';
+      this.statusRace = ctx.raceMode ?? 'live';
 
       this.filterLogger.setValue('all', { emitEvent: true });
       this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
@@ -279,16 +275,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           //   error: (e) => console.error(e),
           // });
       }else{
-        // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
-        const classMulti = qp.getAll('class');
-        const classSingle = qp.get('class');
-        const segmentQP = qp.get('segment') || undefined; // เผื่อส่งมาด้วย
-
-        const { classTypes } = parseClassQueryToCombined(
-          classMulti.length ? classMulti : classSingle,
-          segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
-        );
-
         // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
         const sub = this.eventService
           .getLoggersWithAfr({
@@ -331,7 +317,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
       }
     });
-    this.subscriptions.push(queryParamsSub);
+    this.subscriptions.push(contextSub);
   }
 
   onSelectChange(event: MatSelectChange) {
@@ -455,9 +441,15 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   navigateToLoggerDetail(LoggerId :any) {
-    this.router.navigate(['/pages', 'logger'], {
-      queryParams: { raceId: this.parameterRaceId, segment: this.parameterSegment, class: this.parameterClass, loggerId: LoggerId,circuitName: this.circuitName, statusRace: this.statusRace}
+    this.navContext.patchContext({
+      raceId: Number(this.parameterRaceId),
+      segment: this.parameterSegment,
+      classCode: this.parameterClass,
+      loggerId: String(LoggerId),
+      circuit: this.circuitName,
+      raceMode: this.statusRace === 'history' ? 'history' : 'live',
     });
+    this.router.navigate(['/pages', 'logger']);
     // this.router.navigate(['logger'], { relativeTo: this.route });
   }
 
@@ -486,53 +478,31 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.cdr.markForCheck();
 
         this.toastr.success('Reset เรียบร้อย');
-        this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
-        this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-        this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
+        const ctx = this.navContext.snapshot;
+        this.parameterRaceId = Number(ctx.raceId ?? 0);
+        this.parameterEventId = Number(ctx.eventId ?? 0);
+        this.parameterSegment = ctx.segment ?? '';
+        this.parameterClass = ctx.classCode ?? '';
+        this.circuitName = ctx.circuit ?? '';
+        this.statusRace = ctx.raceMode ?? 'live';
         this.filterLogger.setValue('all', { emitEvent: true });
         this.applyFilter('all');
-        const qpSub = getQueryParamsOnce(this.route).subscribe(qp => {
-          // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
-          const classMulti = qp.getAll('class');
-          const classSingle = qp.get('class');
-          const segmentQP = qp.get('segment') || undefined; // เผื่อส่งมาด้วย
-
-          const { classTypes } = parseClassQueryToCombined(
-            classMulti.length ? classMulti : classSingle,
-            segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
-          );
-
-          // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
-          const sub = this.eventService
-            .getLoggersWithAfr({
-              raceId: this.parameterRaceId,
-              eventId: this.parameterEventId,
-              circuitName: this.circuitName,
-              statusRace: this.statusRace
-            })
-            .subscribe({
-            next: (loggerRes) => {
-              this.allLoggers = loggerRes ?? [];
-              this.updateView(this.allLoggers);
-              this.cdr.markForCheck();
-            },
-            error: (err) => console.error('Error loading logger list:', err)
-          });
-          this.subscriptions.push(sub);
-
-          // reactive UI เดิม
-          const reactSub = merge(
-            this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
-            this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
-          ).subscribe(() => {
+        const sub = this.eventService
+          .getLoggersWithAfr({
+            raceId: this.parameterRaceId,
+            eventId: this.parameterEventId,
+            circuitName: this.circuitName,
+            statusRace: this.statusRace
+          })
+          .subscribe({
+          next: (loggerRes) => {
+            this.allLoggers = loggerRes ?? [];
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
-          });
-          this.subscriptions.push(reactSub);
-
-          this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
+          },
+          error: (err) => console.error('Error loading logger list:', err)
         });
-        this.subscriptions.push(qpSub);
+        this.subscriptions.push(sub);
       }
     });
   }
