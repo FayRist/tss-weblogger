@@ -10,7 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTabsModule } from '@angular/material/tabs';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { eventModel, optionModel } from '../../../model/season-model';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
 import { EventService } from '../../../service/event.service';
@@ -22,6 +22,7 @@ import { MatIcon } from '@angular/material/icon';
 import { AuthService } from '../../../core/auth/auth.service';
 import { TimeService } from '../../../service/time.service';
 import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 
 type SessionKey = 'freePractice' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
 
@@ -56,19 +57,27 @@ export class EventComponent implements OnInit {
 
   RaceStatus = RaceStatus;           // <-- ให้ template อ้าง enum ได้
 
-  constructor(private router: Router, private route: ActivatedRoute,
-      private eventService: EventService, private toastr: ToastrService, public time: TimeService, private authService: AuthService) {
+  constructor(private router: Router,
+      private eventService: EventService, private toastr: ToastrService, public time: TimeService, private authService: AuthService,
+      private navContext: NavigationContextService) {
   }
 
   isReadOnlyRaceTeamUser(): boolean {
     return this.authService.current?.role === 'race_team_user';
   }
 
+  canManageEventRace(): boolean {
+    const role = this.authService.current?.role;
+    return role === 'super_admin' || role === 'admin';
+  }
+
 
 
   statusOf = (e: eventModel) => getRaceStatus(this.time.now(), e.event_start, e.event_end);
   ngOnInit() {
-    this.showHistoryOnly = (this.route.snapshot.queryParamMap.get('statusRace') ?? '').toLowerCase() === 'history';
+    // Admin/Super Admin ต้องเห็น event ทั้งหมดเสมอ
+    // ส่วน race_team_user คงพฤติกรรม history filter ตาม context เดิม
+    this.showHistoryOnly = this.isReadOnlyRaceTeamUser() && this.navContext.snapshot.raceMode === 'history';
     this.loadEvent();
 
     if (!this.isReadOnlyRaceTeamUser()) {
@@ -124,9 +133,16 @@ export class EventComponent implements OnInit {
     if(activeRace == 0 && statusRace == "live"){
       statusRace = 'history'
     }
-    this.router.navigate(['/pages', 'race'], {
-      queryParams: { eventId, statusRace, circuitName }
+    this.navContext.replaceContext({
+      eventId,
+      circuit: circuitName,
+      raceMode: statusRace === 'history' ? 'history' : 'live',
+      raceId: null,
+      loggerId: null,
+      segment: null,
+      classCode: null,
     });
+    this.router.navigate(['/pages', 'race']);
   }
 
   openAdd(enterAnimationDuration: string, exitAnimationDuration: string, eventId: any = 0): void {
@@ -370,11 +386,11 @@ export class DialogAnimationsModalEdit implements OnInit {
 
   onSubmitEvent(): void {
     let payload = {
-      event_name: this.eventName,
-      event_id: this.eventId,
-      circuit_name: this.circuitName,
-      event_start: this.range.controls.start.value,
-      event_end: this.range.controls.end.value,
+      eventid: this.eventId,
+      eventname: this.eventName,
+      circuitname: this.circuitName,
+      eventstart: this.range.controls.start.value,
+      eventend: this.range.controls.end.value,
     }
 
     this.eventService.updateEditEvent(payload).subscribe(
@@ -423,8 +439,8 @@ export class DialogAnimationsModalDelete {
       return;
     }
     const payload = {
-      event_id : this.eventId,
-      event_name : this.eventName
+      eventid: Number(this.eventId),
+      eventname: this.eventName
     }
 
     this.eventService.deleteEvent(payload).subscribe(

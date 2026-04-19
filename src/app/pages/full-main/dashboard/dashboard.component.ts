@@ -2,7 +2,7 @@ import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, i
 import {MatProgressBarModule} from '@angular/material/progress-bar';
 import {MatCardModule} from '@angular/material/card';
 import {MatChipsModule} from '@angular/material/chips';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,12 +19,8 @@ import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 import { merge, Subscription, startWith } from 'rxjs';
-import { RACE_SEGMENT } from '../../../constants/race-data';
-import { parseClassQueryToCombined } from '../../../utility/race-param.util';
-import { getQueryParamsOnce, formControlWithInitial } from '../../../utility/rxjs-utils';
-import {MatSort, Sort, MatSortModule} from '@angular/material/sort';
+import { formControlWithInitial } from '../../../utility/rxjs-utils';
 import {MatTableDataSource, MatTableModule} from '@angular/material/table';
-import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { CommonModule } from '@angular/common';
 import { LoggerItem } from '../../../model/api-response-model';
@@ -32,6 +28,7 @@ import { TimeService } from '../../../service/time.service';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
 import { AuthService } from '../../../core/auth/auth.service';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 
@@ -51,7 +48,7 @@ function toDate(v: unknown): Date {
 @Component({
   selector: 'app-dashboard',
   imports: [MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
-    , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule, MatSortModule
+    , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule
     , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule
     , MatSlideToggleModule, MatMenuModule],
   templateUrl: './dashboard.component.html',
@@ -59,7 +56,6 @@ function toDate(v: unknown): Date {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
-  private _liveAnnouncer = inject(LiveAnnouncer);
   private subscriptions: Subscription[] = [];
 
   private wsStatusConnection: WebSocketConnection | null = null;
@@ -98,7 +94,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   dataSource = new MatTableDataSource<LoggerItem>([]);
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort!: MatSort;
 
   filterLogList: any[] = [
     {
@@ -125,12 +120,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private route: ActivatedRoute,
     private eventService: EventService,
     private toastr: ToastrService,
     private fb: FormBuilder,
     private cdr: ChangeDetectorRef,
-    private auth: AuthService
+    private auth: AuthService,
+    private navContext: NavigationContextService
   ) {
     this.loadAndApplyConfig();
   }
@@ -177,6 +172,15 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       const isOnlineB = statusB === 'online' ? 1 : 0;
       if (isOnlineA !== isOnlineB) {
         return isOnlineB - isOnlineA; // online (1) ก่อน offline (0)
+      }
+
+      // 2.1 ถ้าเป็น offline ทั้งคู่ ให้รายการที่เวลา onlineTime ใหม่กว่าแสดงก่อน
+      if (isOnlineA === 0 && isOnlineB === 0) {
+        const timeA = a.onlineTime ? toDate(a.onlineTime).getTime() : 0;
+        const timeB = b.onlineTime ? toDate(b.onlineTime).getTime() : 0;
+        if (timeA !== timeB) {
+          return timeB - timeA; // ใหม่→เก่า
+        }
       }
 
       // 3. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
@@ -247,16 +251,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.displayedColumns = this.displayedColumns.filter((col) => col !== 'resetLimit');
     }
 
-    // Subscribe ต่อ query params changes เพื่อให้ reload ข้อมูลเมื่อ navigate ไปยัง route เดิม
-    const queryParamsSub = this.route.queryParamMap.pipe(
-      startWith(this.route.snapshot.queryParamMap) // ให้ emit ค่าเริ่มต้นก่อน
-    ).subscribe(qp => {
-      this.parameterRaceId  = Number(qp.get('raceId') ?? 0);
-      this.parameterEventId  = Number(qp.get('eventId') ?? 0);
-      this.parameterSegment = qp.get('segment') ?? '';
-      this.parameterClass   = qp.get('class') ?? ''; // ใช้ชื่อแปรอื่นแทน class
-      this.circuitName   = qp.get('circuitName') ?? '';
-      this.statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? '';
+    const contextSub = this.navContext.context$.subscribe(ctx => {
+      this.parameterRaceId = Number(ctx.raceId ?? 0);
+      this.parameterEventId = Number(ctx.eventId ?? 0);
+      this.parameterSegment = ctx.segment ?? '';
+      this.parameterClass = ctx.classCode ?? '';
+      this.circuitName = ctx.circuit ?? '';
+      this.statusRace = ctx.raceMode ?? 'live';
 
       this.filterLogger.setValue('all', { emitEvent: true });
       this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
@@ -274,16 +275,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           //   error: (e) => console.error(e),
           // });
       }else{
-        // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
-        const classMulti = qp.getAll('class');
-        const classSingle = qp.get('class');
-        const segmentQP = qp.get('segment') || undefined; // เผื่อส่งมาด้วย
-
-        const { classTypes } = parseClassQueryToCombined(
-          classMulti.length ? classMulti : classSingle,
-          segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
-        );
-
         // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
         const sub = this.eventService
           .getLoggersWithAfr({
@@ -326,7 +317,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
       }
     });
-    this.subscriptions.push(queryParamsSub);
+    this.subscriptions.push(contextSub);
   }
 
   onSelectChange(event: MatSelectChange) {
@@ -420,50 +411,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     };
 
     this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
-
-    this.dataSource.sortingDataAccessor = (item, property) => {
-
-      switch (property) {
-        case 'carNumber': return Number(item.carNumber);
-        case 'afr': return Number(item.afrAverage);
-        case 'countDetect': return Number(item.currentCountDetect);
-        case 'loggerStatus': return (item.loggerStatus + '').toLowerCase() === 'online' ? 1 : 0;
-        default: return (item as any)[property];
-      }
-    };
-  }
-
-  /** Announce the change in sort state for assistive technology. */
-  announceSortChange(sortState: Sort) {
-    // ถ้าล็อคตำแหน่งอยู่ ให้ไม่ให้มีการ sort
-    if (this.isSortLocked) {
-      // รีเซ็ต sort กลับไปเป็นสถานะเดิม (ไม่มีการ sort)
-      if (this.sort) {
-        this.sort.sort({ id: '', start: 'asc', disableClear: false });
-        this.sort.active = '';
-        this.sort.direction = '';
-        this.dataSource.sort = this.sort;
-        this.dataSource.sort = null; // ปิดการ sort ชั่วคราว
-        this.cdr.markForCheck();
-      }
-      return;
-    }
-
-    // เปิดการ sort กลับมาใหม่ถ้ายังไม่ได้เปิด
-    if (this.dataSource.sort === null && this.sort) {
-      this.dataSource.sort = this.sort;
-    }
-
-    // This example uses English messages. If your application supports
-    // multiple language, you would internationalize these strings.
-    // Furthermore, you can customize the message to add additional
-    // details about the values being sorted.
-    if (sortState.direction) {
-      this._liveAnnouncer.announce(`Sorted ${sortState.direction}ending`);
-    } else {
-      this._liveAnnouncer.announce('Sorting cleared');
-    }
   }
 
   /** Toggle สถานะล็อคตำแหน่งการ sort */
@@ -473,20 +420,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.isSortLocked) {
       // เมื่อล็อค ให้เก็บ snapshot ของตำแหน่งปัจจุบัน
       this.lockedLoggersSnapshot = [...this.onShowAllLoggers]; // deep copy
-
-      // รีเซ็ต sort state
-      if (this.sort) {
-        this.sort.active = '';
-        this.sort.direction = '';
-        this.dataSource.sort = null;
-      }
     } else {
-      // เมื่อปลดล็อค ให้ลบ snapshot และเปิดการ sort กลับมา
+      // เมื่อปลดล็อค ให้ลบ snapshot
       this.lockedLoggersSnapshot = null;
-
-      if (this.sort) {
-        this.dataSource.sort = this.sort;
-      }
 
       // เรียงลำดับใหม่ตามปกติ
       this.updateView(this.allLoggers);
@@ -505,9 +441,15 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   navigateToLoggerDetail(LoggerId :any) {
-    this.router.navigate(['/pages', 'logger'], {
-      queryParams: { raceId: this.parameterRaceId, segment: this.parameterSegment, class: this.parameterClass, loggerId: LoggerId,circuitName: this.circuitName, statusRace: this.statusRace}
+    this.navContext.patchContext({
+      raceId: Number(this.parameterRaceId),
+      segment: this.parameterSegment,
+      classCode: this.parameterClass,
+      loggerId: String(LoggerId),
+      circuit: this.circuitName,
+      raceMode: this.statusRace === 'history' ? 'history' : 'live',
     });
+    this.router.navigate(['/pages', 'logger']);
     // this.router.navigate(['logger'], { relativeTo: this.route });
   }
 
@@ -536,53 +478,31 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.cdr.markForCheck();
 
         this.toastr.success('Reset เรียบร้อย');
-        this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
-        this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-        this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
+        const ctx = this.navContext.snapshot;
+        this.parameterRaceId = Number(ctx.raceId ?? 0);
+        this.parameterEventId = Number(ctx.eventId ?? 0);
+        this.parameterSegment = ctx.segment ?? '';
+        this.parameterClass = ctx.classCode ?? '';
+        this.circuitName = ctx.circuit ?? '';
+        this.statusRace = ctx.raceMode ?? 'live';
         this.filterLogger.setValue('all', { emitEvent: true });
         this.applyFilter('all');
-        const qpSub = getQueryParamsOnce(this.route).subscribe(qp => {
-          // รองรับทั้ง class=ab | class=a,b | class=pickupa,pickupb | class=a&class=b
-          const classMulti = qp.getAll('class');
-          const classSingle = qp.get('class');
-          const segmentQP = qp.get('segment') || undefined; // เผื่อส่งมาด้วย
-
-          const { classTypes } = parseClassQueryToCombined(
-            classMulti.length ? classMulti : classSingle,
-            segmentQP // เป็น defaultSegment ถ้า class ไม่ได้พรีฟิกซ์มา
-          );
-
-          // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
-          const sub = this.eventService
-            .getLoggersWithAfr({
-              raceId: this.parameterRaceId,
-              eventId: this.parameterEventId,
-              circuitName: this.circuitName,
-              statusRace: this.statusRace
-            })
-            .subscribe({
-            next: (loggerRes) => {
-              this.allLoggers = loggerRes ?? [];
-              this.updateView(this.allLoggers);
-              this.cdr.markForCheck();
-            },
-            error: (err) => console.error('Error loading logger list:', err)
-          });
-          this.subscriptions.push(sub);
-
-          // reactive UI เดิม
-          const reactSub = merge(
-            this.filterLogger.valueChanges.pipe(startWith(this.filterLogger.value)),
-            this.formGroup.get('sortType')!.valueChanges.pipe(startWith(this.formGroup.value.sortType))
-          ).subscribe(() => {
+        const sub = this.eventService
+          .getLoggersWithAfr({
+            raceId: this.parameterRaceId,
+            eventId: this.parameterEventId,
+            circuitName: this.circuitName,
+            statusRace: this.statusRace
+          })
+          .subscribe({
+          next: (loggerRes) => {
+            this.allLoggers = loggerRes ?? [];
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
-          });
-          this.subscriptions.push(reactSub);
-
-          this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
+          },
+          error: (err) => console.error('Error loading logger list:', err)
         });
-        this.subscriptions.push(qpSub);
+        this.subscriptions.push(sub);
       }
     });
   }
@@ -717,12 +637,15 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
         if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged || afrChanged) {
           hasUpdate = true;
+          const nextCountDetect = statusUpdate.afrCount !== undefined
+            ? statusUpdate.afrCount
+            : logger.currentCountDetect;
           // สร้าง object ใหม่แทนการแก้ไขโดยตรง (immutable update)
           const updatedLogger: any = {
             ...logger,
             loggerStatus: statusUpdate.status as 'online' | 'offline',
             status: statusUpdate.status,
-            currentCountDetect: statusUpdate.afrCount,
+            currentCountDetect: nextCountDetect,
             afr: statusUpdate.afr !== undefined ? statusUpdate.afr : logger.afr,
             afrAverage: logger.afrAverage
           };
@@ -738,10 +661,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           }
 
           // อัพเดท currentCountDetect จาก afr_count (real-time)
-          if (statusUpdate.afrCount !== undefined) {
-            updatedLogger.currentCountDetect = statusUpdate.afrCount;
-          }
-
           return updatedLogger;
         }
       }
@@ -790,6 +709,24 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
    * ปิดการเชื่อมต่อ WebSocket
    */
   private disconnectWebSocket(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.wsStatus) {
+      try {
+        this.wsStatus.onopen = null;
+        this.wsStatus.onmessage = null;
+        this.wsStatus.onerror = null;
+        this.wsStatus.onclose = null;
+        this.wsStatus.close();
+      } catch (e) {
+        console.warn('[WS Status] Error while closing socket:', e);
+      }
+      this.wsStatus = null;
+    }
+
     if (this.wsStatusConnection) {
       this.wsStatusConnection.disconnect();
       this.wsStatusConnection = null;

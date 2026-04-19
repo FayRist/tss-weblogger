@@ -11,6 +11,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { EventService } from '../../service/event.service';
 import { TimeService } from '../../service/time.service';
+import { NavigationContextService } from '../../core/navigation/navigation-context.service';
 import Swal from 'sweetalert2';
 
 function toDate(v: unknown): Date {
@@ -50,6 +51,7 @@ export class LoginComponent implements OnInit {
     , private router: Router
     , private route: ActivatedRoute
     , private eventService: EventService
+    , private navContext: NavigationContextService
   ) {}
 
   ngOnInit(): void {
@@ -86,27 +88,24 @@ export class LoginComponent implements OnInit {
       this.eventService.getLoggerByDate(now).subscribe({
         next: ({ items }) => {
           if (!items || items.length === 0) {
-            this.router.navigate(['/pages', 'event'], {
-              queryParams: { statusRace: 'history' }
-            });
+            this.navContext.replaceContext({ raceMode: 'history' });
+            this.router.navigate(['/pages', 'event']);
             return;
           }
-          this.router.navigate(['/pages', 'dashboard'], {
-            queryParams: {
-              eventId: items[0].eventId,
-              raceId: items[0].idList,
-              segment: items[0].segmentValue,
-              class: items[0].classValue,
-              circuitName: items[0].circuitName,
-              statusRace: 'live'
-            },
+          this.navContext.replaceContext({
+            eventId: Number(items[0].eventId),
+            raceId: Number(items[0].idList),
+            segment: items[0].segmentValue,
+            classCode: items[0].classValue,
+            circuit: items[0].circuitName,
+            raceMode: 'live'
           });
+          this.router.navigate(['/pages', 'dashboard']);
         },
         error: (e) => {
           console.error(e);
-          this.router.navigate(['/pages', 'event'], {
-            queryParams: { statusRace: 'history' }
-          });
+          this.navContext.replaceContext({ raceMode: 'history' });
+          this.router.navigate(['/pages', 'event']);
         },
       });
     });

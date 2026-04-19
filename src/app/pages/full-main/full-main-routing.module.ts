@@ -1,6 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { roleGuard } from '../../core/auth/role.guard';
+import { requireDashboardContextGuard, requireLoggerContextGuard } from '../../core/navigation/navigation-context.guard';
 
 const routes: Routes = [
   {
@@ -9,6 +10,7 @@ const routes: Routes = [
     pathMatch: 'full'
   },{
     path: 'dashboard',
+    canActivate: [requireDashboardContextGuard],
     loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent)
   }, {
     path: 'season',
@@ -27,6 +29,7 @@ const routes: Routes = [
     loadComponent: () => import('./race/race.component').then(m => m.RaceComponent)
   }, {
     path: 'logger',
+    canActivate: [requireLoggerContextGuard],
     loadComponent: () => import('./logger/logger.component').then(m => m.LoggerComponent)
   }, {
     path: 'logger/add-logger',

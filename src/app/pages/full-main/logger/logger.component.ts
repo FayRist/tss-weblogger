@@ -1,5 +1,5 @@
 import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -33,6 +33,7 @@ import { DataProcessingService } from '../../../service/data-processing.service'
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
 import { AuthService } from '../../../core/auth/auth.service';
+import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 // deck.gl imports
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -471,8 +472,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
   private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
-  /** โหมด live: แสดงกราฟแค่ 2000 จุด (sliding window) เพื่อลดภาระและความหน่วง */
-  private readonly CHART_LIVE_MAX_POINTS = 2000;
+  /** โหมด live: ให้รองรับย้อนหลังเต็ม retention window (10 นาทีตาม config) */
+  private readonly CHART_LIVE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
 
   // ===== Map Performance Constants =====
   private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for map
@@ -482,7 +483,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   arrayLoggerCache: TelemetryPoint[] = [];
   /** ตัวเดียวสำหรับ feed กราฟ (detailOpts/brushOpts): เริ่มต้นว่าง, เติมจาก Redis ถ้ามี, ต่อด้วย realtime */
   private chartDataPoints: TelemetryPoint[] = [];
-  private readonly LOGGER_CACHE_MAX_POINTS = 5000;
+  /** จำนวนจุดที่ดึงจาก Redis ตอน re-entry ต้องพอสำหรับ retention ทั้งหน้าต่าง */
+  private readonly LOGGER_CACHE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
 
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;
@@ -1391,7 +1393,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   constructor(
     private router: Router,
-    private route: ActivatedRoute,
     private cdr: ChangeDetectorRef,
     private toastr: ToastrService,
     private http: HttpClient,
@@ -1399,7 +1400,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     private webSocketService: WebSocketService,
     private dataProcessingService: DataProcessingService,
     private ngZone: NgZone,
-    private auth: AuthService
+    private auth: AuthService,
+    private navContext: NavigationContextService
   ) {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
@@ -1601,16 +1603,16 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ---------- ตั้งค่า DEFAULT ----------
 
   ngOnInit() {
-    // ===== Mode Detection from URL =====
-    const statusRace = this.route.snapshot.queryParamMap.get('statusRace') ?? 'live';
+    const ctx = this.navContext.snapshot;
+    const statusRace = ctx.raceMode ?? 'live';
     this.isHistoryMode = statusRace === 'history';
     this.isRealtimeMode = !this.isHistoryMode;
 
-    this.parameterRaceId  = Number(this.route.snapshot.queryParamMap.get('raceId') ?? 0);
-    this.parameterSegment = this.route.snapshot.queryParamMap.get('segment') ?? '';
-    this.parameterClass   = this.route.snapshot.queryParamMap.get('class') ?? '';
-    this.parameterLoggerID   = this.route.snapshot.queryParamMap.get('loggerId') ?? '';
-    this.circuitName   = this.route.snapshot.queryParamMap.get('circuitName') ?? '';
+    this.parameterRaceId = Number(ctx.raceId ?? 0);
+    this.parameterSegment = ctx.segment ?? '';
+    this.parameterClass = ctx.classCode ?? '';
+    this.parameterLoggerID = ctx.loggerId ?? '';
+    this.circuitName = ctx.circuit ?? '';
     this.currentLoggerId = String(this.parameterLoggerID || '').trim();
 
     // performance: batched realtime UI flush - initialize batch subscription

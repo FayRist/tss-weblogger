@@ -234,7 +234,7 @@ export class DialogAnimationsModalDelete {
       config_ame : this.configName
     }
 
-    this.eventService.deleteEvent(payload).subscribe(
+    this.eventService.deleteConfig(payload).subscribe(
         response => {
           console.log('Event added/updated successfully:', response);
           this.toastr.success(`ลบ Config ${this.configName} สำเร็จ`);
