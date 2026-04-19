@@ -18,6 +18,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { DateAdapter, MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
+import { FlatpickrDirective } from 'angularx-flatpickr';
 import { ToastrService } from 'ngx-toastr';
 import { EventService } from '../../../service/event.service';
 import { optionModel, RaceModel } from '../../../model/season-model';
@@ -31,6 +32,13 @@ interface SessionRow {
   label: String;
   start: Date | null; // 'YYYY-MM-DDTHH:mm'
   end: Date | null;   // 'YYYY-MM-DDTHH:mm'
+}
+
+interface SessionInterval {
+  key: SessionKey;
+  label: string;
+  start: Date;
+  end: Date;
 }
 
 export interface seasonalPayLoad {
@@ -51,10 +59,11 @@ export interface eventPayLoad {
 
 @Component({
   selector: 'app-add-race',
+  standalone: true,
   imports: [MatButtonModule, MatDialogClose,
     MatDialogTitle, MatDialogContent, MatTabsModule,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
-    MatDatepickerModule, MatCheckboxModule, MatRadioModule],
+    MatDatepickerModule, MatCheckboxModule, MatRadioModule, FlatpickrDirective,],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './add-race.component.html',
@@ -204,53 +213,156 @@ export class AddRaceComponent implements OnInit {
     }
   }
 
-  // แปลง Date -> 'YYYY-MM-DDTHH:mm' (วินาที/มิลลิวินาที = 00)
-  toInput(d: Date | null | undefined): String {
+  toInput(d: Date | null | undefined): string {
     if (!d) return '';
     const x = new Date(d);
     x.setSeconds(0, 0);
-    const pad = (n: number) => String(n).padStart(2,'0');
+    const pad = (n: number) => String(n).padStart(2, '0');
     const yyyy = x.getFullYear();
-    const MM   = pad(x.getMonth() + 1);
-    const dd   = pad(x.getDate());
-    const hh   = pad(x.getHours());
-    const mm   = pad(x.getMinutes());
+    const MM = pad(x.getMonth() + 1);
+    const dd = pad(x.getDate());
+    const hh = pad(x.getHours());
+    const mm = pad(x.getMinutes());
     return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
   }
 
   // แปลงสตริงจาก input -> Date (ตีความเป็น local time) และ set ss/ms = 0
-  fromInput(value: String): Date | null {
+  fromInput(value: string): Date | null {
     if (!value) return null;
-    // ปลอดภัยกับ Safari: แยกส่วนเอง ไม่ใช้ new Date(isoString)
     const [d, t] = value.split('T');
     if (!d || !t) return null;
-    const [y,m,day] = d.split('-').map(Number);
-    const [h,min]   = t.split(':').map(Number);
-    const out = new Date(y, (m||1)-1, day||1, h||0, min||0, 0, 0);
+    const [y, m, day] = d.split('-').map(Number);
+    const [h, min] = t.split(':').map(Number);
+    const out = new Date(y, (m || 1) - 1, day || 1, h || 0, min || 0, 0, 0);
     return isNaN(out.getTime()) ? null : out;
   }
+
+  private fromDisplayInput(value: string): Date | null {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return null;
+    const [datePart, timePart] = trimmed.split(' ');
+    if (!datePart || !timePart) return null;
+    const [day, month, year] = datePart.split('/').map(Number);
+    const [hour, minute] = timePart.split(':').map(Number);
+    if (
+      !Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year) ||
+      !Number.isFinite(hour) || !Number.isFinite(minute)
+    ) {
+      return null;
+    }
+    const out = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
+    return isNaN(out.getTime()) ? null : out;
+  }
+
+  private parseDateTimeValue(input: unknown): Date | null {
+    if (input instanceof Date) {
+      return isNaN(input.getTime()) ? null : new Date(input);
+    }
+
+    if (Array.isArray(input) && input.length > 0 && input[0] instanceof Date) {
+      const d = input[0] as Date;
+      return isNaN(d.getTime()) ? null : new Date(d);
+    }
+
+    if (typeof input === 'string') {
+      const fromIsoLike = this.fromInput(input);
+      if (fromIsoLike) return fromIsoLike;
+
+      const fromDisplay = this.fromDisplayInput(input);
+      if (fromDisplay) return fromDisplay;
+
+      const parsed = new Date(input);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    if (input && typeof input === 'object' && 'target' in (input as any)) {
+      const value = ((input as any).target as HTMLInputElement | null)?.value ?? '';
+      return this.fromInput(value);
+    }
+
+    return null;
+  }
+
   // อัปเดตค่าเวลาเมื่อผู้ใช้แก้ใน input
-  onStartChange(row: SessionRow, ev: Event) {
-    const value = (ev.target as HTMLInputElement | null)?.value ?? '';
-    const dt = this.fromInput(value);
+  onStartChange(row: SessionRow, value: unknown) {
+    const dt = this.parseDateTimeValue(value);
     if (!dt) return;
     row.start = dt;
     if (!row.end || row.end < row.start) row.end = new Date(row.start);
+    this.validateSessionTimeline(true, false);
   }
 
-  onEndChange(row: SessionRow, ev: Event) {
-    const value = (ev.target as HTMLInputElement | null)?.value ?? '';
-    const dt = this.fromInput(value);
+  onEndChange(row: SessionRow, value: unknown) {
+    const dt = this.parseDateTimeValue(value);
     if (!dt) return;
     row.end = (row.start && dt < row.start) ? new Date(row.start) : dt;
+    this.validateSessionTimeline(true, false);
+  }
+  private validateSessionTimeline(showToast: boolean, requireComplete: boolean): boolean {
+    const intervals: SessionInterval[] = [];
+
+    for (const row of this.selectedSessions) {
+      if (!row.start || !row.end) {
+        if (requireComplete) {
+          if (showToast) {
+            this.toastr.error(`กรุณาระบุเวลาเริ่มและเวลาจบของ ${row.label}`);
+          }
+          return false;
+        }
+        continue;
+      }
+
+      const start = new Date(row.start);
+      const end = new Date(row.end);
+      if (start.getTime() >= end.getTime()) {
+        if (showToast) {
+          this.toastr.error(`เวลาเริ่มต้องน้อยกว่าเวลาจบของ ${row.label}`);
+        }
+        return false;
+      }
+
+      intervals.push({
+        key: row.key,
+        label: String(row.label),
+        start,
+        end,
+      });
+    }
+
+    intervals.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    for (let i = 1; i < intervals.length; i++) {
+      const prev = intervals[i - 1];
+      const current = intervals[i];
+
+      // อนุญาตให้เวลาแตะกันได้ (end == next start) แต่ห้ามทับซ้อนจริง
+      if (current.start.getTime() < prev.end.getTime()) {
+        if (showToast) {
+          this.toastr.error(`ช่วงเวลาของ ${current.label} ทับซ้อนกับ ${prev.label}`);
+        }
+        return false;
+      }
+    }
+
+    return true;
   }
 
 
   submitRace(){
+    if (!this.validateSessionTimeline(true, true)) {
+      return;
+    }
+
     const payload: any[] =[]
     let classJoin:any = this.classValue;
     for (let index = 0; index < this.selectedSessions.length; index++) {
       const element = this.selectedSessions[index];
+      const start = element.start ? new Date(element.start) : null;
+      const end = element.end ? new Date(element.end) : null;
+
+      if (start) start.setSeconds(0, 0);
+      if (end) end.setSeconds(0, 0);
+
       let prePayload = {
         id_list: null,
         season_id: this.seasonId,
@@ -259,8 +371,8 @@ export class AddRaceComponent implements OnInit {
         class_value: classJoin.join(''),
         segment_value: this.segmentValue,
         session_value: element.key,
-        session_start: element.start,
-        session_end: element.end,
+        session_start: start,
+        session_end: end,
       }
 
       payload.push(prePayload);

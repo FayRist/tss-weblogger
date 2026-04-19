@@ -83,6 +83,7 @@ export const APP_CONFIG = {
 
       // Authentication (สำหรับอนาคต)
       LOGIN: '/auth/login',
+      LOGIN_PUBLIC_KEY: '/auth/public-key',
       LOGOUT: '/auth/logout',
       REFRESH_TOKEN: '/auth/refresh',
       // WebSocket

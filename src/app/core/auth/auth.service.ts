@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable, Subscription, of } from 'rxjs';
+import { BehaviorSubject, Observable, Subscription, from, of } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
+import { switchMap } from 'rxjs/operators';
 import { APP_CONFIG, getApiUrl } from '../../app.config';
 import { hashPassword } from '../../utility/password.util';
 import { NavigationEnd, Router } from '@angular/router';
@@ -38,6 +39,16 @@ interface LoginApiResponse {
       all_race_access: boolean;
     };
   };
+}
+
+interface LoginPublicKeyApiResponse {
+	success: boolean;
+	data: {
+		kid: string;
+		algorithm: string;
+		public_key: string;
+		max_skew_sec: number;
+	};
 }
 
 const LS_KEY = 'auth_state_v2';
@@ -126,14 +137,38 @@ export class AuthService {
 
   login(username: string, password: string): Observable<{ ok: boolean; error?: string }> {
     const apiUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.LOGIN);
-    const payload = {
-      username: username.trim(),
-      password,
-    };
+    const keyUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.LOGIN_PUBLIC_KEY);
+    const trimmedUsername = username.trim();
 
-    return this.http.post<LoginApiResponse>(apiUrl, payload).pipe(
+    return this.http.get<LoginPublicKeyApiResponse>(keyUrl).pipe(
+      switchMap((keyRes) => {
+        if (!keyRes?.success || !keyRes?.data?.public_key) {
+          return of({ ok: false, error: 'Cannot get login encryption key' });
+        }
+
+        const ts = Date.now();
+        const nonce = this.generateNonce();
+
+        return from(this.encryptPasswordWithPublicKey(password, keyRes.data.public_key)).pipe(
+          switchMap((passwordEnc) => {
+            const payload = {
+              username: trimmedUsername,
+              password_enc: passwordEnc,
+              enc_ver: 'rsa-oaep-sha256',
+              ts,
+              nonce,
+              kid: keyRes.data.kid,
+            };
+            return this.http.post<LoginApiResponse>(apiUrl, payload);
+          }),
+          catchError(() => of({ ok: false, error: 'Cannot encrypt login payload' } as any))
+        );
+      }),
       map((res) => {
-        if (!res?.success || !res?.data?.access_token || !res?.data?.user) {
+        if (!res || !res.success || !res?.data?.access_token || !res?.data?.user) {
+          if ((res as any)?.ok === false) {
+            return res as { ok: false; error?: string };
+          }
           return { ok: false, error: 'Login failed' };
         }
 
@@ -165,6 +200,57 @@ export class AuthService {
         return of({ ok: false, error: msg });
       })
     );
+  }
+
+  private async encryptPasswordWithPublicKey(password: string, publicKeyPem: string): Promise<string> {
+    const cryptoApi = globalThis.crypto?.subtle;
+    if (!cryptoApi) {
+      throw new Error('WebCrypto unavailable');
+    }
+
+    const publicKey = await cryptoApi.importKey(
+      'spki',
+      this.pemToArrayBuffer(publicKeyPem),
+      { name: 'RSA-OAEP', hash: 'SHA-256' },
+      false,
+      ['encrypt']
+    );
+
+    const encoded = new TextEncoder().encode(password);
+    const encrypted = await cryptoApi.encrypt({ name: 'RSA-OAEP' }, publicKey, encoded);
+    return this.arrayBufferToBase64(encrypted);
+  }
+
+  private pemToArrayBuffer(pem: string): ArrayBuffer {
+    const clean = pem
+      .replace('-----BEGIN PUBLIC KEY-----', '')
+      .replace('-----END PUBLIC KEY-----', '')
+      .replace(/\s+/g, '');
+    const binary = atob(clean);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  private arrayBufferToBase64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  private generateNonce(length = 24): string {
+    const arr = new Uint8Array(length);
+    crypto.getRandomValues(arr);
+    let binary = '';
+    for (let i = 0; i < arr.length; i++) {
+      binary += String.fromCharCode(arr[i]);
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   logout(): void {

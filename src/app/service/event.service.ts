@@ -239,7 +239,7 @@ export class EventService {
 
 
   deleteEvent(configID: any): Observable<unknown> {
-    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_CONFIG);
+    const eventUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_EVENT);
     return this.http.post(eventUrl, configID).pipe(
       map(response => {
         console.log('Event Delete successfully:', response);
@@ -372,6 +372,17 @@ export class EventService {
         return response;
       }),
       catchError(error => handleHttpError('updating Config', error))
+    );
+  }
+
+  deleteConfig(configID: any): Observable<unknown> {
+    const configUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_CONFIG);
+    return this.http.post(configUrl, configID).pipe(
+      map(response => {
+        console.log('Config delete successfully:', response);
+        return response;
+      }),
+      catchError(error => handleHttpError('deleting Config', error))
     );
   }
 
@@ -667,5 +678,3 @@ export class EventService {
     }
 
 }
-
-
