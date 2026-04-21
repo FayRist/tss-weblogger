@@ -12,6 +12,7 @@ import { MatRadioModule } from '@angular/material/radio';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { FlatpickrDirective } from 'angularx-flatpickr';
 import { MaterialModule } from '../../../material.module';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
@@ -64,6 +65,22 @@ export class RaceComponent implements OnInit, OnDestroy {
   }
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
+
+  private resolveRaceMode(raceData: Pick<RaceModel, 'session_start' | 'session_end' | 'active'>): 'prerace' | 'live' | 'history' {
+    const status = getRaceStatus(this.time.now(), raceData.session_start, raceData.session_end);
+    if (status === RaceStatus.Finished) {
+      return 'history';
+    }
+    if (Number(raceData.active ?? 0) === 1 || status === RaceStatus.Live) {
+      return 'live';
+    }
+    return 'prerace';
+  }
+
+  canEditRace(raceData: RaceModel): boolean {
+    return this.resolveRaceMode(raceData) === 'prerace';
+  }
+
   ngOnInit() {
     const contextSub = this.navContext.context$.subscribe(ctx => {
       this.CurrentEventId = ctx.eventId;
@@ -155,44 +172,75 @@ export class RaceComponent implements OnInit, OnDestroy {
     return value.toUpperCase();
   }
 
+  private toRaceDate(value: unknown): Date | null {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value as any);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
+  private getBangkokDateKeyFromDate(date: Date): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+
+    const year = parts.find(p => p.type === 'year')?.value ?? '0000';
+    const month = parts.find(p => p.type === 'month')?.value ?? '00';
+    const day = parts.find(p => p.type === 'day')?.value ?? '00';
+    return `${year}-${month}-${day}`;
+  }
+
+  getRaceDateLabel(raceData: RaceModel): string {
+    const date = this.toRaceDate(raceData.session_start ?? raceData.session_end);
+    if (!date) return '-';
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Bangkok',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
+  }
+
+  isNewDateGroup(index: number): boolean {
+    if (index <= 0) return true;
+    const current = this.allRace[index];
+    const previous = this.allRace[index - 1];
+    if (!current || !previous) return false;
+
+    const currentDate = this.toRaceDate(current.session_start ?? current.session_end);
+    const previousDate = this.toRaceDate(previous.session_start ?? previous.session_end);
+    if (!currentDate || !previousDate) {
+      return index === 0;
+    }
+
+    return this.getBangkokDateKeyFromDate(currentDate) !== this.getBangkokDateKeyFromDate(previousDate);
+  }
+
 
   private loadRace(eventId: any, statusRace: string): void {
-    // อันดับตามที่ต้องการ
-    const ORDER: Record<string, number> = {
-      'practice': 0,
-      'qualify': 1,
-      'race 1':  2,
-      'race 2':  3,
-    };
-
-    // ปกติ session_value อาจมีตัวพิมพ์/เว้นวรรคต่างกัน หรือรูปแบบย่อ
-    const norm = (v: any) => String(v ?? '')
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
-      .trim()
-      .replace(/^qualifying|qualification$/, 'qualify')   // normalize
-      .replace(/^r1$|^race1$|^race 1$/, 'race 1')
-      .replace(/^r2$|^race2$|^race 2$/, 'race 2');
-
-    const rank = (r: any) => {
-      const key = norm(r.session_value);
-      return ORDER[key] ?? Number.MAX_SAFE_INTEGER; // อื่นๆ ไปท้ายสุด
-    };
-
-    const startOf = (r: any) => {
+    const toStartTime = (r: any) => {
       const t = r?.start_time ?? r?.race_start ?? r?.session_start ?? r?.event_start ?? r?.start;
       const d = t instanceof Date ? t : (t ? new Date(t) : null);
-      return d ? d.getTime() : Number.MAX_SAFE_INTEGER; // ไม่มีเวลา → ท้ายในกลุ่มเดียวกัน
+      return d ? d.getTime() : Number.MAX_SAFE_INTEGER;
     };
 
-    const RaceSub = this.eventService.getRace(eventId, statusRace).subscribe(
+    const toEndTime = (r: any) => {
+      const t = r?.end_time ?? r?.race_end ?? r?.session_end ?? r?.event_end ?? r?.end;
+      const d = t instanceof Date ? t : (t ? new Date(t) : null);
+      return d ? d.getTime() : Number.MAX_SAFE_INTEGER;
+    };
+
+    const apiStatusRace = (statusRace === 'history') ? 'history' : (statusRace === 'live') ? 'live' : 'prerace';
+    const RaceSub = this.eventService.getRace(eventId, apiStatusRace).subscribe(
       race => {
         console.log("race : ",race);
 
         this.allRace = [...race].sort((a, b) =>
-          (rank(a) - rank(b)) ||                  // 1) เรียงตาม session_value
-          (startOf(a) - startOf(b)) ||            // 2) ถ้าเท่ากันให้ดูเวลาเริ่ม
-          norm(a.session_value).localeCompare(norm(b.session_value)) // 3) กันชน
+          (toStartTime(a) - toStartTime(b)) ||
+          (toEndTime(a) - toEndTime(b)) ||
+          String(a?.session_value ?? '').localeCompare(String(b?.session_value ?? ''))
         );
       },
       error => {
@@ -204,14 +252,14 @@ export class RaceComponent implements OnInit, OnDestroy {
   }
 
 
-  navigateToDashboard(raceId: number, segmentType: string, classType: string) {
+  navigateToDashboard(raceData: RaceModel) {
     this.navContext.patchContext({
       eventId: Number(this.CurrentEventId),
-      raceId,
-      segment: segmentType,
-      classCode: classType,
+      raceId: raceData.id_list,
+      segment: raceData.segment_value,
+      classCode: raceData.class_value,
       circuit: this.circuitName,
-      raceMode: this.statusRace === 'history' ? 'history' : 'live',
+      raceMode: this.resolveRaceMode(raceData),
       loggerId: null,
     });
     this.router.navigate(['/pages', 'dashboard']);
@@ -272,7 +320,7 @@ export class RaceComponent implements OnInit, OnDestroy {
       // console.log('The dialog was closed');
       if(result == 'success'){
         this.toastr.success('แก้ไข Event เรียบร้อย')
-        this.loadRace(this.CurrentEventId, 'live');
+        this.loadRace(this.CurrentEventId, this.statusRace);
       }
     });
   }
@@ -324,20 +372,33 @@ export class RaceComponent implements OnInit, OnDestroy {
   imports: [MatButtonModule, MatDialogActions, MatDialogClose,
     MatDialogTitle, MatDialogContent, MatTabsModule,
     FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
-    MatDatepickerModule, MatCheckboxModule, MatRadioModule],
+    MatDatepickerModule, MatCheckboxModule, MatRadioModule, FlatpickrDirective],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DialogAnimationsModalEdit implements OnInit {
 
-  sessionList = SESSION_LIST;
+  sessionNameOptions: string[] = [
+    'Practice 1',
+    'Practice 2',
+    'Practice 3',
+    'Practice 4',
+    'Practice 5',
+    'Race 1',
+    'Race 2',
+    'Race 3',
+    'Race 4',
+    'Race 5',
+    'Test Session',
+    'Qualifying',
+  ];
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
 
   raceMatchId: number = 0;
   seasonId: number = 0;
-  eventId: number = 0;
-  classValue: string = '';
+  eventId: string = '';
+  classValue: string[] = [];
   sessionValue: string = '';
   eventName: string = '';
   segmentValue: string = '';
@@ -367,7 +428,10 @@ export class DialogAnimationsModalEdit implements OnInit {
   });
 
   constructor(private eventService: EventService, private toastr: ToastrService) {
-    this.eventList = this.eventService.eventOption;
+    this.eventList = (this.eventService.eventOption ?? []).map((item: any) => ({
+      ...item,
+      value: String(item?.value ?? ''),
+    }));
     this.typeModal = 'เพิ่ม'
     if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
       this.range.patchValue({
@@ -386,20 +450,35 @@ export class DialogAnimationsModalEdit implements OnInit {
   // segmentValue = new FormControl(null);
 
   ngOnInit() {
+    if (!this.eventList.length) {
+      const sub = this.eventService.getDropDownEvent().subscribe({
+        next: (res) => {
+          this.eventList = (res ?? []).map((item: any) => ({
+            ...item,
+            value: String(item?.value ?? ''),
+          }));
+        },
+        error: () => {
+          this.eventList = [];
+        }
+      });
+      this.subscriptions.push(sub);
+    }
+
     if (this.data.race_data && Object.keys(this.data.race_data).length > 0) {
       console.log(this.data.race_data[0]);
       // this.eventList = this.data.race_data[0].eventRes // drop Down
 
       this.raceMatchId  = this.data.race_data[0].id_list
       // this.seasonId  = this.data.race_data[0].seasonId
-      this.eventId = this.data.race_data[0].event_id.toString();
-      this.classValue = this.data.race_data[0].class_value;
-      this.sessionValue = this.data.race_data[0].session_value;
+      this.eventId = String(this.data.race_data[0].event_id ?? '');
+      this.classValue = this.parseClassValue(this.data.race_data[0].class_value);
+      this.sessionValue = this.normalizeSessionValue(this.data.race_data[0].session_value);
       this.segmentValue = this.data.race_data[0].segment_value;
       this.raceName = this.data.race_data[0].race_name;
     }
-    // this.dateSessionStart = this.data.race_data[0].eventStart;
-    // this.dateSessionEnd = this.data.race_data[0].eventEnd;
+    this.range.controls.start.setValue(this.data.race_data?.[0]?.session_start ? new Date(this.data.race_data[0].session_start) : null);
+    this.range.controls.end.setValue(this.data.race_data?.[0]?.session_end ? new Date(this.data.race_data[0].session_end) : null);
 
     this._locale.set('en');
     this._adapter.setLocale(this._locale());
@@ -407,17 +486,156 @@ export class DialogAnimationsModalEdit implements OnInit {
 
   }
 
+  private parseClassValue(raw: unknown): string[] {
+    const source = String(raw ?? '').toLowerCase();
+    if (!source.trim()) return [];
+
+    const normalized = source
+      .replace(/[^abc]/g, '')
+      .split('')
+      .filter((v) => v === 'a' || v === 'b' || v === 'c');
+
+    const unique = Array.from(new Set(normalized));
+    const order = ['a', 'b', 'c'];
+    return unique.sort((x, y) => order.indexOf(x) - order.indexOf(y));
+  }
+
+  private normalizeSessionValue(raw: unknown): string {
+    const v = String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!v) return '';
+    if (v === 'practice') return 'Practice 1';
+    if (v === 'testsession' || v === 'test session') return 'Test Session';
+    if (v === 'qualifying' || v === 'qualification' || v === 'qualify') return 'Qualifying';
+    if (v === 'race1' || v === 'race 1' || v === 'r1') return 'Race 1';
+    if (v === 'race2' || v === 'race 2' || v === 'r2') return 'Race 2';
+    if (v === 'race3' || v === 'race 3' || v === 'r3') return 'Race 3';
+    if (v === 'race4' || v === 'race 4' || v === 'r4') return 'Race 4';
+    if (v === 'race5' || v === 'race 5' || v === 'r5') return 'Race 5';
+    if (v.startsWith('practice ')) {
+      const num = Number(v.replace('practice ', ''));
+      if (Number.isFinite(num) && num >= 1 && num <= 5) {
+        return `Practice ${num}`;
+      }
+    }
+    return this.sessionNameOptions.find(name => name.toLowerCase() === v) ?? String(raw ?? '').trim();
+  }
+
+  private isSessionOptionAllowed(value: unknown): boolean {
+    const normalized = this.normalizeSessionValue(value);
+    return this.sessionNameOptions.includes(normalized);
+  }
+
+  private fromInput(value: string): Date | null {
+    if (!value) return null;
+    const [d, t] = value.split('T');
+    if (!d || !t) return null;
+    const [y, m, day] = d.split('-').map(Number);
+    const [h, min] = t.split(':').map(Number);
+    const out = new Date(y, (m || 1) - 1, day || 1, h || 0, min || 0, 0, 0);
+    return isNaN(out.getTime()) ? null : out;
+  }
+
+  private fromDisplayInput(value: string): Date | null {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return null;
+    const [datePart, timePart] = trimmed.split(' ');
+    if (!datePart || !timePart) return null;
+    const [day, month, year] = datePart.split('/').map(Number);
+    const [hour, minute] = timePart.split(':').map(Number);
+    if (
+      !Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year) ||
+      !Number.isFinite(hour) || !Number.isFinite(minute)
+    ) {
+      return null;
+    }
+    const out = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
+    return isNaN(out.getTime()) ? null : out;
+  }
+
+  private parseDateTimeValue(input: unknown): Date | null {
+    if (input instanceof Date) {
+      return isNaN(input.getTime()) ? null : new Date(input);
+    }
+
+    if (Array.isArray(input) && input.length > 0 && input[0] instanceof Date) {
+      const d = input[0] as Date;
+      return isNaN(d.getTime()) ? null : new Date(d);
+    }
+
+    if (typeof input === 'string') {
+      const fromIsoLike = this.fromInput(input);
+      if (fromIsoLike) return fromIsoLike;
+
+      const fromDisplay = this.fromDisplayInput(input);
+      if (fromDisplay) return fromDisplay;
+
+      const parsed = new Date(input);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    if (input && typeof input === 'object' && 'target' in (input as any)) {
+      const value = ((input as any).target as HTMLInputElement | null)?.value ?? '';
+      return this.fromInput(value);
+    }
+
+    return null;
+  }
+
+  onStartDateTimeChange(value: unknown): void {
+    const dt = this.parseDateTimeValue(value);
+    if (!dt) return;
+    this.range.controls.start.setValue(dt);
+
+    const end = this.range.controls.end.value;
+    if (!end || end < dt) {
+      this.range.controls.end.setValue(new Date(dt));
+    }
+  }
+
+  onEndDateTimeChange(value: unknown): void {
+    const dt = this.parseDateTimeValue(value);
+    if (!dt) return;
+    const start = this.range.controls.start.value;
+    this.range.controls.end.setValue(start && dt < start ? new Date(start) : dt);
+  }
+
   onSubmit(): void {
+    if (!this.isSessionOptionAllowed(this.sessionValue)) {
+      this.toastr.error('กรุณาเลือก Session จากรายการที่กำหนด');
+      return;
+    }
+
+    if (!Array.isArray(this.classValue) || this.classValue.length === 0) {
+      this.toastr.error('กรุณาเลือก Class อย่างน้อย 1 ค่า');
+      return;
+    }
+
+    const start = this.range.controls.start.value ? new Date(this.range.controls.start.value) : null;
+    const end = this.range.controls.end.value ? new Date(this.range.controls.end.value) : null;
+
+    if (!start || !end) {
+      this.toastr.error('กรุณาระบุวันเวลาเริ่มและสิ้นสุด race');
+      return;
+    }
+
+    start.setSeconds(0, 0);
+    end.setSeconds(0, 0);
+
+    if (start.getTime() >= end.getTime()) {
+      this.toastr.error('วันเวลาเริ่มต้องน้อยกว่าวันเวลาสิ้นสุด');
+      return;
+    }
+
     let payload = {
       id_list: this.raceMatchId,
       race_name: '',
       event_id: Number(this.eventId),
       // seasonId: this.seasonId,
       segment_value: this.segmentValue,
-      session_value: this.sessionValue,
-      class_value: this.classValue,
-      session_start: this.range.controls.start.value,
-      session_end: this.range.controls.end.value,
+      session_value: this.normalizeSessionValue(this.sessionValue),
+      class_value: this.classValue.join(''),
+      session_start: start,
+      session_end: end,
     }
 
     this.eventService.updateRace(payload).subscribe(
@@ -430,6 +648,10 @@ export class DialogAnimationsModalEdit implements OnInit {
           this.toastr.error('เกิดข้อผิดพลาดในการเพิ่ม/แก้ไข Race');
       }
     );
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.forEach(s => s.unsubscribe());
   }
 }
 

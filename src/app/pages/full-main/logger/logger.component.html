@@ -31,6 +31,11 @@
     </div>
 
   </mat-toolbar-row>
+  @if (isSuperAdminUser()) {
+    <mat-toolbar-row class="logger-config-source-row">
+      <span class="logger-config-source-badge" [ngClass]="getConfigSourceClass()">{{ getConfigSourceLabel() }}</span>
+    </mat-toolbar-row>
+  }
 </mat-toolbar>
 
 }
@@ -85,8 +90,8 @@
           </span> -->
           <span
               class="status-badge"
-              [ngClass]="(loggerStatus + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
-              {{ loggerStatus | uppercase }}
+              [ngClass]="isRealtimeMode ? (((loggerStatus + '').toLowerCase() === 'online') ? 'is-online' : 'is-offline') : 'is-offline'">
+              {{ (isRealtimeMode ? loggerStatus : 'OFFLINE') | uppercase }}
           </span>
         </div>
       </div>

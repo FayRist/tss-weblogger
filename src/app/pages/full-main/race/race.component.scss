@@ -14,3 +14,18 @@ button {
 .w-15 {
     width: 15% !important;
 }
+
+.race-date-group-row td.race-date-group-cell {
+  background: #2c3136 !important;
+  color: #f8f9fa;
+  font-weight: 700;
+  border-top: 1px solid #4b535c;
+  border-bottom: 1px solid #4b535c;
+  padding: 10px 12px;
+}
+
+.session-time-input,
+:host ::ng-deep .flatpickr-input.session-time-input {
+  width: 100%;
+  box-sizing: border-box;
+}

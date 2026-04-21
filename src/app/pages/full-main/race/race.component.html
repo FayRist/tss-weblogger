@@ -28,10 +28,17 @@
           </tr>
         </thead>
         <tbody>
-        @for (raceData of allRace; track raceData) {
+        @for (raceData of allRace; track raceData; let i = $index) {
+          @if (isNewDateGroup(i)) {
+            <tr class="race-date-group-row">
+              <td colspan="7" class="text-start race-date-group-cell">
+                วันที่ {{ getRaceDateLabel(raceData) }}
+              </td>
+            </tr>
+          }
           <tr>
             <!-- <td class="text-center">{{raceData.category_name}}</td> -->
-            <td class="text-center w-25" (click)="navigateToDashboard(raceData.id_list, raceData.segment_value, raceData.class_value)">
+            <td class="text-center w-25" (click)="navigateToDashboard(raceData)">
               {{ getSessionName(raceData.session_value) }}
             </td>
             <td class="text-center" >
@@ -68,15 +75,15 @@
             <td class="text-center">
               @if (canManageEventRace()) {
                 <div class="row d-flex justify-content-center"
-                  [class.pointer-events-none]="statusOf(raceData) === RaceStatus.Finished"
-                  [class.opacity-50]="statusOf(raceData) === RaceStatus.Finished">
+                  [class.pointer-events-none]="!canEditRace(raceData)"
+                  [class.opacity-50]="!canEditRace(raceData)">
                   @if (statusOf(raceData) == RaceStatus.Live) {
                     <div class="col-4">
                         <button type="button" class="btn btn-danger w-100 p-0" (click)="openRaceEnd('0ms', '0ms', raceData.id_list, getSessionName(raceData.session_value))">จบ Race</button>
                     </div>
                   }
                   <div class="col-2 d-flex justify-content-center">
-                    @if (statusOf(raceData) !== RaceStatus.Finished) {
+                    @if (canEditRace(raceData)) {
                       <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
                       <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms',  raceData.id_list)">
                     }

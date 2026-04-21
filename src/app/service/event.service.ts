@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { catchError, map, Observable } from 'rxjs';
+import { catchError, map, Observable, of } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
 import { handleHttpError } from '../utility/http-error-handler.util';
 import { eventModel, LoggerDetailPayload, LoggerModel, optionEventModel, optionModel, RaceModel, SeasonalModel } from '../model/season-model';
@@ -9,6 +9,7 @@ import { eventPayLoad, seasonalPayLoad } from '../pages/full-main/add-event/add-
 import { ApiConfigResponse, ApiDropDownoptionEventResponse, ApiDropDownResponse, ApiEventResponse, ApiExportDataLoggerInRaceResponse, ApiLoggerAFR, ApiLoggerAFRResponse, ApiLoggerRaceResponse, ApiLoggerResponse, ApiRaceResponse, ApiSeasonResponse, ApiUsersResponse, ExportDataLoggerInRaceModel, LoggerItem, LoggerRaceDetailModel } from '../model/api-response-model';
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
+import { AfrConfig, RaceConfigMode, RaceConfigSnapshotApiResponse, RaceConfigSource } from '../model/api-race-config-snapshot.model';
 // helper เล็ก ๆ
 const toIntOrDefault = (v: any, d: number) => {
   const n = Number(v);
@@ -351,6 +352,107 @@ export class EventService {
       }),
       catchError(error => handleHttpError('deleting Event', error))
     );
+  }
+
+  getRaceConfigSnapshot(raceId: number, mode: RaceConfigMode = 'history'): Observable<RaceConfigSnapshotApiResponse> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.RACE_CONFIG_SNAPSHOT);
+    const race_id = Number(raceId);
+
+    if (!Number.isFinite(race_id) || race_id <= 0) {
+      return this.getGlobalAfrConfigAsSnapshot(mode, null, 'global_fallback');
+    }
+
+    let params = new HttpParams();
+    params = params.set('race_id', String(race_id));
+    params = params.set('mode', mode);
+
+    return this.http.get<RaceConfigSnapshotApiResponse>(url, { params }).pipe(
+      map((response) => {
+        if (!response?.config) {
+          throw new Error('Snapshot response missing config');
+        }
+
+        return {
+          success: response.success !== false,
+          race_id,
+          mode: response.mode ?? mode,
+          source: (response.source ?? (mode === 'history' ? 'global_fallback' : 'global')) as RaceConfigSource,
+          schema_version: Number(response.schema_version ?? 1),
+          config: this.normalizeAfrConfig(response.config),
+          meta: response.meta,
+        } as RaceConfigSnapshotApiResponse;
+      }),
+      catchError(() => this.getGlobalAfrConfigAsSnapshot(mode, race_id, mode === 'history' ? 'global_fallback' : 'global'))
+    );
+  }
+
+  private getGlobalAfrConfigAsSnapshot(
+    mode: RaceConfigMode,
+    raceId: number | null,
+    source: RaceConfigSource
+  ): Observable<RaceConfigSnapshotApiResponse> {
+    const formCode = 'max_count, limit_afr, graphs_afr_min, graphs_afr_max, afr_penalty_low, afr_warning_high, afr_warning_seconds, afr_penalty_seconds, afr_warnings_per_penalty, afr_penalty_also_increments_warning, time_count';
+    return this.getConfigAdmin(formCode).pipe(
+      map((rows: unknown) => {
+        const config = this.normalizeAfrConfigFromRows((rows ?? []) as any[]);
+        return {
+          success: true,
+          race_id: Number(raceId ?? 0),
+          mode,
+          source,
+          schema_version: 1,
+          config,
+        } as RaceConfigSnapshotApiResponse;
+      }),
+      catchError(() => of({
+        success: true,
+        race_id: Number(raceId ?? 0),
+        mode,
+        source,
+        schema_version: 1,
+        config: this.normalizeAfrConfig({}),
+      } as RaceConfigSnapshotApiResponse))
+    );
+  }
+
+  private normalizeAfrConfig(config: Partial<AfrConfig> | any): AfrConfig {
+    const toNum = (v: unknown, fallback: number): number => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const toBool = (v: unknown, fallback: boolean): boolean => {
+      if (typeof v === 'boolean') return v;
+      const s = String(v ?? '').toLowerCase();
+      if (s === 'true' || s === '1') return true;
+      if (s === 'false' || s === '0') return false;
+      return fallback;
+    };
+
+    const penaltyLow = toNum(config?.afr_penalty_low, toNum(config?.limit_afr, 14.0));
+    const warningHighRaw = toNum(config?.afr_warning_high, 16.0);
+    const warningHigh = warningHighRaw > penaltyLow ? warningHighRaw : penaltyLow + 0.1;
+
+    return {
+      afr_penalty_low: penaltyLow,
+      afr_warning_high: warningHigh,
+      afr_warning_seconds: toNum(config?.afr_warning_seconds, toNum(config?.time_count, 1.0)),
+      afr_penalty_seconds: toNum(config?.afr_penalty_seconds, 3.0),
+      afr_warnings_per_penalty: Math.max(1, Math.floor(toNum(config?.afr_warnings_per_penalty, 3))),
+      afr_penalty_also_increments_warning: toBool(config?.afr_penalty_also_increments_warning, true),
+      max_count: Math.max(1, Math.floor(toNum(config?.max_count, 3))),
+      graphs_afr_min: toNum(config?.graphs_afr_min, 0),
+      graphs_afr_max: toNum(config?.graphs_afr_max, 30),
+    };
+  }
+
+  private normalizeAfrConfigFromRows(rows: any[]): AfrConfig {
+    const kv: Record<string, any> = {};
+    (rows ?? []).forEach((row: any) => {
+      const code = String(row?.form_code ?? '').trim();
+      if (!code) return;
+      kv[code] = row?.value;
+    });
+    return this.normalizeAfrConfig(kv);
   }
 
   addNewConfig(configList: any): Observable<unknown> {

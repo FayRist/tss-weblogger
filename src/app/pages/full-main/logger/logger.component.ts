@@ -34,6 +34,7 @@ import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, Tel
 import { NgZone } from '@angular/core';
 import { AuthService } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
+import { RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
 // deck.gl imports
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -432,6 +433,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private wheelInteractionTimer: ReturnType<typeof setTimeout> | null = null;
 
   configAFR: any;
+  configSource: RaceConfigSource = 'global';
 
   /** ค่า min ของแกน Y (ลำดับปกติเสมอ — ใช้ร่วมกับ yaxis.reversed เพื่อไม่ให้ ApexCharts แจ้ง min > max) */
   get afrYAxisMin(): number {
@@ -1318,10 +1320,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ===== Mode Detection =====
   isHistoryMode: boolean = false;
+  isPreRaceMode: boolean = false;
   isRealtimeMode: boolean = true;
 
-  get currentModeLabel(): 'HISTORY' | 'LIVE' {
-    return this.isHistoryMode ? 'HISTORY' : 'LIVE';
+  get currentModeLabel(): 'HISTORY' | 'LIVE' | 'PRERACE' {
+    if (this.isHistoryMode) return 'HISTORY';
+    if (this.isPreRaceMode) return 'PRERACE';
+    return 'LIVE';
   }
 
   // ===== Canvas Rendering =====
@@ -1406,7 +1411,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
     this.setstartLatLongPoint(798.451662,-6054.358584);
-    this.loadAndApplyConfig();
     // this.setCurrentPoints(this.buildMock(180));
 
     // Initialize deck.gl ring buffer typed arrays
@@ -1422,6 +1426,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   isReadOnlyRaceTeamUser(): boolean {
     return this.auth.current?.role === 'race_team_user';
+  }
+
+  isSuperAdminUser(): boolean {
+    return this.auth.current?.role === 'super_admin';
+  }
+
+  getConfigSourceLabel(): string {
+    if (this.configSource === 'snapshot') return 'Config Source: Snapshot';
+    if (this.configSource === 'global_fallback') return 'Config Source: Global (Fallback)';
+    return 'Config Source: Global';
+  }
+
+  getConfigSourceClass(): string {
+    if (this.configSource === 'snapshot') return 'source-snapshot';
+    if (this.configSource === 'global_fallback') return 'source-fallback';
+    return 'source-global';
   }
 
   downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
@@ -1494,35 +1514,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
 
-  async loadAndApplyConfig() {
-    if (this.isReadOnlyRaceTeamUser()) {
-      this.afrLimit = 13.5;
-      this.countMax = 3;
-      this.afrGraphsMinLimit = 0;
-      this.afrGraphsMaxLimit = 30;
-      return;
-    }
+  loadAndApplyConfig(mode: 'live' | 'history', raceId: number): void {
+    const sub = this.eventService.getRaceConfigSnapshot(raceId, mode).subscribe({
+      next: (response) => {
+        this.configSource = response?.source ?? (mode === 'history' ? 'global_fallback' : 'global');
+        const cfg = response?.config ?? {};
 
-    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max`
-    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
-      config => {
-        this.configAFR = [];
-        this.configAFR = config;
-        this.afrLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value);
-        this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
+        const toNum = (v: unknown, fallback: number): number => {
+          const n = Number(v);
+          return Number.isFinite(n) ? n : fallback;
+        };
 
-        // ดึงค่าจาก config พร้อม fallback เป็น default
-        const minConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_min');
-        const maxConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_max');
+        this.afrLimit = toNum((cfg as any).afr_penalty_low, 14.0);
+        this.countMax = Math.max(1, Math.floor(toNum((cfg as any).max_count, 3)));
+        this.afrGraphsMinLimit = toNum((cfg as any).graphs_afr_min, 0);
+        this.afrGraphsMaxLimit = toNum((cfg as any).graphs_afr_max, 30);
 
-        const minValue = minConfig ? Number(minConfig.value) : null;
-        const maxValue = maxConfig ? Number(maxConfig.value) : null;
-
-        // ตรวจสอบว่าค่าถูกต้อง (ไม่ใช่ null, undefined, NaN) และใช้ default ถ้าไม่ valid
-        this.afrGraphsMinLimit = (minValue !== null && minValue !== undefined && Number.isFinite(minValue)) ? minValue : 0;
-        this.afrGraphsMaxLimit = (maxValue !== null && maxValue !== undefined && Number.isFinite(maxValue)) ? maxValue : 30;
-
-        // อัปเดตแกน Y ของกราฟหลัก (detail) — ใช้ getter ตามสภาวะกลับด้าน
         this.detailOpts = {
           ...this.detailOpts,
           yaxis: {
@@ -1552,7 +1559,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         };
 
-        // อัปเดตแกน Y ของกราฟล่าง (brush)
         this.brushOpts = {
           ...this.brushOpts,
           yaxis: {
@@ -1563,17 +1569,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         };
 
-        // รีเฟรชกราฟเพื่อให้การเปลี่ยนแปลงมีผล
         this.refreshDetail();
         this.refreshBrush();
       },
-      error => {
-        console.error('Error loading matchList:', error);
-        // Fallback to default values if API fails
+      error: (error) => {
+        console.error('Error loading AFR config:', error);
+        this.configSource = mode === 'history' ? 'global_fallback' : 'global';
+        this.afrLimit = 14.0;
+        this.countMax = 3;
         this.afrGraphsMinLimit = 0;
         this.afrGraphsMaxLimit = 30;
 
-        // อัปเดตแกน Y ด้วยค่า default (ใช้ getter ตามสภาวะกลับด้าน)
         this.detailOpts = {
           ...this.detailOpts,
           yaxis: {
@@ -1595,8 +1601,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.refreshDetail();
         this.refreshBrush();
       }
-    );
-    this.subscriptions.push(MatchSub);
+    });
+    this.subscriptions.push(sub);
   }
 
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======
@@ -1606,7 +1612,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const ctx = this.navContext.snapshot;
     const statusRace = ctx.raceMode ?? 'live';
     this.isHistoryMode = statusRace === 'history';
-    this.isRealtimeMode = !this.isHistoryMode;
+    this.isPreRaceMode = statusRace === 'prerace';
+    this.isRealtimeMode = statusRace === 'live';
 
     this.parameterRaceId = Number(ctx.raceId ?? 0);
     this.parameterSegment = ctx.segment ?? '';
@@ -1614,6 +1621,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.parameterLoggerID = ctx.loggerId ?? '';
     this.circuitName = ctx.circuit ?? '';
     this.currentLoggerId = String(this.parameterLoggerID || '').trim();
+
+    this.loadAndApplyConfig(this.isHistoryMode ? 'history' : 'live', this.parameterRaceId);
 
     // performance: batched realtime UI flush - initialize batch subscription
     this.rtBatchSubscription = this.rtBatch$.pipe(
@@ -1657,7 +1666,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.updateChartsFromSelection(selectionAsArray);
       });
     // สมัคร WebSocket messages เฉพาะโหมด live เท่านั้น
-    if (!this.isHistoryMode) {
+    if (this.isRealtimeMode) {
       this.subscribeWebSocketMessages();
       this.initializeStatusBroadcastForLive();
     }
@@ -1964,7 +1973,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private scheduleRealtimeReconnect(): void {
-    if (this.componentDestroyed || this.isHistoryMode || !this.shouldRealtimeReconnect) {
+    if (this.componentDestroyed || !this.isRealtimeMode || !this.shouldRealtimeReconnect) {
       return;
     }
     if (this.realtimeReconnectTimeout) {
@@ -1989,7 +1998,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initializeRealtimeWithBacklog(): void {
-    if (this.componentDestroyed || this.isHistoryMode || !this.shouldRealtimeReconnect) {
+    if (this.componentDestroyed || !this.isRealtimeMode || !this.shouldRealtimeReconnect) {
       return;
     }
     if (this.realtimeWS && (this.realtimeWS.readyState === WebSocket.OPEN || this.realtimeWS.readyState === WebSocket.CONNECTING)) {
