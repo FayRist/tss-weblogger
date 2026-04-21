@@ -82,6 +82,9 @@ function toDate(v: unknown): Date {
 })
 export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private subscriptions: Subscription[] = [];
+  private reactiveUiSubscription: Subscription | null = null;
+  private lastDashboardContextKey = '';
+  private loggerLoadSequence = 0;
 
   private wsStatusConnection: WebSocketConnection | null = null;
     // WebSocket สำหรับ logger status
@@ -320,6 +323,20 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.displayedColumns = this.displayedColumns.filter((col) => col !== 'resetLimit');
     }
 
+    this.filterLogger.setValue('all', { emitEvent: false });
+    this.applyFilter('all');
+
+    if (!this.reactiveUiSubscription) {
+      this.reactiveUiSubscription = merge(
+        formControlWithInitial(this.filterLogger),
+        formControlWithInitial(this.formGroup.get('sortType') as FormControl)
+      ).subscribe(() => {
+        this.updateView(this.allLoggers);
+        this.cdr.markForCheck();
+      });
+      this.subscriptions.push(this.reactiveUiSubscription);
+    }
+
     const contextSub = this.navContext.context$.subscribe(ctx => {
       this.parameterRaceId = Number(ctx.raceId ?? 0);
       this.parameterEventId = Number(ctx.eventId ?? 0);
@@ -328,11 +345,27 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.circuitName = ctx.circuit ?? '';
       this.statusRace = ctx.raceMode ?? 'live';
 
+      const contextKey = [
+        this.parameterRaceId,
+        this.parameterEventId,
+        this.parameterSegment,
+        this.parameterClass,
+        this.circuitName,
+        this.statusRace,
+      ].join('|');
+
+      if (contextKey === this.lastDashboardContextKey) {
+        return;
+      }
+      this.lastDashboardContextKey = contextKey;
+
       this.loadAndApplyConfig(this.statusRace === 'history' ? 'history' : 'live', this.parameterRaceId);
 
       const apiStatusRace = this.statusRace === 'history' ? 'history' : 'live';
-      this.filterLogger.setValue('all', { emitEvent: true });
-      this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
+      this.filterLogger.setValue('all', { emitEvent: false });
+      this.applyFilter('all');
+
+      this.disconnectWebSocket();
 
       if(!this.parameterRaceId && !this.parameterSegment && !this.parameterClass){
         const now = toDate(this.time.now());
@@ -347,6 +380,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           //   error: (e) => console.error(e),
           // });
       }else{
+        const currentSequence = ++this.loggerLoadSequence;
         // >>> ยิง service แบบที่ backend ต้องการ: ?race_id=xxx&event_id=yyy&circuit_name=zzz
         const sub = this.eventService
           .getLoggersWithAfr({
@@ -357,6 +391,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           })
           .subscribe({
           next: (loggerRes) => {
+            if (currentSequence !== this.loggerLoadSequence) {
+              return;
+            }
             this.allLoggers = loggerRes ?? [];
             this.allLoggers = this.allLoggers.map(logger => ({
                 ...logger,
@@ -375,16 +412,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           error: (err) => console.error('Error loading logger list:', err)
         });
         this.subscriptions.push(sub);
-
-        // reactive UI เดิม
-        const reactSub = merge(
-          formControlWithInitial(this.filterLogger),
-          formControlWithInitial(this.formGroup.get('sortType') as FormControl)
-        ).subscribe(() => {
-          this.updateView(this.allLoggers);
-          this.cdr.markForCheck();
-        });
-        this.subscriptions.push(reactSub);
 
         this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
       }

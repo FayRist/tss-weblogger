@@ -4,10 +4,17 @@
       <h3>ตั้งค่า Logger</h3>
     </div>
     <div class="col-6 d-flex justify-content-end">
-      <button type="button" class="btn btn-success" (click)="exportLoggerEx()">Export Format Logger Excel</button>
-      <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')">Import Format Logger Excel</button>
+      <button type="button" class="btn btn-success" (click)="exportLoggerEx()" [disabled]="!canExportLogger">Export Format Logger Excel</button>
+      <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')" [disabled]="!canImportLogger">Import Format Logger Excel</button>
     </div>
   </div>
+  @if (selectedEvent && !canImportLogger) {
+    <div class="row mt-2">
+      <div class="col-12 d-flex justify-content-end">
+        <small class="text-warning">Event นี้จบแล้ว: อนุญาตเฉพาะ Export และปิด Import</small>
+      </div>
+    </div>
+  }
   <hr style="margin: 0.3rem 0; color: #FFF;" >
 
     <div style="margin: 20px;" class="">

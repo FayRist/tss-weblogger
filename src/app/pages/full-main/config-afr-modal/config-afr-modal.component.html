@@ -33,25 +33,21 @@
 
               </div>
               <div class="col-12">
-                <!-- <form class="mat-input-form">
-                  <mat-form-field class="w-100">
-                  <mat-label>AFR Limit</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="afrLimit">
-                  </mat-form-field>
-                </form> -->
 
                 <div class="slider-label-container">
-                  <label id="slider-name-label" class="slider-name-label">AFR Limit</label>
-                  <label class="slider-value-label">{{afrLimit}}</label>
+                  <label id="slider-name-label" class="slider-name-label">AFR (warning)</label>
+                  <label class="slider-value-label">  {{ afrPenaltyLow | number:'1.2-2' }} - {{ afrWarningHigh | number:'1.2-2' }}</label>
                 </div>
                 <mat-slider
                     class="slider-margin"
-                    [max]="LimitMaxSlider"
-                    [min]="LimitMinSlider"
-                    [step]="LimitStepSlider"
-                    [discrete]="LimitThumbLabelSlider"
-                    [showTickMarks]="LimitShowTicksSlider">
-                  <input matSliderThumb [(ngModel)]="afrLimit" #sliderLimit>
+                    [max]="LimitAfrPenaltyAndWarningMaxSlider"
+                    [min]="LimitAfrPenaltyAndWarningMinSlider"
+                    [step]="LimitAfrPenaltyAndWarningStepSlider"
+                    [discrete]="LimitAfrPenaltyAndWarningThumbLabelSlider"
+                    [showTickMarks]="LimitAfrPenaltyAndWarningShowTicksSlider">
+
+                  <input [(ngModel)]="afrPenaltyLow" matSliderStartThumb>
+                  <input [(ngModel)]="afrWarningHigh" matSliderEndThumb>
                 </mat-slider>
 
               </div>

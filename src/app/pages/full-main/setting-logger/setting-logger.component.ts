@@ -20,6 +20,8 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSort, MatSortModule, Sort } from '@angular/material/sort';
 import { CommonModule } from '@angular/common';
+import { eventModel } from '../../../model/season-model';
+import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
 
 // ===== Helper ใช้ร่วมกัน =====
 function toDate(v: Date | string | undefined | null): Date | '' {
@@ -92,6 +94,9 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
 
   circuitName: string = '';
   CurrentEventId: any = null;
+  selectedEvent: eventModel | null = null;
+  canImportLogger = false;
+  canExportLogger = false;
 
 
   // สมมติคุณมีรายการอีเวนต์ 1..n (ถ้าไม่มีให้ส่ง [] ได้)
@@ -112,8 +117,59 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       this.CurrentEventId = ctx.eventId;
       this.circuitName = ctx.circuit ?? '';
       this.loadLogger(this.circuitName, this.CurrentEventId);
+      this.syncSelectedEvent();
     });
     this.subscriptions.push(contextSub);
+
+    const eventSub = this.eventService.getEvent().subscribe({
+      next: (events) => {
+        const list = events ?? [];
+        this.eventList = list.map((e) => ({
+          event: e.event_name,
+          startDate: e.event_start,
+          endDate: e.event_end,
+          classType: '',
+          category: ''
+        }));
+        this._eventCache = list;
+        this.syncSelectedEvent();
+      },
+      error: (err) => {
+        console.error('Error loading events for setting logger:', err);
+        this._eventCache = [];
+        this.selectedEvent = null;
+        this.canImportLogger = false;
+        this.canExportLogger = false;
+      }
+    });
+    this.subscriptions.push(eventSub);
+  }
+
+  private _eventCache: eventModel[] = [];
+
+  private syncSelectedEvent(): void {
+    const currentId = Number(this.CurrentEventId);
+    if (!Number.isFinite(currentId) || currentId <= 0) {
+      this.selectedEvent = null;
+      this.canImportLogger = false;
+      this.canExportLogger = false;
+      return;
+    }
+
+    this.selectedEvent = this._eventCache.find((eventItem) => Number(eventItem.event_id) === currentId) ?? null;
+    this.updateImportExportAvailability();
+  }
+
+  private updateImportExportAvailability(): void {
+    if (!this.selectedEvent) {
+      this.canImportLogger = false;
+      this.canExportLogger = false;
+      return;
+    }
+
+    const status = getRaceStatus(new Date(), this.selectedEvent.event_start, this.selectedEvent.event_end);
+    this.canExportLogger = true;
+    this.canImportLogger = status !== RaceStatus.Finished;
   }
 
   addLogger(enterAnimationDuration: string, exitAnimationDuration: string): void {

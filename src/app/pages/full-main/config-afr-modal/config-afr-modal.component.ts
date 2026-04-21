@@ -69,7 +69,10 @@ export class ConfigAfrModalComponent  implements OnInit {
   idConfig: number = 0;
   countMax: number = 0;
   countMin: number = 0;
+
   afrLimit: number = 0;
+  afrWarningHigh: number = 0;
+  afrPenaltyLow: number = 0;
   countTime: number = 0;
 
 
@@ -100,6 +103,13 @@ export class ConfigAfrModalComponent  implements OnInit {
   LimitGraphsThumbLabelSlider = true;
   LimitGraphsShowTicksSlider = true;
 
+
+  LimitAfrPenaltyAndWarningMaxSlider = 20.00;
+  LimitAfrPenaltyAndWarningMinSlider = 0.00;
+  LimitAfrPenaltyAndWarningStepSlider = 0.05;
+  LimitAfrPenaltyAndWarningThumbLabelSlider = true;
+  LimitAfrPenaltyAndWarningShowTicksSlider = true;
+
   configAFR: any;
   private subscriptions: Subscription[] = [];
   isDataLoaded: boolean = false;
@@ -118,22 +128,33 @@ export class ConfigAfrModalComponent  implements OnInit {
 
   getAllConfig(){
 
-    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max,time_count`
+    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max,time_count,afr_penalty_low,afr_warning_high`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
         this.configAFR = [];
         this.configAFR = config;
 
         // แปลงค่า string เป็น number และตั้งค่า
-        const limitAfrItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0];
+        // const limitAfrItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0];
+        const afrPenalty = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'afr_penalty_low')[0];
+        const afrWarning = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'afr_warning_high')[0];
+
         const maxCountItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0];
         const graphsAfrMinItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0];
         const graphsAfrMaxItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0];
         const timeCountItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'time_count')[0];
 
-        if (limitAfrItem) {
-          this.afrLimit = Number(limitAfrItem.value) || 0;
+        // if (limitAfrItem) {
+        //   this.afrLimit = Number(limitAfrItem.value) || 0;
+        // }
+
+        if (afrPenalty) {
+          this.afrPenaltyLow = Number(afrPenalty.value) || 0;
         }
+        if (afrWarning) {
+          this.afrWarningHigh = Number(afrWarning.value) || 0;
+        }
+
         if (maxCountItem) {
           this.countMax = Number(maxCountItem.value) || 0;
         }
@@ -162,7 +183,9 @@ export class ConfigAfrModalComponent  implements OnInit {
   }
 
   submitUpdateConfig(){
-    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value =this.afrLimit.toString();
+    // this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value =this.afrLimit.toString();
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'afr_warning_high')[0].value =this.afrWarningHigh.toString();
+    this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'afr_penalty_low')[0].value =this.afrPenaltyLow.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value =this.countMax.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value =this.afrGraphsMinLimit.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value =this.afrGraphsMaxLimit.toString();

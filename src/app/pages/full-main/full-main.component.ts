@@ -18,6 +18,7 @@ import { ToastrService } from 'ngx-toastr';
 import { ConfigAfrModalComponent } from './config-afr-modal/config-afr-modal.component';
 import { APP_CONFIG } from '../../app.config';
 import { NavigationContextService } from '../../core/navigation/navigation-context.service';
+import { eventModel } from '../../model/season-model';
 
 function insideParen(text: any): string | null {
   const s = String(text ?? '');               // บังคับเป็น primitive string
@@ -317,14 +318,55 @@ export class FullMainComponent implements OnInit, OnDestroy {
     const now = toDate(this.time.now());
     this.eventService.getLoggerByDate(now).subscribe({
       next: ({ items, count }) => {
-        if (items.length <= 0){
-          return
+        if (items.length > 0) {
+          this.eventNameSelect = items[0].eventName;
+          this.navContext.replaceContext({
+            eventId: Number(items[0].eventId),
+            circuit: items[0].circuitName,
+            raceMode: 'live',
+            raceId: null,
+            loggerId: null,
+            classCode: null,
+            segment: null,
+          });
+          this.router.navigate(['/pages', 'setting-logger']);
+          return;
         }
-        this.eventNameSelect = items[0].eventName;
+
+        this.navigateToSettingLoggerWithFallbackEvent(now);
+      },
+      error: (e) => {
+        console.error(e);
+        this.navigateToSettingLoggerWithFallbackEvent(now);
+      },
+    });
+  }
+
+  private navigateToSettingLoggerWithFallbackEvent(now: Date): void {
+    const s = this.eventService.getEvent().subscribe({
+      next: (events) => {
+        const selectedEvent = this.pickSettingLoggerFallbackEvent(events ?? [], now);
+
+        if (!selectedEvent) {
+          this.eventNameSelect = '';
+          this.navContext.replaceContext({
+            raceMode: 'live',
+            eventId: null,
+            circuit: null,
+            raceId: null,
+            loggerId: null,
+            classCode: null,
+            segment: null,
+          });
+          this.router.navigate(['/pages', 'setting-logger']);
+          return;
+        }
+
+        this.eventNameSelect = selectedEvent.event_name;
         this.navContext.replaceContext({
-          eventId: Number(items[0].eventId),
-          circuit: items[0].circuitName,
-          raceMode: 'live',
+          eventId: Number(selectedEvent.event_id),
+          circuit: selectedEvent.circuit_name,
+          raceMode: this.resolveRaceModeFromEventWindow(selectedEvent, now),
           raceId: null,
           loggerId: null,
           classCode: null,
@@ -332,8 +374,67 @@ export class FullMainComponent implements OnInit, OnDestroy {
         });
         this.router.navigate(['/pages', 'setting-logger']);
       },
-      error: (e) => console.error(e),
+      error: (err) => {
+        console.error(err);
+        this.navContext.replaceContext({
+          raceMode: 'live',
+          eventId: null,
+          circuit: null,
+          raceId: null,
+          loggerId: null,
+          classCode: null,
+          segment: null,
+        });
+        this.router.navigate(['/pages', 'setting-logger']);
+      },
     });
+    this.subscriptions.push(s);
+  }
+
+  private pickSettingLoggerFallbackEvent(events: eventModel[], now: Date): eventModel | null {
+    const nowMs = now.getTime();
+    const normalized = (events ?? [])
+      .map((eventItem) => {
+        const startMs = toDate(eventItem.event_start).getTime();
+        const endMs = toDate(eventItem.event_end).getTime();
+        return { eventItem, startMs, endMs };
+      })
+      .filter((item) => Number.isFinite(item.startMs) && Number.isFinite(item.endMs));
+
+    const live = normalized
+      .filter((item) => item.startMs <= nowMs && nowMs < item.endMs)
+      .sort((a, b) => a.startMs - b.startMs);
+    if (live.length > 0) {
+      return live[0].eventItem;
+    }
+
+    const upcoming = normalized
+      .filter((item) => nowMs < item.startMs)
+      .sort((a, b) => a.startMs - b.startMs);
+    if (upcoming.length > 0) {
+      return upcoming[0].eventItem;
+    }
+
+    const finished = normalized
+      .filter((item) => item.endMs <= nowMs)
+      .sort((a, b) => b.endMs - a.endMs);
+    if (finished.length > 0) {
+      return finished[0].eventItem;
+    }
+
+    return null;
+  }
+
+  private resolveRaceModeFromEventWindow(eventItem: eventModel, now: Date): 'prerace' | 'live' | 'history' {
+    const start = toDate(eventItem.event_start).getTime();
+    const end = toDate(eventItem.event_end).getTime();
+    const nowMs = now.getTime();
+
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      if (nowMs < start) return 'prerace';
+      if (nowMs >= end) return 'history';
+    }
+    return 'live';
   }
 
   navigateToListConfigAFR2() { this.router.navigate(['/pages', 'admin-config']); }
