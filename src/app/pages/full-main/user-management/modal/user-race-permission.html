@@ -24,11 +24,11 @@
         <div class="col-12">
           <form class="mat-input-form">
             <mat-form-field class="w-100">
-              <mat-label>Logger (NBR | Logger ID | Driver)</mat-label>
+              <mat-label>Logger (NBR | Driver)</mat-label>
               <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="selectedCarNumbers" multiple [disabled]="!selectedEventId">
                 @for (l of loggerCandidates; track l.carNumber) {
                   <mat-option [value]="l.carNumber">
-                    NBR {{ l.carNumber }} | Logger {{ l.loggerId }} | {{ l.driverName || '-' }}
+                    NBR {{ l.carNumber }} | {{ l.driverName || '-' }}
                   </mat-option>
                 }
               </mat-select>
