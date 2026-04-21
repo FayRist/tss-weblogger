@@ -460,6 +460,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // และ backend REDIS_HISTORY_RETENTION_MINUTES ควรตั้งค่าให้ตรงกัน.
   private readonly LIVE_RETENTION_MINUTES = 10;
   private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window
+  private readonly MAP_RESTORE_MINUTES = 2;
+  private readonly MAP_RESTORE_WINDOW_MS = this.MAP_RESTORE_MINUTES * 60 * 1000;
+  private readonly WS_BACKLOG_MS = this.MAP_RESTORE_WINDOW_MS;
   private readonly INPUT_HZ = 60; // Expected input frequency
   private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~8,640 points @2min, ~43,200 @10min
   private readonly MAX_SEGS = this.MAX_POINTS - 1; // Segments = points - 1
@@ -478,7 +481,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_LIVE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
 
   // ===== Map Performance Constants =====
-  private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for map
+  private readonly MAP_WINDOW_MS = this.MAP_RESTORE_WINDOW_MS; // rolling window for map (2 minutes)
   private readonly MAP_PATH_FPS = 25; // Path layer update rate (20-30fps range)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
@@ -487,6 +490,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private chartDataPoints: TelemetryPoint[] = [];
   /** จำนวนจุดที่ดึงจาก Redis ตอน re-entry ต้องพอสำหรับ retention ทั้งหน้าต่าง */
   private readonly LOGGER_CACHE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
+  private readonly CACHE_RETRY_DELAYS_MS = [1000, 3000];
+  private readonly CACHE_WARNING_COOLDOWN_MS = 30000;
+  private lastCacheWarningAt = 0;
 
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;
@@ -2020,7 +2026,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Connect with tail_ms equal to live retention window.
     // Use wrap=1 for standardized message format (batch type)
     // Use getApiWebSocket() to automatically select local or server URL based on hostname
-    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=${this.REALTIME_RETENTION_MS}&wrap=1`;
+    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=${this.WS_BACKLOG_MS}&wrap=1`;
     const url = getApiWebSocket(endpoint);
 
     try {
@@ -2086,6 +2092,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     const loggerKey = loggerId.startsWith('client_') ? loggerId : `client_${loggerId}`;
     const url = getApiUrl('/realtime/cache') + `?logger=${encodeURIComponent(loggerKey)}&limit=${this.LOGGER_CACHE_MAX_POINTS}&tail_ms=${this.REALTIME_RETENTION_MS}`;
+    this.fetchLoggerCacheWithRetry(url, loggerId, 0, true);
+  }
+
+  private fetchLoggerCacheWithRetry(url: string, loggerId: string, retryIndex: number, startRealtimeOnComplete: boolean): void {
     this.http.get<{ items?: unknown[] }>(url).subscribe({
       next: (res) => {
         const items = Array.isArray(res?.items) ? res.items : [];
@@ -2098,27 +2108,65 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         if (this.isHistoryMode) {
           this.chartDataPoints = sorted;
         } else {
-          // โหมด live: เก็บแค่ 2000 จุดล่าสุดสำหรับกราฟ ลดภาระเมื่อกดเข้า page
           this.chartDataPoints = sorted.length > this.CHART_LIVE_MAX_POINTS
             ? sorted.slice(-this.CHART_LIVE_MAX_POINTS)
             : sorted;
         }
-        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId);
-        this.restoreFromSessionCache(points);
+
+        const shouldRestoreMap = this.telemetryBufferCount === 0;
+        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId, 'restoreMap=', shouldRestoreMap);
+        this.restoreFromSessionCache(points, shouldRestoreMap);
       },
       error: (e) => {
         console.warn('[Logger Cache] Load from Redis failed:', e);
+
+        // Keep realtime alive even when cache restore fails.
+        this.initializeRealtimeWithBacklog();
+
+        if (retryIndex < this.CACHE_RETRY_DELAYS_MS.length) {
+          const delayMs = this.CACHE_RETRY_DELAYS_MS[retryIndex];
+          setTimeout(() => {
+            this.fetchLoggerCacheWithRetry(url, loggerId, retryIndex + 1, false);
+          }, delayMs);
+          this.notifyCacheWarningForSuperAdmin('Realtime cache unavailable, retrying...');
+        } else {
+          this.notifyCacheWarningForSuperAdmin('Realtime cache restore failed. Showing recent live data only.');
+        }
       },
       complete: () => {
-        this.initializeRealtimeWithBacklog();
+        if (startRealtimeOnComplete) {
+          this.initializeRealtimeWithBacklog();
+        }
       }
     });
   }
 
-  private restoreFromSessionCache(points: TelemetryPoint[]): void {
+  private notifyCacheWarningForSuperAdmin(message: string): void {
+    if (!this.isSuperAdminUser()) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastCacheWarningAt < this.CACHE_WARNING_COOLDOWN_MS) {
+      return;
+    }
+    this.lastCacheWarningAt = now;
+    this.toastr.warning(message, 'Logger cache', { timeOut: 3500 });
+  }
+
+  private restoreFromSessionCache(points: TelemetryPoint[], restoreMapFromCache = true): void {
     const sorted = [...points].sort((a, b) => a.ts - b.ts);
     const opts = { skipTimeTrim: true, skipChartUpdate: true };
-    for (const p of sorted) {
+
+    const pointsForMap = (() => {
+      if (!restoreMapFromCache || sorted.length === 0) {
+        return [] as TelemetryPoint[];
+      }
+      const latestTs = sorted[sorted.length - 1]?.ts ?? Date.now();
+      const cutoff = latestTs - this.MAP_RESTORE_WINDOW_MS;
+      return sorted.filter((p) => p.ts >= cutoff);
+    })();
+
+    for (const p of pointsForMap) {
       this.addTelemetryPoint(p, opts);
     }
     // chartDataPoints ถูกเซ็ตใน loadAndRestoreLoggerCache แล้ว — อัปเดตกราฟจาก array กลาง
@@ -5445,7 +5493,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Trim points older than 30 minutes from the rolling window
    */
   private trimOldPoints(currentTs: number): void {
-    const cutoff = currentTs - this.WINDOW_MS;
+    const cutoff = currentTs - this.MAP_WINDOW_MS;
     while (this.ringBufferCount > 0 && this.ringBufferTail !== this.ringBufferHead) {
       const tailTs = this.pointTimestamps[this.ringBufferTail];
       if (tailTs >= cutoff) break; // Still within window

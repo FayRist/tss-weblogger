@@ -52,6 +52,11 @@ interface LoggerAlertState {
   penaltyNotifications: number;
 }
 
+interface LoggerRowHighlightState {
+  severity: Exclude<AfrSeverity, 'normal'>;
+  expiresAt: number;
+}
+
 function toDate(v: unknown): Date {
   if (v instanceof Date) return v;
   if (typeof v === 'string') {
@@ -103,6 +108,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly alertCooldownMs = 8000;
   private readonly maxRepeatedAlertsPerSeverity = 2;
   private readonly loggerAlertState = new Map<number, LoggerAlertState>();
+  private readonly warningHighlightHoldMs = 7000;
+  private readonly penaltyHighlightHoldMs = 10000;
+  private readonly loggerRowHighlightState = new Map<number, LoggerRowHighlightState>();
 
   configAFR: any;
   configSource: RaceConfigSource = 'global';
@@ -209,15 +217,23 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private sortLoggers(loggers: LoggerItem[]): LoggerItem[] {
+    const now = Date.now();
     return [...loggers].sort((a, b) => {
-      // 1. เรียงตาม Count (currentCountDetect) จากมากไปน้อย
+      // 1. penalty ขึ้นก่อนเสมอ
+      const penaltyPriorityA = this.getPenaltyPriorityForSort(a, now);
+      const penaltyPriorityB = this.getPenaltyPriorityForSort(b, now);
+      if (penaltyPriorityA !== penaltyPriorityB) {
+        return penaltyPriorityB - penaltyPriorityA;
+      }
+
+      // 2. เรียงตาม Count (currentCountDetect) จากมากไปน้อย
       const countA = a.currentCountDetect ?? 0;
       const countB = b.currentCountDetect ?? 0;
       if (countA !== countB) {
         return countB - countA; // มาก→น้อย
       }
 
-      // 2. เรียงตาม Status (online ก่อน offline)
+      // 3. เรียงตาม Status (online ก่อน offline)
       const statusA = (a.status ?? a.loggerStatus ?? '').toString().toLowerCase().trim();
       const statusB = (b.status ?? b.loggerStatus ?? '').toString().toLowerCase().trim();
       const isOnlineA = statusA === 'online' ? 1 : 0;
@@ -226,7 +242,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         return isOnlineB - isOnlineA; // online (1) ก่อน offline (0)
       }
 
-      // 2.1 ถ้าเป็น offline ทั้งคู่ ให้รายการที่เวลา onlineTime ใหม่กว่าแสดงก่อน
+      // 4. ถ้าเป็น offline ทั้งคู่ ให้รายการที่เวลา onlineTime ใหม่กว่าแสดงก่อน
       if (isOnlineA === 0 && isOnlineB === 0) {
         const timeA = a.onlineTime ? toDate(a.onlineTime).getTime() : 0;
         const timeB = b.onlineTime ? toDate(b.onlineTime).getTime() : 0;
@@ -235,7 +251,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
 
-      // 3. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
+      // 5. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
       const carNumA = Number(a.carNumber) || 0;
       const carNumB = Number(b.carNumber) || 0;
       return carNumA - carNumB; // น้อย→มาก
@@ -244,6 +260,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateView(allLoggers: LoggerItem[] = []): void {
     const filter = this.filterLogger.value ?? 'all';
+    this.syncRowHighlightState(allLoggers);
 
     // ถ้าล็อคตำแหน่งอยู่ ให้ใช้ snapshot และอัปเดตข้อมูลจาก allLoggers แต่คงตำแหน่งเดิม
     if (this.isSortLocked && this.lockedLoggersSnapshot) {
@@ -277,12 +294,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     // FILTER
     let filtered = this.filterLoggers(allLoggers, filter);
 
-    // SORT: เรียงตาม Count (มาก→น้อย) / Status(online→offline) / NBR. (น้อย→มาก)
+    // SORT: penalty ขึ้นก่อน / Count (มาก→น้อย) / Status(online→offline) / offline onlineTime(ใหม่→เก่า) / NBR. (น้อย→มาก)
     filtered = this.sortLoggers(filtered);
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
     this.onShowAllLoggers = filtered;
-    this.sortStatus = 'Count↓ / Status(online→offline) / NBR.↑';
+    this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
     this.dataSource.data = this.onShowAllLoggers;
   }
 
@@ -369,7 +386,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         this.subscriptions.push(reactSub);
 
-        this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
+        this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
       }
     });
     this.subscriptions.push(contextSub);
@@ -542,13 +559,91 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     return afr;
   }
 
-  getRowClass(item: LoggerItem): string {
+  private getLoggerId(item: LoggerItem): number | null {
+    const loggerId = Number(item.loggerId);
+    if (!Number.isFinite(loggerId) || loggerId <= 0) {
+      return null;
+    }
+    return loggerId;
+  }
+
+  private cleanupExpiredRowHighlightState(now: number): void {
+    for (const [loggerId, state] of this.loggerRowHighlightState.entries()) {
+      if (state.expiresAt <= now) {
+        this.loggerRowHighlightState.delete(loggerId);
+      }
+    }
+  }
+
+  private getLiveAfrSeverity(item: LoggerItem): AfrSeverity {
     const afr = this.getValidAfrValue(item);
     if (afr == null) {
-      return '';
+      return 'normal';
+    }
+    return this.getAfrSeverity(afr);
+  }
+
+  private upsertRowHighlightState(item: LoggerItem, now: number): void {
+    const loggerId = this.getLoggerId(item);
+    if (loggerId == null) {
+      return;
     }
 
-    const severity = this.getAfrSeverity(afr);
+    const severity = this.getLiveAfrSeverity(item);
+    const prev = this.loggerRowHighlightState.get(loggerId);
+    const prevActive = !!prev && prev.expiresAt > now;
+
+    if (severity === 'penalty') {
+      const expiresAt = now + this.penaltyHighlightHoldMs;
+      this.loggerRowHighlightState.set(loggerId, {
+        severity: 'penalty',
+        expiresAt: prevActive ? Math.max(prev.expiresAt, expiresAt) : expiresAt,
+      });
+      return;
+    }
+
+    if (severity === 'warning') {
+      if (prevActive && prev?.severity === 'penalty') {
+        return;
+      }
+      const expiresAt = now + this.warningHighlightHoldMs;
+      this.loggerRowHighlightState.set(loggerId, {
+        severity: 'warning',
+        expiresAt: prevActive ? Math.max(prev.expiresAt, expiresAt) : expiresAt,
+      });
+    }
+  }
+
+  private getDisplaySeverity(item: LoggerItem, now: number): AfrSeverity {
+    const loggerId = this.getLoggerId(item);
+    if (loggerId != null) {
+      const sticky = this.loggerRowHighlightState.get(loggerId);
+      if (sticky) {
+        if (sticky.expiresAt > now) {
+          return sticky.severity;
+        }
+        this.loggerRowHighlightState.delete(loggerId);
+      }
+    }
+
+    return this.getLiveAfrSeverity(item);
+  }
+
+  private getPenaltyPriorityForSort(item: LoggerItem, now: number): number {
+    const severity = this.getDisplaySeverity(item, now);
+    return severity === 'penalty' ? 1 : 0;
+  }
+
+  private syncRowHighlightState(loggers: LoggerItem[]): void {
+    const now = Date.now();
+    this.cleanupExpiredRowHighlightState(now);
+    for (const item of loggers) {
+      this.upsertRowHighlightState(item, now);
+    }
+  }
+
+  getRowClass(item: LoggerItem): string {
+    const severity = this.getDisplaySeverity(item, Date.now());
     if (severity === 'penalty') {
       return 'row-penalty';
     }
@@ -946,6 +1041,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           }
 
           // อัพเดท currentCountDetect จาก afr_count (real-time)
+          this.upsertRowHighlightState(updatedLogger, Date.now());
           this.maybeNotifyAfrCondition(updatedLogger);
           return updatedLogger;
         }
