@@ -744,6 +744,18 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       });
     } else {
       const warningCountIncreased = warningCount > prev.lastWarningCount;
+
+      // นับ/แจ้งเตือน warning เฉพาะเมื่อ count เพิ่มจริงเท่านั้น
+      // เพื่อให้ "แจ้งเตือน 1 ครั้ง" สอดคล้องกับ "count +1"
+      if (!warningCountIncreased) {
+        this.loggerAlertState.set(loggerId, {
+          ...prev,
+          lastSeverity: severity,
+          lastWarningCount: warningCount,
+        });
+        return;
+      }
+
       if (prev.warningNotifications >= this.maxRepeatedAlertsPerSeverity) {
         this.loggerAlertState.set(loggerId, {
           ...prev,
@@ -753,7 +765,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         return;
       }
 
-      if (!severityChanged && !warningCountIncreased && !cooldownPassed) {
+      if (!severityChanged && !cooldownPassed) {
         return;
       }
 
