@@ -13,29 +13,27 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { DateAdapter, MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
 import { FlatpickrDirective } from 'angularx-flatpickr';
 import { ToastrService } from 'ngx-toastr';
 import { EventService } from '../../../service/event.service';
 import { optionModel, RaceModel } from '../../../model/season-model';
-import { CLASS_LIST, MAPS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-data';
+import { CLASS_LIST, MAPS_LIST, RACE_SEGMENT } from '../../../constants/race-data';
 import { Subscription } from 'rxjs';
 
-type SessionKey = 'practice' | 'testsession' | 'qualifying' | 'race1' | 'race2' | 'race3' | 'race4' | 'race5';
-
 interface SessionRow {
-  key: SessionKey;
-  label: String;
+  key: string;
+  label: string;
   start: Date | null; // 'YYYY-MM-DDTHH:mm'
   end: Date | null;   // 'YYYY-MM-DDTHH:mm'
 }
 
 interface SessionInterval {
-  key: SessionKey;
+  key: string;
   label: string;
   start: Date;
   end: Date;
@@ -62,8 +60,8 @@ export interface eventPayLoad {
   standalone: true,
   imports: [MatButtonModule, MatDialogClose,
     MatDialogTitle, MatDialogContent, MatTabsModule,
-    FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
-    MatDatepickerModule, MatCheckboxModule, MatRadioModule, FlatpickrDirective,],
+    FormsModule, MatFormFieldModule, MatInputModule, MatAutocompleteModule, MatSelectModule, ReactiveFormsModule,
+    MatDatepickerModule, MatRadioModule, FlatpickrDirective,],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './add-race.component.html',
@@ -85,7 +83,6 @@ export class AddRaceComponent implements OnInit {
   sessionValue = new FormControl(null);
   segmentValue = new FormControl(null);
 
-  sessionList = SESSION_LIST;
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
   mapsList: optionModel[] = MAPS_LIST;
@@ -106,32 +103,30 @@ export class AddRaceComponent implements OnInit {
   private readonly _adapter = inject<DateAdapter<unknown, unknown>>(DateAdapter);
   private readonly _locale = signal(inject<unknown>(MAT_DATE_LOCALE));
 
-  practice = true;
-  testsession = true;
-  qualifying = true;
-  race1 = true;
-  race2 = true;
-  race3 = true;
-  race4 = true;
-  race5 = true;
+  private nextSessionIndex = 1;
 
-  private order: SessionKey[] = [
-    'practice', 'testsession', 'qualifying', 'race1', 'race2', 'race3', 'race4', 'race5'
+  sessionNameOptions: string[] = [
+    'Practice 1',
+    'Practice 2',
+    'Practice 3',
+    'Practice 4',
+    'Practice 5',
+    'Race 1',
+    'Race 2',
+    'Race 3',
+    'Race 4',
+    'Race 5',
+    'Test Session',
+    'Qualifying',
   ];
 
-  private labelMap: Record<SessionKey, String> = {
-    practice: 'Practice',
-    testsession: 'Test Session',
-    qualifying: 'Qualifying',
-    race1: 'Race 1',
-    race2: 'Race 2',
-    race3: 'Race 3',
-    race4: 'Race 4',
-    race5: 'Race 5',
-  };
-
-   // แถวที่ใช้แสดงใน <tbody>
+  // แถวที่ใช้แสดงใน <tbody>
   selectedSessions: SessionRow[] = [];
+
+  get sortedSessions(): SessionRow[] {
+    return [...this.selectedSessions].sort((a, b) => this.compareSessionRows(a, b));
+  }
+
   constructor(private eventService: EventService, private toastr: ToastrService, private cdr: ChangeDetectorRef) {
   }
 
@@ -139,17 +134,45 @@ export class AddRaceComponent implements OnInit {
     // this.NameTab = this.labels[0];
     this.NameTab = this.data.NameTab;
     this.eventId = String(this.data.event_id ?? '');
-    this.selectedSessions = this.order.map(key => ({
-      key,
-      label: this.labelMap[key],
-      start: null,
-      end:  null,
-    }));
+    this.selectedSessions = [];
     this._locale.set('en');
     this._adapter.setLocale(this._locale());
 
     // this.updateCloseButtonLabel('Fermer le calendrier');
     this.loadDropDownEvent();
+  }
+
+  addSessionRow(): void {
+    this.selectedSessions = [
+      ...this.selectedSessions,
+      {
+        key: `session-${this.nextSessionIndex++}`,
+        label: '',
+        start: null,
+        end: null,
+      }
+    ];
+  }
+
+  removeSessionRow(row: SessionRow): void {
+    this.selectedSessions = this.selectedSessions.filter(x => x.key !== row.key);
+    this.validateSessionTimeline(false, false);
+  }
+
+  private compareSessionRows(a: SessionRow, b: SessionRow): number {
+    const aStart = a.start ? new Date(a.start).getTime() : Number.MAX_SAFE_INTEGER;
+    const bStart = b.start ? new Date(b.start).getTime() : Number.MAX_SAFE_INTEGER;
+    if (aStart !== bStart) {
+      return aStart - bStart;
+    }
+
+    const aEnd = a.end ? new Date(a.end).getTime() : Number.MAX_SAFE_INTEGER;
+    const bEnd = b.end ? new Date(b.end).getTime() : Number.MAX_SAFE_INTEGER;
+    if (aEnd !== bEnd) {
+      return aEnd - bEnd;
+    }
+
+    return String(a.label ?? '').localeCompare(String(b.label ?? ''));
   }
 
 
@@ -192,27 +215,6 @@ export class AddRaceComponent implements OnInit {
       start: new FormControl<Date | null>(new Date()),
       end: new FormControl<Date | null>(new Date()),
   });
-
-    // เรียกจาก (change) ของแต่ละ checkbox
-  onToggleSession(key: SessionKey, checked: boolean): void {
-    if (checked) {
-      if (!this.selectedSessions.some(s => s.key === key)) {
-        this.selectedSessions.push({
-          key,
-          label: this.labelMap[key],
-          start: null,
-          end: null,
-        });
-        // เรียงตามลำดับที่กำหนดไว้
-        this.selectedSessions.sort(
-          (a, b) => this.order.indexOf(a.key) - this.order.indexOf(b.key)
-        );
-      }
-    } else {
-      this.selectedSessions = this.selectedSessions.filter(s => s.key !== key);
-    }
-  }
-
   toInput(d: Date | null | undefined): string {
     if (!d) return '';
     const x = new Date(d);
@@ -298,14 +300,108 @@ export class AddRaceComponent implements OnInit {
     row.end = (row.start && dt < row.start) ? new Date(row.start) : dt;
     this.validateSessionTimeline(true, false);
   }
+
+  onSessionLabelChange(row: SessionRow, value: string): void {
+    row.label = String(value ?? '').trim();
+    this.validateSessionTimeline(false, false);
+  }
+
+  onSessionLabelInput(row: SessionRow, value: string): void {
+    row.label = String(value ?? '');
+  }
+
+  onSessionLabelBlur(row: SessionRow): void {
+    const trimmed = String(row.label ?? '').trim();
+    if (!trimmed) {
+      row.label = '';
+      return;
+    }
+
+    if (!this.isSessionNameOption(trimmed)) {
+      row.label = '';
+    } else {
+      row.label = trimmed;
+    }
+  }
+
+  getFilteredSessionOptions(currentRow: SessionRow): string[] {
+    const keyword = String(currentRow.label ?? '').trim().toLowerCase();
+    return this.sessionNameOptions.filter(name => {
+      if (!keyword) {
+        return true;
+      }
+      return name.toLowerCase().includes(keyword);
+    });
+  }
+
+  private isSessionNameOption(label: string): boolean {
+    const target = String(label ?? '').trim().toLowerCase();
+    return this.sessionNameOptions.some(name => name.toLowerCase() === target);
+  }
+
+  private toBangkokDateKey(value: Date): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(value);
+
+    const year = parts.find(p => p.type === 'year')?.value ?? '0000';
+    const month = parts.find(p => p.type === 'month')?.value ?? '00';
+    const day = parts.find(p => p.type === 'day')?.value ?? '00';
+    return `${year}-${month}-${day}`;
+  }
+
+  private hasDuplicateSessionLabelsByDay(showToast: boolean): boolean {
+    const seen = new Map<string, { label: string; dateKey: string }>();
+    for (const row of this.selectedSessions) {
+      const label = String(row.label ?? '').trim();
+      if (!label || !row.start) continue;
+
+      const normalized = label.toLowerCase();
+      const dateKey = this.toBangkokDateKey(new Date(row.start));
+      const compositeKey = `${normalized}|${dateKey}`;
+      const exists = seen.get(compositeKey);
+
+      if (exists) {
+        if (showToast) {
+          this.toastr.error(`ชื่อ Session ซ้ำกันในวันเดียวกัน: ${label} (${dateKey})`);
+        }
+        return true;
+      }
+      seen.set(compositeKey, { label, dateKey });
+    }
+    return false;
+  }
+
   private validateSessionTimeline(showToast: boolean, requireComplete: boolean): boolean {
     const intervals: SessionInterval[] = [];
 
+    if (this.hasDuplicateSessionLabelsByDay(showToast)) {
+      return false;
+    }
+
     for (const row of this.selectedSessions) {
+      const label = String(row.label ?? '').trim();
+      if (!label) {
+        if (showToast) {
+          this.toastr.error('กรุณาเลือกชื่อ Session ให้ครบทุกแถว');
+        }
+        return false;
+      }
+
+      if (!this.isSessionNameOption(label)) {
+        if (showToast) {
+          this.toastr.error(`ชื่อ Session ไม่ถูกต้อง: ${label}`);
+        }
+        return false;
+      }
+
       if (!row.start || !row.end) {
         if (requireComplete) {
           if (showToast) {
-            this.toastr.error(`กรุณาระบุเวลาเริ่มและเวลาจบของ ${row.label}`);
+            this.toastr.error(`กรุณาระบุเวลาเริ่มและเวลาจบของ ${label}`);
           }
           return false;
         }
@@ -316,14 +412,14 @@ export class AddRaceComponent implements OnInit {
       const end = new Date(row.end);
       if (start.getTime() >= end.getTime()) {
         if (showToast) {
-          this.toastr.error(`เวลาเริ่มต้องน้อยกว่าเวลาจบของ ${row.label}`);
+          this.toastr.error(`เวลาเริ่มต้องน้อยกว่าเวลาจบของ ${label}`);
         }
         return false;
       }
 
       intervals.push({
         key: row.key,
-        label: String(row.label),
+        label,
         start,
         end,
       });
@@ -349,6 +445,11 @@ export class AddRaceComponent implements OnInit {
 
 
   submitRace(){
+    if (this.selectedSessions.length === 0) {
+      this.toastr.error('กรุณาเพิ่ม Session อย่างน้อย 1 รายการ');
+      return;
+    }
+
     if (!this.validateSessionTimeline(true, true)) {
       return;
     }
@@ -363,14 +464,14 @@ export class AddRaceComponent implements OnInit {
       if (start) start.setSeconds(0, 0);
       if (end) end.setSeconds(0, 0);
 
-      let prePayload = {
+        let prePayload = {
         id_list: null,
         season_id: this.seasonId,
         event_id: Number(this.eventId),
         category_name: "",
         class_value: classJoin.join(''),
         segment_value: this.segmentValue,
-        session_value: element.key,
+        session_value: String(element.label ?? '').trim(),
         session_start: start,
         session_end: end,
       }

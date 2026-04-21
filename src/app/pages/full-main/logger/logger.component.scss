@@ -3,6 +3,40 @@
     color: #FFFFFF;
 }
 
+.logger-config-source-row {
+  min-height: 30px;
+  justify-content: flex-end;
+}
+
+.logger-config-source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.logger-config-source-badge.source-snapshot {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: #22c55e;
+  color: #c9f7d9;
+}
+
+.logger-config-source-badge.source-global {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #dbeafe;
+}
+
+.logger-config-source-badge.source-fallback {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fef3c7;
+}
+
 /* ซ่อนคลื่น overlay เมื่อปิด select (ตามที่โค้ดจัดการ class) */
 .hidden-overlay { display: none !important; }
 

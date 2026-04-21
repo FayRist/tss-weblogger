@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 
-export type RaceMode = 'live' | 'history';
+export type RaceMode = 'prerace' | 'live' | 'history';
 
 export interface NavigationContext {
   eventId: number | null;
@@ -79,7 +79,13 @@ export class NavigationContextService {
       out.circuit = this.toText(partial.circuit)?.toLowerCase() ?? null;
     }
     if ('raceMode' in partial) {
-      out.raceMode = partial.raceMode === 'history' ? 'history' : 'live';
+      if (partial.raceMode === 'history') {
+        out.raceMode = 'history';
+      } else if (partial.raceMode === 'prerace') {
+        out.raceMode = 'prerace';
+      } else {
+        out.raceMode = 'live';
+      }
     }
 
     return out;

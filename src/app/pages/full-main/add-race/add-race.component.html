@@ -72,59 +72,11 @@
 
 
             <div class="row mt-3">
-              <div class="col-12"><p class="h6 text-light">ตัวเลือกสร้าง Session</p></div>
-              <div class="col-2">
-                <section class="example-section">
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="practice"
-                    (change)="onToggleSession('practice', $event.checked)">
-                    Practice
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="testsession"
-                    (change)="onToggleSession('testsession', $event.checked)">
-                    Test Session
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="qualifying"
-                    (change)="onToggleSession('qualifying', $event.checked)">
-                    Qualifying
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="race1"
-                    (change)="onToggleSession('race1', $event.checked)">
-                    Race 1
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="race2"
-                    (change)="onToggleSession('race2', $event.checked)">
-                    Race 2
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="race3"
-                    (change)="onToggleSession('race3', $event.checked)">
-                    Race 3
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="race4"
-                    (change)="onToggleSession('race4', $event.checked)">
-                    Race 4
-                  </mat-checkbox>
-
-                  <mat-checkbox class="example-margin text-light"
-                    [(ngModel)]="race5"
-                    (change)="onToggleSession('race5', $event.checked)">
-                    Race 5
-                  </mat-checkbox>
-                </section>
+              <div class="col-12 d-flex justify-content-between align-items-center mb-2">
+                <p class="h6 text-light m-0">รายการ Session</p>
+                <button type="button" class="btn btn-primary" (click)="addSessionRow()">+ เพิ่ม Session</button>
               </div>
-              <div class="col-10 ">
+              <div class="col-12">
                 <div class="card card-bg-gray w-100" style="min-height: 280px;">
                   <div class="card-body bg-transparen p-0">
                     <div class="table-scroll-xy">
@@ -134,12 +86,31 @@
                           <th class="text-center">Session</th>
                           <th class="text-center" style="width: 35%">วันที่เริ่ม Session</th>
                           <th class="text-center" style="width: 35%;">วันที่จบ Session</th>
+                          <th class="text-center" style="width: 10%;">จัดการ</th>
                         </tr>
                       </thead>
                       <tbody >
-                          @for (row of selectedSessions; track row.key) {
+                          @for (row of sortedSessions; track row.key) {
                             <tr>
-                              <td class="text-center">{{ row.label }}</td>
+                              <td class="text-center">
+                                <input
+                                  type="text"
+                                  class="session-time-input"
+                                  [ngModelOptions]="{standalone: true}"
+                                  [ngModel]="row.label"
+                                  (ngModelChange)="onSessionLabelInput(row, $event)"
+                                  (blur)="onSessionLabelBlur(row)"
+                                  [matAutocomplete]="sessionAuto"
+                                  placeholder="เลือก Session" />
+                                <mat-autocomplete
+                                  #sessionAuto="matAutocomplete"
+                                  autoActiveFirstOption
+                                  (optionSelected)="onSessionLabelChange(row, $event.option.value)">
+                                  @for (name of getFilteredSessionOptions(row); track name) {
+                                    <mat-option [value]="name">{{ name }}</mat-option>
+                                  }
+                                </mat-autocomplete>
+                              </td>
                               <td class="text-center">
                                 <input
                                   type="text"
@@ -172,14 +143,17 @@
                                   [altInputClass]="'session-time-input'"
                                   [altFormat]="'d/m/Y H:i'"
                                   [minuteIncrement]="1"
-                                  [minDate]="row.start || ''"
-                                  placeholder="DD/MM/YYYY HH:mm" />
+                                   [minDate]="row.start || ''"
+                                   placeholder="DD/MM/YYYY HH:mm" />
+                              </td>
+                              <td class="text-center">
+                                <button type="button" class="btn btn-outline-danger btn-sm" (click)="removeSessionRow(row)">ลบ</button>
                               </td>
                             </tr>
                           }
                           @empty {
                             <tr>
-                              <td colspan="3" class="text-center text-muted">ยังไม่ได้เลือก Session</td>
+                              <td colspan="4" class="text-center text-muted">ยังไม่มี Session กรุณากด "+ เพิ่ม Session"</td>
                             </tr>
                           }
                         </tbody>

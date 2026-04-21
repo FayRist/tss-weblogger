@@ -74,6 +74,31 @@ export class EventComponent implements OnInit {
 
 
   statusOf = (e: eventModel) => getRaceStatus(this.time.now(), e.event_start, e.event_end);
+
+  private resolveEventRaceMode(eventId: number, requestedMode: string, activeRace: number): 'prerace' | 'live' | 'history' {
+    if ((requestedMode || '').toLowerCase() === 'history') {
+      return 'history';
+    }
+
+    const eventItem = this.allEvent.find(x => x.event_id === eventId);
+    if (!eventItem) {
+      return 'live';
+    }
+
+    const status = this.statusOf(eventItem);
+    if (status === RaceStatus.Finished) {
+      return 'history';
+    }
+    if (activeRace === 1 || status === RaceStatus.Live) {
+      return 'live';
+    }
+    return 'prerace';
+  }
+
+  canEditEvent(eventItem: eventModel): boolean {
+    return this.statusOf(eventItem) === RaceStatus.Upcoming && Number(eventItem.active ?? 0) === 0;
+  }
+
   ngOnInit() {
     // Admin/Super Admin ต้องเห็น event ทั้งหมดเสมอ
     // ส่วน race_team_user คงพฤติกรรม history filter ตาม context เดิม
@@ -130,13 +155,11 @@ export class EventComponent implements OnInit {
   }
 
   navigateToRace(eventId: number, statusRace: string, activeRace: number, circuitName: string) {
-    if(activeRace == 0 && statusRace == "live"){
-      statusRace = 'history'
-    }
+    const raceMode = this.resolveEventRaceMode(eventId, statusRace, activeRace);
     this.navContext.replaceContext({
       eventId,
       circuit: circuitName,
-      raceMode: statusRace === 'history' ? 'history' : 'live',
+      raceMode,
       raceId: null,
       loggerId: null,
       segment: null,

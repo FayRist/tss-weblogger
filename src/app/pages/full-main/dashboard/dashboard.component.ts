@@ -29,8 +29,33 @@ import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
 import { AuthService } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
+import Swal from 'sweetalert2';
+import { RaceConfigMode, RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
+type AfrSeverity = 'normal' | 'warning' | 'penalty';
+
+interface AfrRuleConfig {
+  penaltyLow: number;
+  warningHigh: number;
+  warningSeconds: number;
+  penaltySeconds: number;
+  warningsPerPenalty: number;
+  penaltyAlsoIncrementsWarning: boolean;
+}
+
+interface LoggerAlertState {
+  lastSeverity: AfrSeverity;
+  lastWarningCount: number;
+  lastNotifiedAt: number;
+  warningNotifications: number;
+  penaltyNotifications: number;
+}
+
+interface LoggerRowHighlightState {
+  severity: Exclude<AfrSeverity, 'normal'>;
+  expiresAt: number;
+}
 
 function toDate(v: unknown): Date {
   if (v instanceof Date) return v;
@@ -72,8 +97,23 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly dialog = inject(MatDialog);
   onShowAllLoggers: LoggerItem[] = []
   countMax: number = 0;
+  afrRuleConfig: AfrRuleConfig = {
+    penaltyLow: 14.0,
+    warningHigh: 16.0,
+    warningSeconds: 1.0,
+    penaltySeconds: 3.0,
+    warningsPerPenalty: 3,
+    penaltyAlsoIncrementsWarning: true,
+  };
+  private readonly alertCooldownMs = 8000;
+  private readonly maxRepeatedAlertsPerSeverity = 2;
+  private readonly loggerAlertState = new Map<number, LoggerAlertState>();
+  private readonly warningHighlightHoldMs = 7000;
+  private readonly penaltyHighlightHoldMs = 10000;
+  private readonly loggerRowHighlightState = new Map<number, LoggerRowHighlightState>();
 
   configAFR: any;
+  configSource: RaceConfigSource = 'global';
 
   sortStatus:string = '';
   showRoutePath: boolean = true;
@@ -126,46 +166,74 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private auth: AuthService,
     private navContext: NavigationContextService
-  ) {
-    this.loadAndApplyConfig();
-  }
+  ) {}
 
   isReadOnlyRaceTeamUser(): boolean {
     return this.auth.current?.role === 'race_team_user';
   }
 
-  async loadAndApplyConfig() {
-    if (this.isReadOnlyRaceTeamUser()) {
-      this.countMax = 3;
-      return;
-    }
+  private isAdminOrMechanicUser(): boolean {
+    const role = this.auth.current?.role;
+    return role === 'admin' || role === 'super_admin' || role === 'mechanic_user';
+  }
 
-    const form_code = `max_count, limit_afr`
-    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
-      config => {
-        this.configAFR = [];
-        this.configAFR = config;
-        this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
+  isSuperAdminUser(): boolean {
+    return this.auth.current?.role === 'super_admin';
+  }
+
+  getConfigSourceLabel(): string {
+    if (this.configSource === 'snapshot') return 'Config Source: Snapshot';
+    if (this.configSource === 'global_fallback') return 'Config Source: Global (Fallback)';
+    return 'Config Source: Global';
+  }
+
+  getConfigSourceClass(): string {
+    if (this.configSource === 'snapshot') return 'source-snapshot';
+    if (this.configSource === 'global_fallback') return 'source-fallback';
+    return 'source-global';
+  }
+
+  loadAndApplyConfig(mode: RaceConfigMode, raceId: number): void {
+    const sub = this.eventService.getRaceConfigSnapshot(raceId, mode).subscribe({
+      next: (response) => {
+        this.configSource = response.source;
+        this.applyAfrConfigFromSnapshot(response.config);
       },
-      error => {
-        console.error('Error loading matchList:', error);
-        // Fallback to mock data if API fails
-        // this.matchList = this.eventService.getMatchSync();
+      error: (error) => {
+        console.error('Error loading AFR config snapshot:', error);
+        this.configSource = mode === 'history' ? 'global_fallback' : 'global';
+        this.afrRuleConfig = {
+          penaltyLow: 14.0,
+          warningHigh: 16.0,
+          warningSeconds: 1.0,
+          penaltySeconds: 3.0,
+          warningsPerPenalty: 3,
+          penaltyAlsoIncrementsWarning: true,
+        };
+        this.countMax = 3;
       }
-    );
-    this.subscriptions.push(MatchSub);
+    });
+    this.subscriptions.push(sub);
   }
 
   private sortLoggers(loggers: LoggerItem[]): LoggerItem[] {
+    const now = Date.now();
     return [...loggers].sort((a, b) => {
-      // 1. เรียงตาม Count (currentCountDetect) จากมากไปน้อย
+      // 1. penalty ขึ้นก่อนเสมอ
+      const penaltyPriorityA = this.getPenaltyPriorityForSort(a, now);
+      const penaltyPriorityB = this.getPenaltyPriorityForSort(b, now);
+      if (penaltyPriorityA !== penaltyPriorityB) {
+        return penaltyPriorityB - penaltyPriorityA;
+      }
+
+      // 2. เรียงตาม Count (currentCountDetect) จากมากไปน้อย
       const countA = a.currentCountDetect ?? 0;
       const countB = b.currentCountDetect ?? 0;
       if (countA !== countB) {
         return countB - countA; // มาก→น้อย
       }
 
-      // 2. เรียงตาม Status (online ก่อน offline)
+      // 3. เรียงตาม Status (online ก่อน offline)
       const statusA = (a.status ?? a.loggerStatus ?? '').toString().toLowerCase().trim();
       const statusB = (b.status ?? b.loggerStatus ?? '').toString().toLowerCase().trim();
       const isOnlineA = statusA === 'online' ? 1 : 0;
@@ -174,7 +242,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         return isOnlineB - isOnlineA; // online (1) ก่อน offline (0)
       }
 
-      // 2.1 ถ้าเป็น offline ทั้งคู่ ให้รายการที่เวลา onlineTime ใหม่กว่าแสดงก่อน
+      // 4. ถ้าเป็น offline ทั้งคู่ ให้รายการที่เวลา onlineTime ใหม่กว่าแสดงก่อน
       if (isOnlineA === 0 && isOnlineB === 0) {
         const timeA = a.onlineTime ? toDate(a.onlineTime).getTime() : 0;
         const timeB = b.onlineTime ? toDate(b.onlineTime).getTime() : 0;
@@ -183,7 +251,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
 
-      // 3. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
+      // 5. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
       const carNumA = Number(a.carNumber) || 0;
       const carNumB = Number(b.carNumber) || 0;
       return carNumA - carNumB; // น้อย→มาก
@@ -192,6 +260,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateView(allLoggers: LoggerItem[] = []): void {
     const filter = this.filterLogger.value ?? 'all';
+    this.syncRowHighlightState(allLoggers);
 
     // ถ้าล็อคตำแหน่งอยู่ ให้ใช้ snapshot และอัปเดตข้อมูลจาก allLoggers แต่คงตำแหน่งเดิม
     if (this.isSortLocked && this.lockedLoggersSnapshot) {
@@ -225,12 +294,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     // FILTER
     let filtered = this.filterLoggers(allLoggers, filter);
 
-    // SORT: เรียงตาม Count (มาก→น้อย) / Status(online→offline) / NBR. (น้อย→มาก)
+    // SORT: penalty ขึ้นก่อน / Count (มาก→น้อย) / Status(online→offline) / offline onlineTime(ใหม่→เก่า) / NBR. (น้อย→มาก)
     filtered = this.sortLoggers(filtered);
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
     this.onShowAllLoggers = filtered;
-    this.sortStatus = 'Count↓ / Status(online→offline) / NBR.↑';
+    this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
     this.dataSource.data = this.onShowAllLoggers;
   }
 
@@ -259,6 +328,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.circuitName = ctx.circuit ?? '';
       this.statusRace = ctx.raceMode ?? 'live';
 
+      this.loadAndApplyConfig(this.statusRace === 'history' ? 'history' : 'live', this.parameterRaceId);
+
+      const apiStatusRace = this.statusRace === 'history' ? 'history' : 'live';
       this.filterLogger.setValue('all', { emitEvent: true });
       this.applyFilter('all');  // ให้แสดงทั้งหมดเป็นค่าเริ่มต้น
 
@@ -281,7 +353,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             raceId: this.parameterRaceId,
             eventId: this.parameterEventId,
             circuitName: this.circuitName,
-            statusRace: this.statusRace
+            statusRace: apiStatusRace
           })
           .subscribe({
           next: (loggerRes) => {
@@ -314,7 +386,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         this.subscriptions.push(reactSub);
 
-        this.sortStatus = this.formGroup.value.sortType ? 'มาก - น้อย' : 'น้อย - มาก';
+        this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
       }
     });
     this.subscriptions.push(contextSub);
@@ -387,6 +459,313 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  applyAfrConfig(configRows: any[]): void {
+    const byCode = new Map<string, string>();
+    (configRows ?? []).forEach((row: any) => {
+      const code = String(row?.form_code ?? '').trim();
+      const value = String(row?.value ?? '').trim();
+      if (code) {
+        byCode.set(code, value);
+      }
+    });
+
+    const readNumber = (code: string, fallback: number): number => {
+      const raw = byCode.get(code);
+      const val = Number(raw);
+      return Number.isFinite(val) ? val : fallback;
+    };
+
+    const readBoolean = (code: string, fallback: boolean): boolean => {
+      const raw = (byCode.get(code) ?? '').toLowerCase();
+      if (raw === 'true' || raw === '1') return true;
+      if (raw === 'false' || raw === '0') return false;
+      return fallback;
+    };
+
+    this.countMax = readNumber('max_count', 3);
+    const penaltyLow = readNumber('afr_penalty_low', readNumber('limit_afr', 14.0));
+    const warningHigh = readNumber('afr_warning_high', 16.0);
+
+    this.afrRuleConfig = {
+      penaltyLow,
+      warningHigh: warningHigh > penaltyLow ? warningHigh : penaltyLow + 0.1,
+      warningSeconds: readNumber('afr_warning_seconds', 1.0),
+      penaltySeconds: readNumber('afr_penalty_seconds', 3.0),
+      warningsPerPenalty: Math.max(1, Math.floor(readNumber('afr_warnings_per_penalty', 3))),
+      penaltyAlsoIncrementsWarning: readBoolean('afr_penalty_also_increments_warning', true),
+    };
+  }
+
+  private getAfrSeverity(afr: number | null | undefined): AfrSeverity {
+    if (!Number.isFinite(afr)) {
+      return 'normal';
+    }
+
+    const value = Number(afr);
+    if (value < this.afrRuleConfig.penaltyLow) {
+      return 'penalty';
+    }
+    if (value >= this.afrRuleConfig.penaltyLow && value < this.afrRuleConfig.warningHigh) {
+      return 'warning';
+    }
+    return 'normal';
+  }
+
+  private applyAfrConfigFromSnapshot(config: any): void {
+    const toNum = (v: unknown, fallback: number): number => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    const penaltyLow = toNum(config?.afr_penalty_low, 14.0);
+    const warningHighRaw = toNum(config?.afr_warning_high, 16.0);
+    const warningHigh = warningHighRaw > penaltyLow ? warningHighRaw : penaltyLow + 0.1;
+
+    this.countMax = Math.max(1, Math.floor(toNum(config?.max_count, 3)));
+    this.afrRuleConfig = {
+      penaltyLow,
+      warningHigh,
+      warningSeconds: toNum(config?.afr_warning_seconds, toNum(config?.time_count, 1.0)),
+      penaltySeconds: toNum(config?.afr_penalty_seconds, 3.0),
+      warningsPerPenalty: Math.max(1, Math.floor(toNum(config?.afr_warnings_per_penalty, 3))),
+      penaltyAlsoIncrementsWarning: this.toBool(config?.afr_penalty_also_increments_warning, true),
+    };
+  }
+
+  private toBool(v: unknown, fallback: boolean): boolean {
+    if (typeof v === 'boolean') return v;
+    const s = String(v ?? '').toLowerCase();
+    if (s === 'true' || s === '1') return true;
+    if (s === 'false' || s === '0') return false;
+    return fallback;
+  }
+
+  private getValidAfrValue(item: LoggerItem): number | null {
+    const status = (item.status ?? item.loggerStatus ?? '').toString().trim().toLowerCase();
+    if (status !== 'online') {
+      return null;
+    }
+
+    const rawAfr = item.afr;
+    if (rawAfr == null) {
+      return null;
+    }
+
+    const afr = Number(rawAfr);
+    if (!Number.isFinite(afr) || afr <= 0) {
+      return null;
+    }
+
+    return afr;
+  }
+
+  private getLoggerId(item: LoggerItem): number | null {
+    const loggerId = Number(item.loggerId);
+    if (!Number.isFinite(loggerId) || loggerId <= 0) {
+      return null;
+    }
+    return loggerId;
+  }
+
+  private cleanupExpiredRowHighlightState(now: number): void {
+    for (const [loggerId, state] of this.loggerRowHighlightState.entries()) {
+      if (state.expiresAt <= now) {
+        this.loggerRowHighlightState.delete(loggerId);
+      }
+    }
+  }
+
+  private getLiveAfrSeverity(item: LoggerItem): AfrSeverity {
+    const afr = this.getValidAfrValue(item);
+    if (afr == null) {
+      return 'normal';
+    }
+    return this.getAfrSeverity(afr);
+  }
+
+  private upsertRowHighlightState(item: LoggerItem, now: number): void {
+    const loggerId = this.getLoggerId(item);
+    if (loggerId == null) {
+      return;
+    }
+
+    const severity = this.getLiveAfrSeverity(item);
+    const prev = this.loggerRowHighlightState.get(loggerId);
+    const prevActive = !!prev && prev.expiresAt > now;
+
+    if (severity === 'penalty') {
+      const expiresAt = now + this.penaltyHighlightHoldMs;
+      this.loggerRowHighlightState.set(loggerId, {
+        severity: 'penalty',
+        expiresAt: prevActive ? Math.max(prev.expiresAt, expiresAt) : expiresAt,
+      });
+      return;
+    }
+
+    if (severity === 'warning') {
+      if (prevActive && prev?.severity === 'penalty') {
+        return;
+      }
+      const expiresAt = now + this.warningHighlightHoldMs;
+      this.loggerRowHighlightState.set(loggerId, {
+        severity: 'warning',
+        expiresAt: prevActive ? Math.max(prev.expiresAt, expiresAt) : expiresAt,
+      });
+    }
+  }
+
+  private getDisplaySeverity(item: LoggerItem, now: number): AfrSeverity {
+    const loggerId = this.getLoggerId(item);
+    if (loggerId != null) {
+      const sticky = this.loggerRowHighlightState.get(loggerId);
+      if (sticky) {
+        if (sticky.expiresAt > now) {
+          return sticky.severity;
+        }
+        this.loggerRowHighlightState.delete(loggerId);
+      }
+    }
+
+    return this.getLiveAfrSeverity(item);
+  }
+
+  private getPenaltyPriorityForSort(item: LoggerItem, now: number): number {
+    const severity = this.getDisplaySeverity(item, now);
+    return severity === 'penalty' ? 1 : 0;
+  }
+
+  private syncRowHighlightState(loggers: LoggerItem[]): void {
+    const now = Date.now();
+    this.cleanupExpiredRowHighlightState(now);
+    for (const item of loggers) {
+      this.upsertRowHighlightState(item, now);
+    }
+  }
+
+  getRowClass(item: LoggerItem): string {
+    const severity = this.getDisplaySeverity(item, Date.now());
+    if (severity === 'penalty') {
+      return 'row-penalty';
+    }
+    if (severity === 'warning') {
+      return 'row-warning';
+    }
+    return '';
+  }
+
+  private maybeNotifyAfrCondition(item: LoggerItem): void {
+    if ((this.statusRace || 'live').toLowerCase() !== 'live') {
+      return;
+    }
+
+    const loggerId = Number(item.loggerId);
+    if (!Number.isFinite(loggerId) || loggerId <= 0) {
+      return;
+    }
+
+    const afr = this.getValidAfrValue(item);
+    if (afr == null) {
+      this.loggerAlertState.delete(loggerId);
+      return;
+    }
+
+    const severity = this.getAfrSeverity(afr);
+    const warningCount = Number(item.currentCountDetect ?? 0);
+    const now = Date.now();
+    const prev = this.loggerAlertState.get(loggerId) ?? {
+      lastSeverity: 'normal' as AfrSeverity,
+      lastWarningCount: 0,
+      lastNotifiedAt: 0,
+      warningNotifications: 0,
+      penaltyNotifications: 0,
+    };
+
+    if (severity === 'normal') {
+      this.loggerAlertState.delete(loggerId);
+      return;
+    }
+
+    const cooldownPassed = (now - prev.lastNotifiedAt) >= this.alertCooldownMs;
+    const severityChanged = prev.lastSeverity !== severity;
+
+    const nbr = item.carNumber || '-';
+    const afrText = Number.isFinite(afr) ? afr.toFixed(2) : '-';
+
+    if (severity === 'penalty') {
+      if (prev.penaltyNotifications >= this.maxRepeatedAlertsPerSeverity) {
+        this.loggerAlertState.set(loggerId, {
+          ...prev,
+          lastSeverity: severity,
+          lastWarningCount: warningCount,
+        });
+        return;
+      }
+
+      if (!severityChanged && !cooldownPassed) {
+        return;
+      }
+
+      const message = `NBR ${nbr} ค่า AFR ${afrText} ผิด Condition Penalty (AFR < ${this.afrRuleConfig.penaltyLow.toFixed(1)})`;
+      this.notifyByRole('penalty', message, nbr);
+
+      this.loggerAlertState.set(loggerId, {
+        ...prev,
+        lastSeverity: severity,
+        lastWarningCount: warningCount,
+        lastNotifiedAt: now,
+        penaltyNotifications: prev.penaltyNotifications + 1,
+      });
+    } else {
+      const warningCountIncreased = warningCount > prev.lastWarningCount;
+      if (prev.warningNotifications >= this.maxRepeatedAlertsPerSeverity) {
+        this.loggerAlertState.set(loggerId, {
+          ...prev,
+          lastSeverity: severity,
+          lastWarningCount: warningCount,
+        });
+        return;
+      }
+
+      if (!severityChanged && !warningCountIncreased && !cooldownPassed) {
+        return;
+      }
+
+      const message = `NBR ${nbr} Warning ครั้งที่ ${warningCount} ด้วยค่า AFR ${afrText} (Condition Warning: ${this.afrRuleConfig.penaltyLow.toFixed(1)} <= AFR < ${this.afrRuleConfig.warningHigh.toFixed(1)})`;
+      this.notifyByRole('warning', message, nbr);
+
+      this.loggerAlertState.set(loggerId, {
+        ...prev,
+        lastSeverity: severity,
+        lastWarningCount: warningCount,
+        lastNotifiedAt: now,
+        warningNotifications: prev.warningNotifications + 1,
+      });
+    }
+  }
+
+  private notifyByRole(severity: 'warning' | 'penalty', message: string, nbr: string): void {
+    if (this.isReadOnlyRaceTeamUser()) {
+      const isPenalty = severity === 'penalty';
+      void Swal.fire({
+        title: isPenalty ? 'Penalty Condition' : 'Warning Condition',
+        text: message,
+        icon: isPenalty ? 'error' : 'warning',
+        confirmButtonText: 'รับทราบ',
+      });
+      return;
+    }
+
+    if (!this.isAdminOrMechanicUser()) {
+      return;
+    }
+
+    if (severity === 'penalty') {
+      this.toastr.error(message, `Penalty Alert - NBR ${nbr}`);
+    } else {
+      this.toastr.warning(message, `Warning Alert - NBR ${nbr}`);
+    }
+  }
+
   /** ค่า AFR ที่ใช้แสดง (ล่าสุดก่อน ถ้าไม่มีใช้ค่าเฉลี่ย) */
   getAFRDisplayValue(item: LoggerItem): number | null {
     const v = item.afr ?? item.afrAverage ?? null;
@@ -447,7 +826,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       classCode: this.parameterClass,
       loggerId: String(LoggerId),
       circuit: this.circuitName,
-      raceMode: this.statusRace === 'history' ? 'history' : 'live',
+      raceMode: this.statusRace === 'history' ? 'history' : (this.statusRace === 'prerace' ? 'prerace' : 'live'),
     });
     this.router.navigate(['/pages', 'logger']);
     // this.router.navigate(['logger'], { relativeTo: this.route });
@@ -487,12 +866,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.statusRace = ctx.raceMode ?? 'live';
         this.filterLogger.setValue('all', { emitEvent: true });
         this.applyFilter('all');
+        const apiStatusRace = this.statusRace === 'history' ? 'history' : 'live';
         const sub = this.eventService
           .getLoggersWithAfr({
             raceId: this.parameterRaceId,
             eventId: this.parameterEventId,
             circuitName: this.circuitName,
-            statusRace: this.statusRace
+            statusRace: apiStatusRace
           })
           .subscribe({
           next: (loggerRes) => {
@@ -661,6 +1041,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           }
 
           // อัพเดท currentCountDetect จาก afr_count (real-time)
+          this.upsertRowHighlightState(updatedLogger, Date.now());
+          this.maybeNotifyAfrCondition(updatedLogger);
           return updatedLogger;
         }
       }

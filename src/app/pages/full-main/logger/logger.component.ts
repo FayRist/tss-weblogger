@@ -34,6 +34,7 @@ import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, Tel
 import { NgZone } from '@angular/core';
 import { AuthService } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
+import { RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
 // deck.gl imports
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -432,6 +433,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private wheelInteractionTimer: ReturnType<typeof setTimeout> | null = null;
 
   configAFR: any;
+  configSource: RaceConfigSource = 'global';
 
   /** ค่า min ของแกน Y (ลำดับปกติเสมอ — ใช้ร่วมกับ yaxis.reversed เพื่อไม่ให้ ApexCharts แจ้ง min > max) */
   get afrYAxisMin(): number {
@@ -458,6 +460,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // และ backend REDIS_HISTORY_RETENTION_MINUTES ควรตั้งค่าให้ตรงกัน.
   private readonly LIVE_RETENTION_MINUTES = 10;
   private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window
+  private readonly MAP_RESTORE_MINUTES = 2;
+  private readonly MAP_RESTORE_WINDOW_MS = this.MAP_RESTORE_MINUTES * 60 * 1000;
+  private readonly WS_BACKLOG_MS = this.MAP_RESTORE_WINDOW_MS;
   private readonly INPUT_HZ = 60; // Expected input frequency
   private readonly MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000) * 1.2); // ~8,640 points @2min, ~43,200 @10min
   private readonly MAX_SEGS = this.MAX_POINTS - 1; // Segments = points - 1
@@ -476,7 +481,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CHART_LIVE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
 
   // ===== Map Performance Constants =====
-  private readonly MAP_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for map
+  private readonly MAP_WINDOW_MS = this.MAP_RESTORE_WINDOW_MS; // rolling window for map (2 minutes)
   private readonly MAP_PATH_FPS = 25; // Path layer update rate (20-30fps range)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
@@ -485,6 +490,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private chartDataPoints: TelemetryPoint[] = [];
   /** จำนวนจุดที่ดึงจาก Redis ตอน re-entry ต้องพอสำหรับ retention ทั้งหน้าต่าง */
   private readonly LOGGER_CACHE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
+  private readonly CACHE_RETRY_DELAYS_MS = [1000, 3000];
+  private readonly CACHE_WARNING_COOLDOWN_MS = 30000;
+  private lastCacheWarningAt = 0;
 
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;
@@ -1318,10 +1326,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ===== Mode Detection =====
   isHistoryMode: boolean = false;
+  isPreRaceMode: boolean = false;
   isRealtimeMode: boolean = true;
 
-  get currentModeLabel(): 'HISTORY' | 'LIVE' {
-    return this.isHistoryMode ? 'HISTORY' : 'LIVE';
+  get currentModeLabel(): 'HISTORY' | 'LIVE' | 'PRERACE' {
+    if (this.isHistoryMode) return 'HISTORY';
+    if (this.isPreRaceMode) return 'PRERACE';
+    return 'LIVE';
   }
 
   // ===== Canvas Rendering =====
@@ -1406,7 +1417,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
     this.setstartLatLongPoint(798.451662,-6054.358584);
-    this.loadAndApplyConfig();
     // this.setCurrentPoints(this.buildMock(180));
 
     // Initialize deck.gl ring buffer typed arrays
@@ -1422,6 +1432,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   isReadOnlyRaceTeamUser(): boolean {
     return this.auth.current?.role === 'race_team_user';
+  }
+
+  isSuperAdminUser(): boolean {
+    return this.auth.current?.role === 'super_admin';
+  }
+
+  getConfigSourceLabel(): string {
+    if (this.configSource === 'snapshot') return 'Config Source: Snapshot';
+    if (this.configSource === 'global_fallback') return 'Config Source: Global (Fallback)';
+    return 'Config Source: Global';
+  }
+
+  getConfigSourceClass(): string {
+    if (this.configSource === 'snapshot') return 'source-snapshot';
+    if (this.configSource === 'global_fallback') return 'source-fallback';
+    return 'source-global';
   }
 
   downsample(data: { x: any; y: number }[], threshold: number): { x: any; y: number }[] {
@@ -1494,35 +1520,22 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
 
-  async loadAndApplyConfig() {
-    if (this.isReadOnlyRaceTeamUser()) {
-      this.afrLimit = 13.5;
-      this.countMax = 3;
-      this.afrGraphsMinLimit = 0;
-      this.afrGraphsMaxLimit = 30;
-      return;
-    }
+  loadAndApplyConfig(mode: 'live' | 'history', raceId: number): void {
+    const sub = this.eventService.getRaceConfigSnapshot(raceId, mode).subscribe({
+      next: (response) => {
+        this.configSource = response?.source ?? (mode === 'history' ? 'global_fallback' : 'global');
+        const cfg = response?.config ?? {};
 
-    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max`
-    const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
-      config => {
-        this.configAFR = [];
-        this.configAFR = config;
-        this.afrLimit = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'limit_afr')[0].value);
-        this.countMax = Number(this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'max_count')[0].value);
+        const toNum = (v: unknown, fallback: number): number => {
+          const n = Number(v);
+          return Number.isFinite(n) ? n : fallback;
+        };
 
-        // ดึงค่าจาก config พร้อม fallback เป็น default
-        const minConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_min');
-        const maxConfig = this.configAFR.find((x: { form_code: string; }) => x.form_code == 'graphs_afr_max');
+        this.afrLimit = toNum((cfg as any).afr_penalty_low, 14.0);
+        this.countMax = Math.max(1, Math.floor(toNum((cfg as any).max_count, 3)));
+        this.afrGraphsMinLimit = toNum((cfg as any).graphs_afr_min, 0);
+        this.afrGraphsMaxLimit = toNum((cfg as any).graphs_afr_max, 30);
 
-        const minValue = minConfig ? Number(minConfig.value) : null;
-        const maxValue = maxConfig ? Number(maxConfig.value) : null;
-
-        // ตรวจสอบว่าค่าถูกต้อง (ไม่ใช่ null, undefined, NaN) และใช้ default ถ้าไม่ valid
-        this.afrGraphsMinLimit = (minValue !== null && minValue !== undefined && Number.isFinite(minValue)) ? minValue : 0;
-        this.afrGraphsMaxLimit = (maxValue !== null && maxValue !== undefined && Number.isFinite(maxValue)) ? maxValue : 30;
-
-        // อัปเดตแกน Y ของกราฟหลัก (detail) — ใช้ getter ตามสภาวะกลับด้าน
         this.detailOpts = {
           ...this.detailOpts,
           yaxis: {
@@ -1552,7 +1565,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         };
 
-        // อัปเดตแกน Y ของกราฟล่าง (brush)
         this.brushOpts = {
           ...this.brushOpts,
           yaxis: {
@@ -1563,17 +1575,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         };
 
-        // รีเฟรชกราฟเพื่อให้การเปลี่ยนแปลงมีผล
         this.refreshDetail();
         this.refreshBrush();
       },
-      error => {
-        console.error('Error loading matchList:', error);
-        // Fallback to default values if API fails
+      error: (error) => {
+        console.error('Error loading AFR config:', error);
+        this.configSource = mode === 'history' ? 'global_fallback' : 'global';
+        this.afrLimit = 14.0;
+        this.countMax = 3;
         this.afrGraphsMinLimit = 0;
         this.afrGraphsMaxLimit = 30;
 
-        // อัปเดตแกน Y ด้วยค่า default (ใช้ getter ตามสภาวะกลับด้าน)
         this.detailOpts = {
           ...this.detailOpts,
           yaxis: {
@@ -1595,8 +1607,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.refreshDetail();
         this.refreshBrush();
       }
-    );
-    this.subscriptions.push(MatchSub);
+    });
+    this.subscriptions.push(sub);
   }
 
   // ====== ngOnInit: สมัคร valueChanges พร้อมตั้งค่า default ======
@@ -1606,7 +1618,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const ctx = this.navContext.snapshot;
     const statusRace = ctx.raceMode ?? 'live';
     this.isHistoryMode = statusRace === 'history';
-    this.isRealtimeMode = !this.isHistoryMode;
+    this.isPreRaceMode = statusRace === 'prerace';
+    this.isRealtimeMode = statusRace === 'live';
 
     this.parameterRaceId = Number(ctx.raceId ?? 0);
     this.parameterSegment = ctx.segment ?? '';
@@ -1614,6 +1627,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.parameterLoggerID = ctx.loggerId ?? '';
     this.circuitName = ctx.circuit ?? '';
     this.currentLoggerId = String(this.parameterLoggerID || '').trim();
+
+    this.loadAndApplyConfig(this.isHistoryMode ? 'history' : 'live', this.parameterRaceId);
 
     // performance: batched realtime UI flush - initialize batch subscription
     this.rtBatchSubscription = this.rtBatch$.pipe(
@@ -1657,7 +1672,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.updateChartsFromSelection(selectionAsArray);
       });
     // สมัคร WebSocket messages เฉพาะโหมด live เท่านั้น
-    if (!this.isHistoryMode) {
+    if (this.isRealtimeMode) {
       this.subscribeWebSocketMessages();
       this.initializeStatusBroadcastForLive();
     }
@@ -1964,7 +1979,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private scheduleRealtimeReconnect(): void {
-    if (this.componentDestroyed || this.isHistoryMode || !this.shouldRealtimeReconnect) {
+    if (this.componentDestroyed || !this.isRealtimeMode || !this.shouldRealtimeReconnect) {
       return;
     }
     if (this.realtimeReconnectTimeout) {
@@ -1989,7 +2004,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initializeRealtimeWithBacklog(): void {
-    if (this.componentDestroyed || this.isHistoryMode || !this.shouldRealtimeReconnect) {
+    if (this.componentDestroyed || !this.isRealtimeMode || !this.shouldRealtimeReconnect) {
       return;
     }
     if (this.realtimeWS && (this.realtimeWS.readyState === WebSocket.OPEN || this.realtimeWS.readyState === WebSocket.CONNECTING)) {
@@ -2011,7 +2026,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Connect with tail_ms equal to live retention window.
     // Use wrap=1 for standardized message format (batch type)
     // Use getApiWebSocket() to automatically select local or server URL based on hostname
-    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=${this.REALTIME_RETENTION_MS}&wrap=1`;
+    const endpoint = `/ws/realtime?logger=client_${loggerId}&tail_ms=${this.WS_BACKLOG_MS}&wrap=1`;
     const url = getApiWebSocket(endpoint);
 
     try {
@@ -2077,6 +2092,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     const loggerKey = loggerId.startsWith('client_') ? loggerId : `client_${loggerId}`;
     const url = getApiUrl('/realtime/cache') + `?logger=${encodeURIComponent(loggerKey)}&limit=${this.LOGGER_CACHE_MAX_POINTS}&tail_ms=${this.REALTIME_RETENTION_MS}`;
+    this.fetchLoggerCacheWithRetry(url, loggerId, 0, true);
+  }
+
+  private fetchLoggerCacheWithRetry(url: string, loggerId: string, retryIndex: number, startRealtimeOnComplete: boolean): void {
     this.http.get<{ items?: unknown[] }>(url).subscribe({
       next: (res) => {
         const items = Array.isArray(res?.items) ? res.items : [];
@@ -2089,27 +2108,65 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         if (this.isHistoryMode) {
           this.chartDataPoints = sorted;
         } else {
-          // โหมด live: เก็บแค่ 2000 จุดล่าสุดสำหรับกราฟ ลดภาระเมื่อกดเข้า page
           this.chartDataPoints = sorted.length > this.CHART_LIVE_MAX_POINTS
             ? sorted.slice(-this.CHART_LIVE_MAX_POINTS)
             : sorted;
         }
-        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId);
-        this.restoreFromSessionCache(points);
+
+        const shouldRestoreMap = this.telemetryBufferCount === 0;
+        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId, 'restoreMap=', shouldRestoreMap);
+        this.restoreFromSessionCache(points, shouldRestoreMap);
       },
       error: (e) => {
         console.warn('[Logger Cache] Load from Redis failed:', e);
+
+        // Keep realtime alive even when cache restore fails.
+        this.initializeRealtimeWithBacklog();
+
+        if (retryIndex < this.CACHE_RETRY_DELAYS_MS.length) {
+          const delayMs = this.CACHE_RETRY_DELAYS_MS[retryIndex];
+          setTimeout(() => {
+            this.fetchLoggerCacheWithRetry(url, loggerId, retryIndex + 1, false);
+          }, delayMs);
+          this.notifyCacheWarningForSuperAdmin('Realtime cache unavailable, retrying...');
+        } else {
+          this.notifyCacheWarningForSuperAdmin('Realtime cache restore failed. Showing recent live data only.');
+        }
       },
       complete: () => {
-        this.initializeRealtimeWithBacklog();
+        if (startRealtimeOnComplete) {
+          this.initializeRealtimeWithBacklog();
+        }
       }
     });
   }
 
-  private restoreFromSessionCache(points: TelemetryPoint[]): void {
+  private notifyCacheWarningForSuperAdmin(message: string): void {
+    if (!this.isSuperAdminUser()) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastCacheWarningAt < this.CACHE_WARNING_COOLDOWN_MS) {
+      return;
+    }
+    this.lastCacheWarningAt = now;
+    this.toastr.warning(message, 'Logger cache', { timeOut: 3500 });
+  }
+
+  private restoreFromSessionCache(points: TelemetryPoint[], restoreMapFromCache = true): void {
     const sorted = [...points].sort((a, b) => a.ts - b.ts);
     const opts = { skipTimeTrim: true, skipChartUpdate: true };
-    for (const p of sorted) {
+
+    const pointsForMap = (() => {
+      if (!restoreMapFromCache || sorted.length === 0) {
+        return [] as TelemetryPoint[];
+      }
+      const latestTs = sorted[sorted.length - 1]?.ts ?? Date.now();
+      const cutoff = latestTs - this.MAP_RESTORE_WINDOW_MS;
+      return sorted.filter((p) => p.ts >= cutoff);
+    })();
+
+    for (const p of pointsForMap) {
       this.addTelemetryPoint(p, opts);
     }
     // chartDataPoints ถูกเซ็ตใน loadAndRestoreLoggerCache แล้ว — อัปเดตกราฟจาก array กลาง
@@ -5436,7 +5493,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Trim points older than 30 minutes from the rolling window
    */
   private trimOldPoints(currentTs: number): void {
-    const cutoff = currentTs - this.WINDOW_MS;
+    const cutoff = currentTs - this.MAP_WINDOW_MS;
     while (this.ringBufferCount > 0 && this.ringBufferTail !== this.ringBufferHead) {
       const tailTs = this.pointTimestamps[this.ringBufferTail];
       if (tailTs >= cutoff) break; // Still within window

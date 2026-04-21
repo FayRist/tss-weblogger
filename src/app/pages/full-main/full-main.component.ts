@@ -361,9 +361,9 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   async navigateToRace(eventId: any, eventName: String, activeRace: any, circuitName: String) {
     this.eventNameSelect = eventName;
-    let statusRace = 'live'
+    let statusRace: 'prerace' | 'live' = 'live'
     if(activeRace == 0){
-      statusRace = 'history'
+      statusRace = 'prerace'
     }
 
     const isDashboard = await firstValueFrom(this.isDashboard$);
@@ -373,7 +373,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
     if(isDashboard || isRace) {
       this.navContext.replaceContext({
         eventId: Number(eventId),
-        raceMode: statusRace === 'history' ? 'history' : 'live',
+        raceMode: statusRace,
         circuit: String(circuitName ?? ''),
         raceId: null,
         loggerId: null,
@@ -385,7 +385,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
       this.navContext.replaceContext({
         eventId: Number(eventId),
         circuit: String(circuitName ?? ''),
-        raceMode: statusRace === 'history' ? 'history' : 'live',
+        raceMode: statusRace,
         raceId: null,
         loggerId: null,
         classCode: null,

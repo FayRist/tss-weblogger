@@ -52,6 +52,7 @@ export const APP_CONFIG = {
       GET_RACE: '/race/getRace',
       ADD_RACE: '/race/addRace',
       END_RACE: '/race/endRace',
+      RACE_CONFIG_SNAPSHOT: '/race/config-snapshot',
       UPDATE_RACE: '/race/updateRace',
       DELETE_RACE: '/race/deleteRace',
       EXPORT_RACE_DATA_LOGGER: '/race/exportDataLoggerInRace',
