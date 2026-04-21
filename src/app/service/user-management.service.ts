@@ -45,6 +45,36 @@ export interface UserRacePermissionModel {
   carNumber: number;
 }
 
+export interface RaceLoggerCandidateModel {
+  carNumber: number;
+  loggerId: string;
+  driverName: string;
+}
+
+export interface UserRacePermissionRowModel {
+  eventId: number;
+  eventName: string;
+  raceId: number;
+  raceName: string;
+  loggerId: string;
+  carNumber: number;
+  driverName: string;
+}
+
+export interface UpdateUserPayload {
+  id: number;
+  email: string;
+  role_id: number;
+  new_password?: string;
+}
+
+export interface AddUserPayload {
+  username: string;
+  email: string;
+  role_id: number;
+  new_password: string;
+}
+
 
 @Injectable({
   providedIn: 'root'
@@ -85,7 +115,7 @@ export class UserManagementService {
         map(response => {
           this.roleList = response.data.map((apiData) => ({
             value: apiData.id,
-            name: apiData.description,
+            name: apiData.name,
           }));
           return this.roleList;
         })
@@ -136,5 +166,81 @@ export class UserManagementService {
     );
   }
 
-}
+  getUserRacePermissionsByRace(userId: number, raceId: number): Observable<number[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_USER_RACE_PERMISSIONS);
+    return this.http.get<any>(url, {
+      params: {
+        user_id: String(userId),
+        race_id: String(raceId),
+      },
+    }).pipe(
+      map((response) => {
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows
+          .map((r: any) => Number(r?.car_number))
+          .filter((n: number) => Number.isFinite(n));
+      })
+    );
+  }
 
+  getUserRacePermissionRows(userId: number): Observable<UserRacePermissionRowModel[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_USER_RACE_PERMISSION_ROWS);
+    return this.http.get<any>(url, {
+      params: {
+        user_id: String(userId),
+      },
+    }).pipe(
+      map((response) => {
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows.map((r: any) => ({
+          eventId: Number(r?.event_id),
+          eventName: String(r?.event_name ?? ''),
+          raceId: Number(r?.race_id),
+          raceName: String(r?.race_name ?? ''),
+          loggerId: String(r?.logger_id ?? ''),
+          carNumber: Number(r?.car_number),
+          driverName: String(r?.driver_name ?? '').trim(),
+        }));
+      })
+    );
+  }
+
+  getRaceLoggerCandidates(eventId: number): Observable<RaceLoggerCandidateModel[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_RACE_LOGGER_CANDIDATES);
+    return this.http.get<any>(url, {
+      params: {
+        event_id: String(eventId),
+      },
+    }).pipe(
+      map((response) => {
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows.map((r: any) => ({
+          carNumber: Number(r?.car_number),
+          loggerId: String(r?.logger_id ?? ''),
+          driverName: String(r?.driver_name ?? '').trim(),
+        }));
+      })
+    );
+  }
+
+  setUserRacePermissions(payload: { user_id: number; event_id: number; car_numbers: number[] }): Observable<unknown> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.SET_USER_RACE_PERMISSIONS);
+    return this.http.post(url, payload);
+  }
+
+  updateUser(payload: UpdateUserPayload): Observable<unknown> {
+    const updateUserURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_USER);
+    return this.http.post(updateUserURL, payload);
+  }
+
+  addUser(payload: AddUserPayload): Observable<unknown> {
+    const addUserURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_USER);
+    return this.http.post(addUserURL, payload);
+  }
+
+  deleteUser(payload: UpdateUserPayload): Observable<unknown> {
+    const updateUserURL = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_USER);
+    return this.http.post(updateUserURL, payload);
+  }
+
+}

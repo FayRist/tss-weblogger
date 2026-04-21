@@ -10,9 +10,31 @@
   overflow: auto;
 }
 
-table {
+.logger-table {
   width: 100%;
   min-width: 980px;
+}
+
+.permission-list-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.permission-col-event {
+  width: auto;
+  overflow-wrap: anywhere;
+}
+
+.permission-col-count {
+  width: 140px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.permission-col-action {
+  width: 110px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 th.mat-sort-header-sorted {

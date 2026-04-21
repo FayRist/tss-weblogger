@@ -1,5 +1,5 @@
 <h1 mat-dialog-title class="text-center">
-  ตั้งค่า User
+  {{ mode === 'create' ? 'เพิ่ม User' : 'ตั้งค่า User' }}
 </h1>
 
 <mat-dialog-content>
@@ -10,7 +10,7 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>UserName</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="userName" disabled>
+                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="userName" [disabled]="mode === 'update'">
                   </mat-form-field>
                 </form>
               </div>
@@ -18,8 +18,27 @@
               <div class="col-6">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
-                  <mat-label>Password</mat-label>
-                    <input matInput class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="passwordHx">
+                  <mat-label>New Password</mat-label>
+                    <input
+                      matInput
+                      class="text-center"
+                      [type]="hideNewPassword ? 'password' : 'text'"
+                      [ngModelOptions]="{standalone: true}"
+                      [(ngModel)]="newPassword"
+                      autocomplete="new-password">
+                    <button
+                      type="button"
+                      mat-icon-button
+                      matSuffix
+                      (click)="hideNewPassword = !hideNewPassword"
+                      [attr.aria-label]="hideNewPassword ? 'Show password' : 'Hide password'">
+                      <mat-icon>{{ hideNewPassword ? 'visibility' : 'visibility_off' }}</mat-icon>
+                    </button>
+                    <mat-hint>
+                      {{ mode === 'create'
+                        ? 'ต้องกรอกรหัสผ่าน 8-16 ตัวอักษร'
+                        : 'เว้นว่างได้ หากไม่ต้องการเปลี่ยนรหัสผ่าน (8-16 ตัวอักษร)' }}
+                    </mat-hint>
                   </mat-form-field>
                 </form>
               </div>
@@ -55,6 +74,8 @@
 
 <mat-dialog-actions class="d-flex justify-content-center mt-2">
   <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
-  <button type="button" class="btn btn-success ms-2"   matButton cdkFocusInitial (click)="submitUpdateUser()">ยืนยัน</button>
+  <button type="button" class="btn btn-success ms-2" matButton cdkFocusInitial (click)="submitUser()">
+    {{ mode === 'create' ? 'เพิ่มผู้ใช้' : 'ยืนยัน' }}
+  </button>
 </mat-dialog-actions>
 

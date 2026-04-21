@@ -1,12 +1,31 @@
+Options -Indexes
+
+<FilesMatch "\.(env|log|config|ini)$">
+  Require all denied
+</FilesMatch>
+
 <IfModule mod_headers.c>
-  Header always set Access-Control-Allow-Origin "*"
-  Header always set Access-Control-Allow-Methods "GET, OPTIONS"
+  # Header always set Access-Control-Allow-Origin "https://yourdomain.com"
+  Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
   Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+
+  # security headers
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-XSS-Protection "1; mode=block"
 </IfModule>
 
-# ให้ตอบ OPTIONS (กรณีมี preflight)
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
+
   RewriteCond %{REQUEST_METHOD} =OPTIONS
   RewriteRule ^ - [R=204,L]
+
+  RewriteBase /tss/
+
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /tss/index.html [L]
 </IfModule>

@@ -1,0 +1,47 @@
+<h1 mat-dialog-title class="text-center">{{ mode === 'edit' ? 'แก้ไขสิทธิ์ Race/Logger' : 'กำหนดสิทธิ์ Race/Logger' }}</h1>
+
+<mat-dialog-content>
+  <div class="card card-bg-transparen">
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-12">
+          <div class="small text-muted text-white">ผู้ใช้: <strong>{{ userName || '-' }}</strong></div>
+        </div>
+
+        <div class="col-12">
+          <form class="mat-input-form">
+            <mat-form-field class="w-100">
+              <mat-label>Event</mat-label>
+              <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="selectedEventId" (selectionChange)="onEventChange()" [disabled]="lockEventRace">
+                @for (e of eventList; track e.event_id) {
+                  <mat-option [value]="e.event_id">{{ e.event_name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          </form>
+        </div>
+
+        <div class="col-12">
+          <form class="mat-input-form">
+            <mat-form-field class="w-100">
+              <mat-label>Logger (NBR | Driver)</mat-label>
+              <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="selectedCarNumbers" multiple [disabled]="!selectedEventId">
+                @for (l of loggerCandidates; track l.carNumber) {
+                  <mat-option [value]="l.carNumber">
+                    NBR {{ l.carNumber }} | {{ l.driverName || '-' }}
+                  </mat-option>
+                }
+              </mat-select>
+              <mat-hint>ไม่เลือกเลย = ผู้ใช้นี้เห็น 0 คันใน race ที่เลือก</mat-hint>
+            </mat-form-field>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions class="d-flex justify-content-center mt-2">
+  <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
+  <button type="button" class="btn btn-success ms-2" matButton (click)="savePermissions()">{{ mode === 'edit' ? 'อัปเดต' : 'บันทึก' }}</button>
+</mat-dialog-actions>

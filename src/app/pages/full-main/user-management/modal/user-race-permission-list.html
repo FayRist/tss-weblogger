@@ -1,0 +1,45 @@
+<h1 mat-dialog-title class="text-center">รายการสิทธิ์ Race/Logger</h1>
+
+<mat-dialog-content>
+  <div class="card card-bg-transparen">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small text-muted text-white">ผู้ใช้: <strong>{{ userName || '-' }}</strong></div>
+        <button type="button" class="btn btn-secondary" (click)="openAdd()">Add Event</button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover align-middle mb-0 permission-list-table">
+          <thead>
+            <tr>
+              <th class="permission-col-event">Event</th>
+              <th class="permission-col-count">Visible Logger</th>
+              <th class="permission-col-action">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (eventRows.length === 0) {
+              <tr>
+                <td colspan="3" class="text-center text-muted">ยังไม่มีสิทธิ์ที่กำหนดไว้</td>
+              </tr>
+            } @else {
+              @for (row of eventRows; track row.eventId) {
+                <tr>
+                  <td class="permission-col-event">{{ row.eventName || '-' }}</td>
+                  <td class="permission-col-count">{{ row.loggerCount }}</td>
+                  <td class="permission-col-action">
+                    <button type="button" class="btn btn-warning btn-sm" (click)="openEditByEvent(row)">Manage</button>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions class="d-flex justify-content-center mt-2">
+  <button type="button" class="btn btn-danger" matButton mat-dialog-close>ปิด</button>
+</mat-dialog-actions>
