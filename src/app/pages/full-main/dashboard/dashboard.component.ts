@@ -19,9 +19,11 @@ import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
 import { merge, Subscription, startWith } from 'rxjs';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 import { formControlWithInitial } from '../../../utility/rxjs-utils';
 import {MatTableDataSource, MatTableModule} from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
+import { MatSort, MatSortModule, Sort } from '@angular/material/sort';
 import { CommonModule } from '@angular/common';
 import { LoggerItem } from '../../../model/api-response-model';
 import { TimeService } from '../../../service/time.service';
@@ -31,6 +33,7 @@ import { AuthService } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 import Swal from 'sweetalert2';
 import { RaceConfigMode, RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 type AfrSeverity = 'normal' | 'warning' | 'penalty';
@@ -75,7 +78,7 @@ function toDate(v: unknown): Date {
   imports: [MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
     , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule
     , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule
-    , MatSlideToggleModule, MatMenuModule],
+    , MatSlideToggleModule, MatMenuModule, MatSortModule],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -122,6 +125,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   showRoutePath: boolean = true;
   isSortLocked: boolean = false; // สถานะล็อคตำแหน่งการ sort
   lockedLoggersSnapshot: LoggerItem[] | null = null; // เก็บ snapshot ของตำแหน่งที่ล็อค
+  isMatSortActive: boolean = false;
 
   displayedColumns: string[] = [
     'carNumber',
@@ -137,6 +141,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   dataSource = new MatTableDataSource<LoggerItem>([]);
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
+  @ViewChild(MatSort) sort!: MatSort;
+  private readonly _liveAnnouncer = inject(LiveAnnouncer);
 
   filterLogList: any[] = [
     {
@@ -297,8 +303,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     // FILTER
     let filtered = this.filterLoggers(allLoggers, filter);
 
-    // SORT: penalty ขึ้นก่อน / Count (มาก→น้อย) / Status(online→offline) / offline onlineTime(ใหม่→เก่า) / NBR. (น้อย→มาก)
-    filtered = this.sortLoggers(filtered);
+    // SORT: default ใช้ custom sort, แต่ถ้าเปิด matSort ให้ใช้ลำดับจาก matSort
+    if (!this.isMatSortActive) {
+      filtered = this.sortLoggers(filtered);
+    }
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
     this.onShowAllLoggers = filtered;
@@ -337,13 +345,31 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.subscriptions.push(this.reactiveUiSubscription);
     }
 
-    const contextSub = this.navContext.context$.subscribe(ctx => {
-      this.parameterRaceId = Number(ctx.raceId ?? 0);
-      this.parameterEventId = Number(ctx.eventId ?? 0);
-      this.parameterSegment = ctx.segment ?? '';
-      this.parameterClass = ctx.classCode ?? '';
-      this.circuitName = ctx.circuit ?? '';
-      this.statusRace = ctx.raceMode ?? 'live';
+    const contextSub = this.navContext.context$.pipe(
+      debounceTime(120),
+      map((ctx) => ({
+        raceId: Number(ctx.raceId ?? 0),
+        eventId: Number(ctx.eventId ?? 0),
+        segment: ctx.segment ?? '',
+        classCode: ctx.classCode ?? '',
+        circuit: ctx.circuit ?? '',
+        raceMode: ctx.raceMode ?? 'live',
+      })),
+      distinctUntilChanged((a, b) =>
+        a.raceId === b.raceId &&
+        a.eventId === b.eventId &&
+        a.segment === b.segment &&
+        a.classCode === b.classCode &&
+        a.circuit === b.circuit &&
+        a.raceMode === b.raceMode
+      )
+    ).subscribe(ctx => {
+      this.parameterRaceId = ctx.raceId;
+      this.parameterEventId = ctx.eventId;
+      this.parameterSegment = ctx.segment;
+      this.parameterClass = ctx.classCode;
+      this.circuitName = ctx.circuit;
+      this.statusRace = ctx.raceMode;
 
       const contextKey = [
         this.parameterRaceId,
@@ -432,8 +458,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     const filtered = this.filterLoggers(this.allLoggers, value);
-    // เรียงลำดับข้อมูลตามที่กำหนด
-    this.onShowAllLoggers = this.sortLoggers(filtered);
+    // ถ้า user กำลังใช้ matSort อยู่ ให้คงลำดับจาก matSort
+    this.onShowAllLoggers = this.isMatSortActive ? filtered : this.sortLoggers(filtered);
     this.dataSource.data = this.onShowAllLoggers;
   }
 
@@ -829,6 +855,39 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     };
 
     this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
+    this.dataSource.sortingDataAccessor = (item: LoggerItem, property: string): string | number => {
+      switch (property) {
+        case 'carNumber':
+          return Number(item.carNumber ?? 0);
+        case 'loggerId':
+          return Number(item.loggerId ?? 0);
+        case 'afr':
+          return Number(item.afr ?? 0);
+        case 'countDetect':
+          return Number(item.currentCountDetect ?? 0);
+        default:
+          return (item as any)[property] ?? '';
+      }
+    };
+  }
+
+  onMatSortChange(sortState: Sort): void {
+    this.isMatSortActive = !!sortState.direction;
+    this.announceSortChange(sortState);
+
+    if (!this.isMatSortActive) {
+      this.updateView(this.allLoggers);
+      this.cdr.markForCheck();
+    }
+  }
+
+  announceSortChange(sortState: Sort): void {
+    if (sortState.direction) {
+      this._liveAnnouncer.announce(`Sorted ${sortState.direction}ending`);
+    } else {
+      this._liveAnnouncer.announce('Sorting cleared');
+    }
   }
 
   /** Toggle สถานะล็อคตำแหน่งการ sort */

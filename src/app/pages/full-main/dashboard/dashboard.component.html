@@ -115,12 +115,13 @@
   <div class="row">
     <div class="table-scroll-xy">
     <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
-      mat-table [dataSource]="dataSource" [class.sort-locked]="isSortLocked">
+      mat-table [dataSource]="dataSource" [class.sort-locked]="isSortLocked"
+      matSort (matSortChange)="onMatSortChange($event)">
 
       <!-- carNumber Column -->
       <ng-container matColumnDef="carNumber">
         <th mat-header-cell
-          *matHeaderCellDef>&nbsp;&nbsp;
+          *matHeaderCellDef mat-sort-header sortActionDescription="Sort by NBR.">&nbsp;&nbsp;
           NBR.
         </th>
         <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)" > {{element.carNumber}} </td>
@@ -155,7 +156,7 @@
 
       <!-- loggerId Column -->
       <ng-container matColumnDef="loggerId">
-        <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by Logger">&nbsp;&nbsp;
           Logger
         </th>
         <td class="text-center"  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > TSS{{element.loggerId}} </td>
@@ -180,7 +181,7 @@
 
       <!-- firstName Column -->
       <ng-container matColumnDef="afr">
-        <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by AFR">&nbsp;&nbsp;
           AFR
         </th>
         <td class="text-center"  mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.afr || 0| number:'1.1-1'}} </td>
@@ -188,7 +189,7 @@
 
       <!-- numberLimit Column -->
       <ng-container matColumnDef="countDetect">
-        <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;
+        <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by Count">&nbsp;&nbsp;
           Count
         </th>
         <!-- <td class="text-center"   mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId)"  > {{element.countDetect || 0}} </td> -->

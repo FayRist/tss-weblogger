@@ -232,8 +232,8 @@ export class RaceComponent implements OnInit, OnDestroy {
       return d ? d.getTime() : Number.MAX_SAFE_INTEGER;
     };
 
-    const apiStatusRace = (statusRace === 'history') ? 'history' : (statusRace === 'live') ? 'live' : 'prerace';
-    const RaceSub = this.eventService.getRace(eventId, apiStatusRace).subscribe(
+    // Race list page should show all races in selected event (no statusRace filter).
+    const RaceSub = this.eventService.getRace(eventId, '').subscribe(
       race => {
         console.log("race : ",race);
 

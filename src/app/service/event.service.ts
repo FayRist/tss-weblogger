@@ -366,20 +366,21 @@ export class EventService {
     params = params.set('race_id', String(race_id));
     params = params.set('mode', mode);
 
-    return this.http.get<RaceConfigSnapshotApiResponse>(url, { params }).pipe(
+    return this.http.get<any>(url, { params }).pipe(
       map((response) => {
-        if (!response?.config) {
+        const payload = response?.data ?? response;
+        if (!payload?.config) {
           throw new Error('Snapshot response missing config');
         }
 
         return {
-          success: response.success !== false,
-          race_id,
-          mode: response.mode ?? mode,
-          source: (response.source ?? (mode === 'history' ? 'global_fallback' : 'global')) as RaceConfigSource,
-          schema_version: Number(response.schema_version ?? 1),
-          config: this.normalizeAfrConfig(response.config),
-          meta: response.meta,
+          success: payload.success !== false,
+          race_id: Number(payload.race_id ?? race_id),
+          mode: payload.mode ?? mode,
+          source: (payload.source ?? (mode === 'history' ? 'global_fallback' : 'global')) as RaceConfigSource,
+          schema_version: Number(payload.schema_version ?? 1),
+          config: this.normalizeAfrConfig(payload.config),
+          meta: payload.meta,
         } as RaceConfigSnapshotApiResponse;
       }),
       catchError(() => this.getGlobalAfrConfigAsSnapshot(mode, race_id, mode === 'history' ? 'global_fallback' : 'global'))
