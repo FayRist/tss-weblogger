@@ -10,6 +10,30 @@ import { ApiConfigResponse, ApiDropDownoptionEventResponse, ApiDropDownResponse,
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
 import { AfrConfig, RaceConfigMode, RaceConfigSnapshotApiResponse, RaceConfigSource } from '../model/api-race-config-snapshot.model';
+
+export interface AlertHistoryItem {
+  event_id: number;
+  race_id: number;
+  logger_id: string;
+  car_number: string;
+  lat: number;
+  long: number;
+  afr: number;
+  time: string;
+  status: 'warning' | 'penalty';
+  condition_detail: string;
+}
+
+export interface AlertHistoryLogPayload {
+  event_id: number;
+  race_id: number;
+  logger_id: string;
+  car_number: string;
+  afr: number;
+  time: string;
+  status: 'warning' | 'penalty';
+  condition_detail: string;
+}
 // helper เล็ก ๆ
 const toIntOrDefault = (v: any, d: number) => {
   const n = Number(v);
@@ -43,7 +67,9 @@ export class EventService {
     parameterRaceId: any,
     parameterSegment: any,
     parameterClass: any,
-    parameterLoggerID: any
+    parameterLoggerID: any,
+    parameterEventID: any,
+    parameterCarNBR: any
   ): Observable<LoggerRaceDetailModel> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_DETAIL_LOGGERS_IN_RACE);
     const payload = {
@@ -51,6 +77,8 @@ export class EventService {
       segment_type: toStrDefault(parameterSegment ?? 'pickup', 'pickup'),
       class_type: toStrDefault(parameterClass ?? 'a', 'a'),
       logger_id: parameterLoggerID,
+      event_id: parameterEventID,
+      car_number: parameterCarNBR,
     };
 
     return this.http.post<ApiLoggerRaceResponse>(url, payload).pipe(
@@ -122,6 +150,34 @@ export class EventService {
           }));
           return this.dataLoggerInRace;
       })
+    );
+  }
+
+  logAlertHistory(payload: AlertHistoryLogPayload): Observable<{ success: boolean }> {
+    const url = getApiUrl('/realtime/alert-history/log');
+    return this.http.post<{ success: boolean }>(url, payload).pipe(
+      catchError(() => of({ success: false }))
+    );
+  }
+
+  getAlertHistory(params: {
+    eventId: number;
+    raceId: number;
+    loggerId: string | number;
+    carNumber: string | number;
+    limit?: number;
+  }): Observable<AlertHistoryItem[]> {
+    const httpParams = new HttpParams()
+      .set('event_id', String(params.eventId ?? ''))
+      .set('race_id', String(params.raceId ?? ''))
+      .set('logger_id', String(params.loggerId ?? ''))
+      .set('car_number', String(params.carNumber ?? ''))
+      .set('limit', String(params.limit ?? 5));
+
+    const url = getApiUrl('/realtime/alert-history');
+    return this.http.get<{ items?: AlertHistoryItem[] }>(url, { params: httpParams }).pipe(
+      map((res) => Array.isArray(res?.items) ? res.items : []),
+      catchError(() => of([]))
     );
   }
 
@@ -443,6 +499,7 @@ export class EventService {
       max_count: Math.max(1, Math.floor(toNum(config?.max_count, 3))),
       graphs_afr_min: toNum(config?.graphs_afr_min, 0),
       graphs_afr_max: toNum(config?.graphs_afr_max, 30),
+      afr_alert_on_off: toBool(config?.afr_alert_on_off, true),
     };
   }
 

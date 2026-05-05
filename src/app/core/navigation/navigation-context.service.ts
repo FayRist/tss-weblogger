@@ -10,6 +10,7 @@ export interface NavigationContext {
   segment: string | null;
   classCode: string | null;
   circuit: string | null;
+  carNBR: string | null;
   raceMode: RaceMode;
 }
 
@@ -22,6 +23,7 @@ const DEFAULT_CONTEXT: NavigationContext = {
   segment: null,
   classCode: null,
   circuit: null,
+  carNBR: null,
   raceMode: 'live',
 };
 
@@ -86,6 +88,10 @@ export class NavigationContextService {
       } else {
         out.raceMode = 'live';
       }
+    }
+
+    if ('carNBR' in partial) {
+      out.carNBR = this.toText(partial.carNBR)?.toLowerCase() ?? null;
     }
 
     return out;

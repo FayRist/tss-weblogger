@@ -23,6 +23,7 @@ import { Subscription } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSliderModule } from '@angular/material/slider';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 // import { ColorPickerModule } from "ngx-color-picker";
 // import { InputFieldColorComponent } from "./app/color-input.component/color-input.
 
@@ -47,6 +48,7 @@ export interface configAFRModel {
     MatCardModule,
     MatCheckboxModule,
     MatSliderModule,
+    MatSlideToggleModule,
     CommonModule,
   ],
   templateUrl: './config-afr-modal.component.html',
@@ -74,6 +76,7 @@ export class ConfigAfrModalComponent  implements OnInit {
   afrWarningHigh: number = 0;
   afrPenaltyLow: number = 0;
   countTime: number = 0;
+  afrAlertOnOff: boolean = true;
 
 
   afrGraphsMinLimit: number = 0;
@@ -128,7 +131,7 @@ export class ConfigAfrModalComponent  implements OnInit {
 
   getAllConfig(){
 
-    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max,time_count,afr_penalty_low,afr_warning_high`
+    const form_code = `max_count, limit_afr, graphs_afr_min, graphs_afr_max,time_count,afr_penalty_low,afr_warning_high,afr_alert_on_off`
     const MatchSub = this.eventService.getConfigAdmin(form_code).subscribe(
       config => {
         this.configAFR = [];
@@ -143,6 +146,7 @@ export class ConfigAfrModalComponent  implements OnInit {
         const graphsAfrMinItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0];
         const graphsAfrMaxItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0];
         const timeCountItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'time_count')[0];
+        const afrAlertOnOffItem = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'afr_alert_on_off')[0];
 
         // if (limitAfrItem) {
         //   this.afrLimit = Number(limitAfrItem.value) || 0;
@@ -167,6 +171,10 @@ export class ConfigAfrModalComponent  implements OnInit {
         if (timeCountItem) {
           this.countTime = Number(timeCountItem.value) || 0;
         }
+        if (afrAlertOnOffItem) {
+          const value = String(afrAlertOnOffItem.value ?? '').trim().toLowerCase();
+          this.afrAlertOnOff = value === 'true' || value === '1';
+        }
 
         // ตั้งค่า flag และ trigger change detection
         this.isDataLoaded = true;
@@ -190,6 +198,10 @@ export class ConfigAfrModalComponent  implements OnInit {
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_min')[0].value =this.afrGraphsMinLimit.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'graphs_afr_max')[0].value =this.afrGraphsMaxLimit.toString();
     this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'time_count')[0].value =this.countTime.toString();
+    const afrAlertOnOff = this.configAFR.filter((x: { form_code: string; }) => x.form_code == 'afr_alert_on_off')[0];
+    if (afrAlertOnOff) {
+      afrAlertOnOff.value = this.afrAlertOnOff ? 'true' : 'false';
+    }
 
     this.eventService.updateConfig(this.configAFR).subscribe(
         response => {

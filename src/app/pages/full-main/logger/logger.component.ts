@@ -24,7 +24,7 @@ import { LoggerDataService } from '../../../service/logger-data.service';
 import { WebSocketMessage, WebSocketService } from '../../../service/websocket.service';
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
-import { EventService } from '../../../service/event.service';
+import { AlertHistoryItem, EventService } from '../../../service/event.service';
 import { ResetWarningLoggerComponent } from '../dashboard/reset-warning-logger/reset-warning-logger.component';
 import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
@@ -1319,6 +1319,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   parameterSegment:any = null;
   parameterClass:any = null;
   parameterLoggerID:any = null;
+  parameterEventID:any = null;
+  parameterCarNBR:any = null;
+
+  alertHistoryOpen = false;
+  alertHistoryLoading = false;
+  alertHistoryItems: AlertHistoryItem[] = [];
+  private alertHistoryPollTimer: ReturnType<typeof setInterval> | null = null;
 
   loggerID     = 0;
   carNumber    = '';
@@ -1626,6 +1633,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.circuitName = ctx.circuit ?? '';
     this.currentLoggerId = String(this.parameterLoggerID || '').trim();
 
+    this.parameterEventID = Number(ctx.eventId ?? 0);
+    this.parameterCarNBR = ctx.carNBR ?? 0;
+
     this.loadAndApplyConfig(this.isHistoryMode ? 'history' : 'live', this.parameterRaceId);
 
     // performance: batched realtime UI flush - initialize batch subscription
@@ -1718,7 +1728,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // }
 
     this.eventService
-      .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID)
+      .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID
+          , this.parameterEventID, this.parameterCarNBR
+      )
       .subscribe({
         next: (detail) => {
           this.loggerID     = detail.loggerId;
@@ -1751,6 +1763,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.afrAverage   = detail.afrAverage;
           this.loggerStatus       = detail.status || 'Offline';
 
+          // Load latest 5 warning/penalty alerts for dropdown
+          this.loadAlertHistory(5);
+
           // เริ่มโหลดข้อมูลหลังจากได้ข้อมูลจาก API แล้วเท่านั้น
           this.initializeDataLoading();
 
@@ -1762,6 +1777,74 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         error: (err) => console.error('getDetailLoggerInRace error:', err),
       });
 
+  }
+
+  toggleAlertHistoryDropdown(): void {
+    this.alertHistoryOpen = !this.alertHistoryOpen;
+    if (this.alertHistoryOpen) {
+      this.loadAlertHistory(5);
+      this.startAlertHistoryPolling();
+    } else {
+      this.stopAlertHistoryPolling();
+    }
+  }
+
+  private canLoadAlertHistory(): boolean {
+    const eventId = Number(this.parameterEventID ?? 0);
+    const raceId = Number(this.parameterRaceId ?? 0);
+    const loggerId = String(this.parameterLoggerID ?? this.loggerID ?? '').trim();
+    const carNumber = String(this.parameterCarNBR ?? this.carNumber ?? '').trim();
+
+    return Number.isFinite(eventId) && eventId > 0
+      && Number.isFinite(raceId) && raceId > 0
+      && loggerId.length > 0
+      && carNumber.length > 0;
+  }
+
+  private loadAlertHistory(limit = 5): void {
+    if (!this.canLoadAlertHistory()) {
+      this.alertHistoryItems = [];
+      return;
+    }
+
+    const eventId = Number(this.parameterEventID ?? 0);
+    const raceId = Number(this.parameterRaceId ?? 0);
+    const loggerId = String(this.parameterLoggerID ?? this.loggerID ?? '').trim();
+    const carNumber = String(this.parameterCarNBR ?? this.carNumber ?? '').trim();
+
+    this.alertHistoryLoading = true;
+    this.eventService.getAlertHistory({
+      eventId,
+      raceId,
+      loggerId,
+      carNumber,
+      limit,
+    }).subscribe({
+      next: (items) => {
+        this.alertHistoryItems = items ?? [];
+        this.alertHistoryLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.alertHistoryItems = [];
+        this.alertHistoryLoading = false;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  private startAlertHistoryPolling(): void {
+    this.stopAlertHistoryPolling();
+    this.alertHistoryPollTimer = setInterval(() => {
+      this.loadAlertHistory(5);
+    }, 5000);
+  }
+
+  private stopAlertHistoryPolling(): void {
+    if (this.alertHistoryPollTimer) {
+      clearInterval(this.alertHistoryPollTimer);
+      this.alertHistoryPollTimer = null;
+    }
   }
 
   private initializeDataLoading(): void {
@@ -3669,7 +3752,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.lastDbCountSyncAt = now;
 
     this.eventService
-      .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID)
+      .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID
+        , this.parameterEventID, this.parameterCarNBR
+      )
       .subscribe({
         next: (detail) => {
           let hasUiChange = false;
@@ -6412,6 +6497,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.wsStatsUpdateInterval = null;
     }
 
+    this.stopAlertHistoryPolling();
+
     // Close realtime WebSocket connection
     this.closeRealtimeSocket();
     this.ro?.disconnect();
@@ -6754,6 +6841,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           const now = new Date();
           const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
           const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+          const logger = this.parameterLoggerID.toString() || '';
+          const firmware_version = '';
+
 
           // Prepare data array for export
           const exportData: any[] = detail.map(logger => ({
@@ -6783,6 +6873,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           // Build file content
           let content = `File created on ${dateStr} @ ${timeStr}\n\n`;
+          content += `[logger ID] : ${logger} , [Firmware Version] : ${firmware_version}\n\n`;
           content += `[header]\n`;
           content += `satellites\n`;
           content += `time\n`;

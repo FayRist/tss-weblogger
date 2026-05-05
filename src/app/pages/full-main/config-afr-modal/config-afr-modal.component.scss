@@ -36,3 +36,70 @@ p {
 .slider-result-card .slider-value-label {
   font-weight: 600;
 }
+
+.afr-alert-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.afr-alert-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.afr-alert-title {
+  color: #fff;
+  font-weight: 600;
+  margin: 0;
+}
+
+:host ::ng-deep .afr-alert-toggle {
+  --mdc-switch-unselected-track-color: #ef4444;
+  --mdc-switch-unselected-hover-track-color: #ef4444;
+  --mdc-switch-unselected-focus-track-color: #ef4444;
+  --mdc-switch-unselected-pressed-track-color: #ef4444;
+  --mdc-switch-unselected-icon-color: transparent;
+  --mdc-switch-selected-track-color: #22c55e;
+  --mdc-switch-selected-hover-track-color: #22c55e;
+  --mdc-switch-selected-focus-track-color: #22c55e;
+  --mdc-switch-selected-pressed-track-color: #22c55e;
+  --mdc-switch-selected-icon-color: transparent;
+}
+
+:host ::ng-deep .afr-alert-toggle .mdc-switch__icons {
+  display: none;
+}
+
+
+.afr-toggle-wrap {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.afr-toggle-text {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.afr-toggle-text.on {
+  left: 8px;
+  color: #14532d;
+}
+
+.afr-toggle-text.off {
+  right: 8px;
+  color: #ffffff;
+}

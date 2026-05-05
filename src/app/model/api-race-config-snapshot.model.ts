@@ -11,6 +11,7 @@ export interface AfrConfig {
   max_count: number;
   graphs_afr_min: number;
   graphs_afr_max: number;
+  afr_alert_on_off: boolean;
 }
 
 export interface RaceConfigSnapshotMeta {

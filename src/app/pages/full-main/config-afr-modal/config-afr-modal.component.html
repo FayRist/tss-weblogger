@@ -6,7 +6,7 @@
         <div class="card card-bg-transparen" *ngIf="isDataLoaded">
           <div class="card-body">
             <div class="row">
-              <div class="col-12">
+              <div class="col-5">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Time to count AFR</mat-label>
@@ -14,7 +14,24 @@
                   </mat-form-field>
                 </form>
               </div>
-
+              <div class="col-7">
+                <div class="afr-alert-card">
+                  <div class="afr-alert-head">
+                    <label class="afr-alert-title">AFR Alert</label>
+                    <div class="afr-toggle-wrap ">
+                      <mat-slide-toggle
+                        class="afr-alert-toggle"
+                        [ngModelOptions]="{ standalone: true }"
+                        [(ngModel)]="afrAlertOnOff"
+                        aria-label="AFR Alert On Off">
+                      </mat-slide-toggle>
+                      <span class="afr-toggle-text" [ngClass]="afrAlertOnOff ? 'on' : 'off'">
+                        {{ afrAlertOnOff ? 'On' : 'Off' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="col-12">
                 <div class="slider-label-container">
                   <label id="slider-name-label" class="slider-name-label">Count Max</label>
@@ -88,4 +105,3 @@
   <button type="button" class="btn btn-danger" matButton mat-dialog-close>ยกเลิก</button>
   <button type="button" class="btn btn-success ms-2"   matButton cdkFocusInitial (click)="submitUpdateConfig()">ยืนยัน</button>
 </mat-dialog-actions>
-

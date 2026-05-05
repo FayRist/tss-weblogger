@@ -506,6 +506,38 @@ button[mat-raised-button] {
   margin-top: 0 !important;
 }
 
+.logger-meta-item--alerts {
+  position: relative;
+  z-index: 1040;
+}
+
+.logger-alert-dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1040;
+  border: 1px solid #33414c;
+  background: #161d23;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.logger-alert-empty {
+  color: #9fb0bf;
+  font-size: 12px;
+  text-align: center;
+}
+
+.logger-alert-item {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.logger-alert-item-head {
+  display: flex;
+  justify-content: space-between;
+}
+
 .logger-meta-grid--race-team {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

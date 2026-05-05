@@ -181,40 +181,67 @@ td.mat-mdc-cell{
   line-height: 1.4;
 }
 
-:host ::ng-deep .mat-mdc-row.row-penalty .mat-mdc-cell {
-  border-top: 2px solid #ef4444;
-  border-bottom: 2px solid #ef4444;
-  background: rgba(239, 68, 68, 0.08);
+:host ::ng-deep td.mat-mdc-cell.count-alert-warning-blink,
+:host ::ng-deep td.mat-mdc-cell.count-alert-warning-hold,
+:host ::ng-deep td.mat-mdc-cell.count-alert-penalty-blink,
+:host ::ng-deep td.mat-mdc-cell.count-alert-penalty-hold {
+  border-radius: 6px;
+  font-weight: 700;
 }
 
-:host ::ng-deep .mat-mdc-row.row-penalty .mat-mdc-cell:first-child {
-  border-left: 2px solid #ef4444;
+:host ::ng-deep td.mat-mdc-cell.count-alert-warning-blink {
+  color: #fef3c7;
+  box-shadow: inset 0 0 0 2px #facc15;
+  animation: count-warning-blink 1s steps(1, end) 1;
 }
 
-:host ::ng-deep .mat-mdc-row.row-penalty .mat-mdc-cell:last-child {
-  border-right: 2px solid #ef4444;
+:host ::ng-deep td.mat-mdc-cell.count-alert-warning-hold {
+  color: #fef3c7;
+  box-shadow: inset 0 0 0 2px #facc15;
+  background: rgba(250, 204, 21, 0.22);
 }
 
-:host ::ng-deep .mat-mdc-row.row-warning .mat-mdc-cell {
-  border-top: 2px solid #f59e0b;
-  border-bottom: 2px solid #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
+:host ::ng-deep td.mat-mdc-cell.count-alert-penalty-blink {
+  color: #fee2e2;
+  box-shadow: inset 0 0 0 2px #ef4444;
+  background: rgba(239, 68, 68, 0.18);
+  animation: count-penalty-blink 2s steps(1, end) 1;
 }
 
-:host ::ng-deep .mat-mdc-row.row-warning .mat-mdc-cell:first-child {
-  border-left: 2px solid #f59e0b;
+:host ::ng-deep td.mat-mdc-cell.count-alert-penalty-hold {
+  color: #fee2e2;
+  box-shadow: inset 0 0 0 2px #ef4444;
+  background: rgba(239, 68, 68, 0.2);
 }
 
-:host ::ng-deep .mat-mdc-row.row-warning .mat-mdc-cell:last-child {
-  border-right: 2px solid #f59e0b;
+@keyframes count-warning-blink {
+  0%, 24% {
+    background: rgba(250, 204, 21, 0.26);
+  }
+  25%, 49% {
+    background: transparent;
+  }
+  50%, 74% {
+    background: rgba(250, 204, 21, 0.26);
+  }
+  75%, 100% {
+    background: transparent;
+  }
 }
 
-.text-danger {
-  color: #EF4444;
-  font-weight: bold;
-  border: 2px solid #EF4444; /* ✅ เพิ่มบรรทัดนี้ */
-  border-radius: 4px;       /* (แนะนำ) ทำให้ขอบมนสวยงาม */
-
+@keyframes count-penalty-blink {
+  0%, 24% {
+    background: rgba(239, 68, 68, 0.3);
+  }
+  25%, 49% {
+    background: transparent;
+  }
+  50%, 74% {
+    background: rgba(239, 68, 68, 0.3);
+  }
+  75%, 100% {
+    background: transparent;
+  }
 }
 
 /* ปิดการใช้งาน sort headers เมื่อล็อคตำแหน่ง */

@@ -34,6 +34,7 @@ import { NavigationContextService } from '../../../core/navigation/navigation-co
 import Swal from 'sweetalert2';
 import { RaceConfigMode, RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { AlertHistoryLogPayload } from '../../../service/event.service';
 
 type FilterKey = 'all' | 'allWarning' | 'allSmokeDetect' | 'excludeSmokeDetect';
 type AfrSeverity = 'normal' | 'warning' | 'penalty';
@@ -57,6 +58,13 @@ interface LoggerAlertState {
 
 interface LoggerRowHighlightState {
   severity: Exclude<AfrSeverity, 'normal'>;
+  expiresAt: number;
+}
+
+type CountCellAlertPhase = 'warning-blink' | 'warning-hold' | 'penalty-blink' | 'penalty-hold';
+
+interface CountCellAlertState {
+  phase: CountCellAlertPhase;
   expiresAt: number;
 }
 
@@ -117,9 +125,17 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly warningHighlightHoldMs = 7000;
   private readonly penaltyHighlightHoldMs = 10000;
   private readonly loggerRowHighlightState = new Map<number, LoggerRowHighlightState>();
+  private readonly warningCellBlinkMs = 1000;
+  private readonly warningCellHoldMs = 1000;
+  private readonly penaltyCellBlinkMs = 2000;
+  private readonly penaltyCellHoldMs = 2000;
+  private readonly countCellAlertState = new Map<number, CountCellAlertState>();
+  private readonly countCellAlertTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   configAFR: any;
   configSource: RaceConfigSource = 'global';
+
+  AFRalertOnOff: boolean = true;
 
   sortStatus:string = '';
   showRoutePath: boolean = true;
@@ -317,6 +333,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnDestroy() {
     this.subscriptions.forEach(s => s.unsubscribe());
     this.disconnectWebSocket();
+    this.clearAllCountCellAlertTimers();
   }
 
   parameterRaceId:any = null;
@@ -353,6 +370,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         segment: ctx.segment ?? '',
         classCode: ctx.classCode ?? '',
         circuit: ctx.circuit ?? '',
+        carNBR: Number(ctx.carNBR ?? 0),
         raceMode: ctx.raceMode ?? 'live',
       })),
       distinctUntilChanged((a, b) =>
@@ -361,6 +379,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         a.segment === b.segment &&
         a.classCode === b.classCode &&
         a.circuit === b.circuit &&
+        a.carNBR === b.carNBR &&
         a.raceMode === b.raceMode
       )
     ).subscribe(ctx => {
@@ -574,6 +593,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     const warningHighRaw = toNum(config?.afr_warning_high, 16.0);
     const warningHigh = warningHighRaw > penaltyLow ? warningHighRaw : penaltyLow + 0.1;
 
+    this.AFRalertOnOff = this.toBool(config?.afr_alert_on_off, false);
+
     this.countMax = Math.max(1, Math.floor(toNum(config?.max_count, 3)));
     this.afrRuleConfig = {
       penaltyLow,
@@ -606,6 +627,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const afr = Number(rawAfr);
     if (!Number.isFinite(afr) || afr <= 0) {
+      return null;
+    }
+
+    // Treat AFR below 10 as logger-error noise only when runtime config keeps
+    // penalty threshold at 10 or above. If config is set below 10, respect config.
+    if (this.afrRuleConfig.penaltyLow >= 10 && afr < 10) {
       return null;
     }
 
@@ -696,14 +723,102 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   getRowClass(item: LoggerItem): string {
-    const severity = this.getDisplaySeverity(item, Date.now());
-    if (severity === 'penalty') {
-      return 'row-penalty';
-    }
-    if (severity === 'warning') {
-      return 'row-warning';
-    }
+    // Row-level highlight disabled; use Count cell-only alert styling.
     return '';
+  }
+
+  private clearCountCellAlertTimer(loggerId: number): void {
+    const timer = this.countCellAlertTimers.get(loggerId);
+    if (timer) {
+      clearTimeout(timer);
+      this.countCellAlertTimers.delete(loggerId);
+    }
+  }
+
+  private clearAllCountCellAlertTimers(): void {
+    for (const timer of this.countCellAlertTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.countCellAlertTimers.clear();
+    this.countCellAlertState.clear();
+  }
+
+  private activateCountCellAlert(loggerId: number, severity: 'warning' | 'penalty'): void {
+    this.clearCountCellAlertTimer(loggerId);
+    const now = Date.now();
+
+    if (severity === 'warning') {
+      this.countCellAlertState.set(loggerId, {
+        phase: 'warning-blink',
+        expiresAt: now + this.warningCellBlinkMs,
+      });
+
+      const blinkTimer = setTimeout(() => {
+        this.countCellAlertState.set(loggerId, {
+          phase: 'warning-hold',
+          expiresAt: Date.now() + this.warningCellHoldMs,
+        });
+        this.cdr.markForCheck();
+
+        const holdTimer = setTimeout(() => {
+          this.countCellAlertState.delete(loggerId);
+          this.countCellAlertTimers.delete(loggerId);
+          this.cdr.markForCheck();
+        }, this.warningCellHoldMs);
+
+        this.countCellAlertTimers.set(loggerId, holdTimer);
+      }, this.warningCellBlinkMs);
+
+      this.countCellAlertTimers.set(loggerId, blinkTimer);
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.countCellAlertState.set(loggerId, {
+      phase: 'penalty-blink',
+      expiresAt: now + this.penaltyCellBlinkMs,
+    });
+
+    const blinkTimer = setTimeout(() => {
+      this.countCellAlertState.set(loggerId, {
+        phase: 'penalty-hold',
+        expiresAt: Date.now() + this.penaltyCellHoldMs,
+      });
+      this.cdr.markForCheck();
+
+      const holdTimer = setTimeout(() => {
+        this.countCellAlertState.delete(loggerId);
+        this.countCellAlertTimers.delete(loggerId);
+        this.cdr.markForCheck();
+      }, this.penaltyCellHoldMs);
+
+      this.countCellAlertTimers.set(loggerId, holdTimer);
+    }, this.penaltyCellBlinkMs);
+
+    this.countCellAlertTimers.set(loggerId, blinkTimer);
+    this.cdr.markForCheck();
+  }
+
+  getCountCellClass(item: LoggerItem): string {
+    const loggerId = this.getLoggerId(item);
+    if (loggerId == null) {
+      return '';
+    }
+
+    const state = this.countCellAlertState.get(loggerId);
+    if (!state) {
+      return '';
+    }
+
+    if (state.expiresAt <= Date.now()) {
+      this.countCellAlertState.delete(loggerId);
+      return '';
+    }
+
+    if (state.phase === 'warning-blink') return 'count-alert-warning-blink';
+    if (state.phase === 'warning-hold') return 'count-alert-warning-hold';
+    if (state.phase === 'penalty-blink') return 'count-alert-penalty-blink';
+    return 'count-alert-penalty-hold';
   }
 
   private maybeNotifyAfrCondition(item: LoggerItem): void {
@@ -759,6 +874,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       const message = `NBR ${nbr} ค่า AFR ${afrText} ผิด Condition Penalty (AFR < ${this.afrRuleConfig.penaltyLow.toFixed(1)})`;
+      this.activateCountCellAlert(loggerId, 'penalty');
+      this.logAlertHistoryEvent(item, afr, 'penalty', message);
       this.notifyByRole('penalty', message, nbr);
 
       this.loggerAlertState.set(loggerId, {
@@ -796,6 +913,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       const message = `NBR ${nbr} Warning ครั้งที่ ${warningCount} ด้วยค่า AFR ${afrText} (Condition Warning: ${this.afrRuleConfig.penaltyLow.toFixed(1)} <= AFR < ${this.afrRuleConfig.warningHigh.toFixed(1)})`;
+      this.activateCountCellAlert(loggerId, 'warning');
+      this.logAlertHistoryEvent(item, afr, 'warning', message);
       this.notifyByRole('warning', message, nbr);
 
       this.loggerAlertState.set(loggerId, {
@@ -806,6 +925,37 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         warningNotifications: prev.warningNotifications + 1,
       });
     }
+  }
+
+  private logAlertHistoryEvent(item: LoggerItem, afr: number, status: 'warning' | 'penalty', conditionDetail: string): void {
+    const eventId = Number(this.parameterEventId ?? 0);
+    const raceId = Number(this.parameterRaceId ?? 0);
+    const loggerId = String(item.loggerId ?? '').trim();
+    const carNumber = String(item.carNumber ?? '').trim();
+
+    if (!Number.isFinite(eventId) || eventId <= 0 || !Number.isFinite(raceId) || raceId <= 0) {
+      return;
+    }
+    if (!loggerId || !carNumber) {
+      return;
+    }
+
+    const payload: AlertHistoryLogPayload = {
+      event_id: eventId,
+      race_id: raceId,
+      logger_id: loggerId,
+      car_number: carNumber,
+      afr: Number.isFinite(afr) ? afr : 0,
+      time: new Date().toISOString(),
+      status,
+      condition_detail: conditionDetail,
+    };
+
+    this.eventService.logAlertHistory(payload).subscribe({
+      error: () => {
+        // no-op: alert history logging should not block UI warning/penalty flow
+      }
+    });
   }
 
   private notifyByRole(severity: 'warning' | 'penalty', message: string, nbr: string): void {
@@ -824,10 +974,12 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    if (severity === 'penalty') {
-      this.toastr.error(message, `Penalty Alert - NBR ${nbr}`);
-    } else {
-      this.toastr.warning(message, `Warning Alert - NBR ${nbr}`);
+    if(this.AFRalertOnOff == true){
+      if (severity === 'penalty') {
+        this.toastr.error(message, `Penalty Alert - NBR ${nbr}`);
+      } else {
+        this.toastr.warning(message, `Warning Alert - NBR ${nbr}`);
+      }
     }
   }
 
@@ -917,13 +1069,14 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.allLoggers.filter(x => (x.currentCountDetect ?? 0) > 0);
   }
 
-  navigateToLoggerDetail(LoggerId :any) {
+  navigateToLoggerDetail(LoggerId :any, CarNBR: any) {
     this.navContext.patchContext({
       raceId: Number(this.parameterRaceId),
       segment: this.parameterSegment,
       classCode: this.parameterClass,
       loggerId: String(LoggerId),
       circuit: this.circuitName,
+      carNBR: CarNBR.toString(),
       raceMode: this.statusRace === 'history' ? 'history' : (this.statusRace === 'prerace' ? 'prerace' : 'live'),
     });
     this.router.navigate(['/pages', 'logger']);
