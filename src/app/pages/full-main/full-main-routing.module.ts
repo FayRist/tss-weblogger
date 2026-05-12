@@ -25,7 +25,7 @@ const routes: Routes = [
   }, {
     path: 'race',
     canActivate: [roleGuard],
-    data: { roles: ['admin', 'race_team_user'] },
+    data: { roles: ['admin', 'race_team_user', 'mechanic_user'] },
     loadComponent: () => import('./race/race.component').then(m => m.RaceComponent)
   }, {
     path: 'logger',

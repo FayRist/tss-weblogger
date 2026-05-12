@@ -32,5 +32,5 @@ export const CLASS_SEGMENT_LIST = [
 export const MAPS_LIST = [
   { value:'bsc',  name:'Bangsaen Street Circuit, Thailand' },
   { value:'sic',  name:'Petronas Sepang International Circuit, Malaysia' },
-  { value:'bric', name:'Buriram International Circuit, Thailand' },
+  { value:'bric', name:'Chang International Circuit, Thailand' },
 ];

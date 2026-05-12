@@ -340,6 +340,11 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   private navigateToHistoryEventFallback(): void {
     this.navContext.replaceContext({ raceMode: 'history' });
+    const role = this.auth.current?.role;
+    if (role === 'mechanic_user' || role === 'scruitineer') {
+      this.router.navigate(['/pages', 'dashboard']);
+      return;
+    }
     this.router.navigate(['/pages', 'event']);
   }
 
