@@ -464,7 +464,7 @@ export class AddRaceComponent implements OnInit {
       if (start) start.setSeconds(0, 0);
       if (end) end.setSeconds(0, 0);
 
-        let prePayload = {
+      let prePayload = {
         id_list: null,
         season_id: this.seasonId,
         event_id: Number(this.eventId),
@@ -474,6 +474,8 @@ export class AddRaceComponent implements OnInit {
         session_value: String(element.label ?? '').trim(),
         session_start: start,
         session_end: end,
+        active: 0,
+        craet_date: new Date(),
       }
 
       payload.push(prePayload);

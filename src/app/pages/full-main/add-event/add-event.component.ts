@@ -281,6 +281,7 @@ export class AddEventComponent implements OnInit {
       circuitname: this.circuitName,
       eventstart: this.range.controls.start.value,
       eventend: this.range.controls.end.value,
+      active: 0,
     }
 
     this.eventService.addNewEvent(payload).subscribe(

@@ -95,8 +95,17 @@ export class EventComponent implements OnInit {
     return 'prerace';
   }
 
-  canEditEvent(eventItem: eventModel): boolean {
-    return this.statusOf(eventItem) === RaceStatus.Upcoming && Number(eventItem.active ?? 0) === 0;
+  canEditEvent(eventItem: eventModel) {
+    let text = 'prerace';
+
+    const status = this.statusOf(eventItem);
+    if (status === RaceStatus.Finished) {
+      text = 'history';
+    }
+    if (Number(eventItem.active ?? 0) === 1 || status === RaceStatus.Live) {
+      text = 'live';
+    }
+    return text;
   }
 
   ngOnInit() {

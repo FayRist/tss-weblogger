@@ -77,8 +77,8 @@ export class RaceComponent implements OnInit, OnDestroy {
     return 'prerace';
   }
 
-  canEditRace(raceData: RaceModel): boolean {
-    return this.resolveRaceMode(raceData) === 'prerace';
+  canEditRace(raceData: RaceModel) {
+    return this.resolveRaceMode(raceData);
   }
 
   ngOnInit() {
@@ -294,6 +294,9 @@ export class RaceComponent implements OnInit, OnDestroy {
           ...this.allRace.slice(idx + 1),
         ];
       }
+
+      this.loadRace(this.CurrentEventId, this.statusRace);
+
       // this.loadRace();
 
     });
@@ -336,7 +339,8 @@ export class RaceComponent implements OnInit, OnDestroy {
 
     dialogRef.afterClosed().subscribe(result => {
       // console.log('The dialog was closed');
-      this.allRace = this.allRace.filter(e => e.id_list !== result);
+      // this.allRace = this.allRace.filter(e => e.id_list !== result);
+        this.loadRace(this.CurrentEventId, this.statusRace);
     });
   }
 
@@ -352,7 +356,8 @@ export class RaceComponent implements OnInit, OnDestroy {
 
     dialogRef.afterClosed().subscribe(result => {
       // console.log('The dialog was closed');
-      this.allRace = this.allRace.filter(e => e.id_list !== result);
+      // this.allRace = this.allRace.filter(e => e.id_list !== result);
+        this.loadRace(this.CurrentEventId, this.statusRace);
     });
   }
 
