@@ -4083,7 +4083,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const pointsBySecond = new Map<number, Array<{ dataPointIndex: number; y: number }>>();
       data.forEach((pt, i) => {
         const y = pt.y;
-        if (typeof y === 'number' && y < limit) {
+        if (typeof y === 'number' && y < limit && !this.shouldTreatAfrAsNoise(y)) {
           const sec = Math.floor(pt.x / 1000);
           if (!pointsBySecond.has(sec)) {
             pointsBySecond.set(sec, []);
@@ -4189,7 +4189,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     detailSeries.forEach((s, sIdx) => {
       (s.data as Array<{x:number;y:number|null}>).forEach((pt, i) => {
         const y = pt.y;
-        if (typeof y === 'number' && y < limit) {
+        if (typeof y === 'number' && y < limit && !this.shouldTreatAfrAsNoise(y)) {
           discrete.push({ seriesIndex: sIdx, dataPointIndex: i, fillColor: '#ff3b30', strokeColor: '#ff3b30', size: markerSize });
         }
       });
@@ -4599,6 +4599,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
   getAfrColor(afr: any ): string {
+    if (!Number.isFinite(afr)) {
+      return '#808080';
+    }
+    if (this.shouldTreatAfrAsNoise(Number(afr))) {
+      return MAP_COLOR_NORMAL_HEX;
+    }
+
     const lowerBound = 11.5; // ค่า AFR ต่ำสุดที่จะให้เป็นสีเขียว
     const limit = this.afrLimit; // ค่า AFR limit ที่ใช้เช็ค
 
@@ -4631,6 +4638,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // แปลงค่าสี RGB เป็น Hex string
     const toHex = (c: number) => ('0' + c.toString(16)).slice(-2);
     return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
+  }
+
+  private shouldTreatAfrAsNoise(afr: number): boolean {
+    if (!Number.isFinite(afr)) {
+      return true;
+    }
+    const penaltyLow = Number.isFinite(this.afrLimit) ? this.afrLimit : 14.0;
+    return penaltyLow >= 10 && afr < 10;
   }
 
   private updateMapFromSelection(keys: string[]) {
@@ -6094,6 +6109,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private getAfrMapSeverity(afr: number): 'penalty' | 'warning' | 'normal' {
+    if (!Number.isFinite(afr) || this.shouldTreatAfrAsNoise(afr)) {
+      return 'normal';
+    }
     const penaltyLow = Number.isFinite(this.afrLimit) ? this.afrLimit : 14.0;
     const warningHighRaw = Number.isFinite(this.afrWarningHigh) ? this.afrWarningHigh : 16.0;
     const warningHigh = warningHighRaw > penaltyLow ? warningHighRaw : penaltyLow + 0.1;
@@ -6185,13 +6203,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Add marker for last position
     const lastPoint = points[points.length - 1];
     const lastLL = this.getLatLon(lastPoint);
+    const lastAfr = Number(lastPoint?.afrValue);
+    const lastMarkerColor = this.afrToColorUint8(lastAfr);
     const markerLayer = lastLL ? new ScatterplotLayer({
       id: 'history-track-marker',
       data: [{ position: [lastLL.lon, lastLL.lat] }],
       getPosition: (d: any) => d.position,
       getRadius: this.MARKER_RADIUS_PX,
       radiusUnits: 'pixels',
-      getFillColor: [255, 59, 48, 255], // #FF3B30
+      getFillColor: [lastMarkerColor[0], lastMarkerColor[1], lastMarkerColor[2], 255],
       stroked: true,
       getLineColor: [255, 255, 255, 255], // White
       lineWidthMinPixels: 2,

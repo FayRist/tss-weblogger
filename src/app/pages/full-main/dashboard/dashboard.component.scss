@@ -255,6 +255,12 @@ td.mat-mdc-cell{
   margin-left: auto;
 }
 
+.dashboard-toolbar-right {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
 .config-source-badge {
   display: inline-flex;
   align-items: center;
@@ -301,11 +307,29 @@ td.mat-mdc-cell{
 }
 
 @media (max-width: 767.98px) {
+  .mat-toolbar {
+    height: auto;
+  }
+
+  .dashboard-toolbar-container {
+    width: 100%;
+  }
+
+  .dashboard-toolbar-right {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 6px;
+  }
+
+  .dashboard-toolbar-right .example-spacer {
+    display: none;
+  }
+
   .dashboard-toolbar-actions {
     width: 100%;
-    justify-content: flex-start !important;
-    margin-top: 8px;
-    flex-wrap: wrap;
+    justify-content: space-between !important;
+    margin-top: 0;
+    flex-wrap: nowrap;
   }
 
   .dashboard-toolbar-actions .btn {

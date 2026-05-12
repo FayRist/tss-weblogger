@@ -8,34 +8,28 @@
     <span class="toolbar-title">Data Logger</span>
 
     <div class="full-main-toolbar-center">
-      <mat-chip-set aria-label="Toolbar filters" class="full-main-chip-set">
+      <mat-chip-set aria-label="Toolbar filters" class="full-main-chip-set" >
         @if ((isDashboard$  | async) || (isRace$  | async) || (isSettingLogger$  | async) ) {
-          <mat-chip matButton [matMenuTriggerFor]="Event" style="width: auto; display: inline-flex; align-items: center;">
-            Event : {{ eventNameSelect }}
-            <mat-icon style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon>
+          <mat-chip matButton [matMenuTriggerFor]="Event" class="full-chip full-chip-event" style="display: inline-flex; align-items: center;">
+            Event : {{ eventNameDisplay }}
+            <mat-icon class="chip-icon" style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon>
           </mat-chip>
-          <mat-menu #Event="matMenu">
+          <mat-menu #Event="matMenu" panelClass="event-menu-panel">
             @for (eventMenuBar of eventList; track eventMenuBar.value) {
-              <button mat-menu-item (click)="navigateToRace(eventMenuBar.value, eventMenuBar.name, eventMenuBar.active, eventMenuBar.c_name)"> {{eventMenuBar.name}} </button>
+              <button mat-menu-item (click)="navigateToRace(eventMenuBar.value, eventMenuBar.name, eventMenuBar.active, eventMenuBar.c_name)"><span class="menu-item-text">{{eventMenuBar.name}}</span></button>
             }
           </mat-menu>
         }
 
         @if ((isDashboard$  | async)) {
-          <!-- <mat-chip matButton [matMenuTriggerFor]="menu" style="width: auto;" disabled >รุ่น : {{ SegmentNameSelect }}</mat-chip>
-          <mat-menu #menu="matMenu">
-            @for (segmentMenuBar of SegmentList; track segmentMenuBar.value) {
-            <button mat-menu-item >{{segmentMenuBar.name}} </button>
-            }
-          </mat-menu> -->
 
-          <mat-chip matButton [matMenuTriggerFor]="Category" style="width: auto; display: inline-flex; align-items: center;">
-            Category : {{ SessionNameSelect }}
-            <mat-icon style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon>
+          <mat-chip matButton [matMenuTriggerFor]="Category" class="full-chip full-chip-category" style="display: inline-flex; align-items: center;">
+            Category : {{ sessionNameDisplay }}
+            <mat-icon class="chip-icon" style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon>
           </mat-chip>
-          <mat-menu #Category="matMenu">
+          <mat-menu #Category="matMenu" panelClass="category-menu-panel">
             @for (SessionMenuBar of SessionList; track SessionMenuBar.value) {
-              <button mat-menu-item (click)="navigateToDashboard(SessionMenuBar.value)"> {{SessionMenuBar.name}} </button>
+              <button mat-menu-item (click)="navigateToDashboard(SessionMenuBar.value)"><span class="menu-item-text">{{SessionMenuBar.name}}</span></button>
             }
           </mat-menu>
         }

@@ -24,7 +24,7 @@
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
-              "src/favicon.ico",
+              "src/tss_icon.ico",
               "src/public",
               { "glob": "**/*", "input": "public", "output": "/" }
             ],

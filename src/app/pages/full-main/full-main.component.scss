@@ -31,7 +31,7 @@ mat-chip {
 }
 
 .full-main-chip-set {
-  display: flex;
+  // display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -40,6 +40,10 @@ mat-chip {
   overflow-y: hidden;
   white-space: nowrap;
   padding-bottom: 2px;
+}
+
+:host ::ng-deep .full-main-chip-set .mdc-evolution-chip-set__chips {
+  display: block;
 }
 
 .full-main-toolbar-actions {
@@ -53,9 +57,62 @@ mat-chip {
   white-space: nowrap;
 }
 
+.full-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+
+.full-chip .chip-icon {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+:host ::ng-deep .full-chip .mdc-evolution-chip__action,
+:host ::ng-deep .full-chip .mdc-evolution-chip__text-label {
+  min-width: 0;
+}
+
+:host ::ng-deep .event-menu-panel .mat-mdc-menu-item,
+:host ::ng-deep .category-menu-panel .mat-mdc-menu-item {
+  min-width: 0;
+}
+
+:host ::ng-deep .event-menu-panel .menu-item-text,
+:host ::ng-deep .category-menu-panel .menu-item-text {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1024px) {
   .toolbar-title {
     font-size: 14px;
+  }
+
+  .full-chip-event {
+    width: 200px !important;
+    max-width: 200px;
+  }
+
+  .full-chip-category {
+    width: 170px !important;
+    max-width: 170px;
+  }
+
+  :host ::ng-deep .event-menu-panel {
+    width: 180px;
+    max-width: 180px;
+  }
+
+  :host ::ng-deep .category-menu-panel {
+    width: 140px;
+    max-width: 140px;
   }
 }
 
@@ -71,8 +128,27 @@ mat-chip {
   .toolbar-title {
     font-size: 13px;
   }
-}
 
+  .full-chip-event {
+    width: 200px !important;
+    max-width: 200px;
+  }
+
+  .full-chip-category {
+    width: 165px !important;
+    max-width: 165px;
+  }
+
+  :host ::ng-deep .event-menu-panel {
+    width: 160px;
+    max-width: 160px;
+  }
+
+  :host ::ng-deep .category-menu-panel {
+    width: 130px;
+    max-width: 130px;
+  }
+}
 
 
 

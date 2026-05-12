@@ -77,6 +77,37 @@ export class FullMainComponent implements OnInit, OnDestroy {
   SessionNameSelect:String = '';
   SegmentNameSelect:String = '';
 
+  private isCompactDevice(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.matchMedia('(max-width: 1024px)').matches;
+  }
+
+  private truncateWithEllipsis(value: string, maxLen: number): string {
+    const text = String(value ?? '').trim();
+    if (!text || text.length <= maxLen) {
+      return text;
+    }
+    return `${text.slice(0, maxLen)}...`;
+  }
+
+  get eventNameDisplay(): string {
+    const text = String(this.eventNameSelect ?? '');
+    if (!this.isCompactDevice()) {
+      return text;
+    }
+    return this.truncateWithEllipsis(text, 15);
+  }
+
+  get sessionNameDisplay(): string {
+    const text = String(this.SessionNameSelect ?? '');
+    if (!this.isCompactDevice()) {
+      return text;
+    }
+    return this.truncateWithEllipsis(text, 6);
+  }
+
   logout() {
     this.auth.logout();
     this.router.navigate(['/login']);
