@@ -9,7 +9,7 @@
 
     <div class="full-main-toolbar-center">
       <mat-chip-set aria-label="Toolbar filters" class="full-main-chip-set" >
-        @if ((isDashboard$  | async) || (isRace$  | async) || (isSettingLogger$  | async) ) {
+        @if ((isDashboard$  | async) || (isRace$  | async) || (isSettingLogger$  | async) || (isAllLogger$  | async) ) {
           <mat-chip matButton [matMenuTriggerFor]="Event" class="full-chip full-chip-event" style="display: inline-flex; align-items: center;">
             Event : {{ eventNameDisplay }}
             <mat-icon class="chip-icon" style="display: inline-flex; align-items: center; vertical-align: middle;">arrow_drop_down</mat-icon>
@@ -21,7 +21,7 @@
           </mat-menu>
         }
 
-        @if ((isDashboard$  | async)) {
+        @if ((isDashboard$  | async) || (isAllLogger$  | async)) {
 
           <mat-chip matButton [matMenuTriggerFor]="Category" class="full-chip full-chip-category" style="display: inline-flex; align-items: center;">
             Category : {{ sessionNameDisplay }}
@@ -91,14 +91,16 @@
       </button> -->
 
 
-      @if (canShowMenu('SETTING_LOGGER')) {
-      <button (click)="drawer.toggle();" mat-list-item>
+      @if (canShowMenu('ALL_LOGGER')) {
+      <button (click)="drawer.toggle(); navigateToAllLogger()" mat-list-item>
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/racing.png"></div>
           <div class="col-10 pt-1">All Logger</div>
         </div>
       </button>
+      }
 
+      @if (canShowMenu('SETTING_LOGGER')) {
       <button (click)="drawer.toggle(); navigateToListSettingLogger()" mat-list-item >
         <div class="row">
           <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/setting-logger.png"></div>

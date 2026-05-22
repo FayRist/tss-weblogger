@@ -153,6 +153,41 @@ export class EventService {
     );
   }
 
+  getDetailLoggerMonitor(parameterLoggerID: any, parameterEventID?: any, parameterCarNBR?: any): Observable<LoggerRaceDetailModel> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_DETAIL_LOGGER_MONITOR);
+    const payload: any = {
+      logger_id: parameterLoggerID,
+    };
+    if (parameterEventID != null && parameterEventID !== '') {
+      payload.event_id = Number(parameterEventID);
+    }
+    if (parameterCarNBR != null && String(parameterCarNBR).trim() !== '') {
+      payload.car_number = String(parameterCarNBR).trim();
+    }
+
+    return this.http.post<ApiLoggerRaceResponse>(url, payload).pipe(
+      map(({ data }) => ({
+        loggerId: data.LoggerID,
+        carNumber: data.CarNumber,
+        firstName: data.FirstName,
+        lastName: data.LastName,
+        classType: data.ClassType,
+        segmentValue: data.SegmentValue,
+        seasonId: Number(data.SeasonID ?? 0),
+        categoryName: data.CategoryName,
+        sessionValue: data.SessionValue,
+        circuitName: data.Circuitname,
+        countDetect: Number(data.countDetect ?? 0),
+        currentCountDetect: Number(data.currentCountDetect ?? 0),
+        afr: Number(data.afr ?? 0),
+        afrAverage: Number(data.afrAverage ?? 0),
+        status: String(data.status ?? ''),
+        onlineTime: data.onlineTime,
+        disconnectTime: data.disconnectTime,
+      }))
+    );
+  }
+
   logAlertHistory(payload: AlertHistoryLogPayload): Observable<{ success: boolean }> {
     const url = getApiUrl('/realtime/alert-history/log');
     return this.http.post<{ success: boolean }>(url, payload).pipe(

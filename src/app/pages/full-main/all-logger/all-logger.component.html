@@ -1,0 +1,97 @@
+<mat-toolbar class="pt-2">
+  <ng-container>
+    <div class="container m-0 dashboard-toolbar-container">
+      <div class="row w-100 g-2 dashboard-toolbar-row">
+        <div class="col-6 col-md-6 col-lg-4 pt-2 pt-md-0">
+          <form class="mat-input-form">
+            <mat-form-field class="w-100">
+              <mat-label>Search</mat-label>
+              <input matInput (keyup)="searchFilter($event)" placeholder="Logger, Name, Class">
+            </mat-form-field>
+          </form>
+        </div>
+
+        <div class="col-6 col-md-6 col-lg-4 pt-2 pt-md-0">
+          <form class="mat-input-form">
+            <mat-form-field class="w-100">
+              <mat-label>Filter</mat-label>
+              <mat-select [formControl]="filterLogger" (selectionChange)="onSelectChange($event)">
+                @for (filterLog of filterLogList; track filterLog.value) {
+                  <mat-option [value]="filterLog.value">{{ filterLog.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          </form>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+</mat-toolbar>
+
+<div style="margin: 20px;" class="">
+  <div class="row">
+    <div class="table-scroll-xy">
+      <table class="logger-table table table-dark table-striped table-hover mat-elevation-z8" mat-table [dataSource]="dataSource">
+        <ng-container matColumnDef="carNumber">
+          <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;NBR.</th>
+          <td class="text-center w-10" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId, element.carNumber)">
+            {{ element.carNumber }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="loggerStatus">
+          <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;Status</th>
+          <td mat-cell *matCellDef="let e" class="text-center">
+            <span class="status-badge" [ngClass]="(e.status + '').toLowerCase() === 'online' ? 'is-online' : 'is-offline'">
+              {{ (((e.status ?? '').toString().trim()) || 'OFFLINE') | uppercase }}
+            </span>
+            @if (getStatusTime(e)) {
+              <span class="status-badge-time">
+                {{ getStatusTime(e) | date:'dd MMM, yyyy HH:mm:ss' }}
+              </span>
+            }
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="loggerId">
+          <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;Logger</th>
+          <td class="text-center" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId, element.carNumber)">
+            TSS{{ element.loggerId }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="firstName">
+          <th mat-header-cell *matHeaderCellDef>Name</th>
+          <td mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId, element.carNumber)">
+            {{ element.firstName + ' ' + element.lastName }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="classType">
+          <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;Class</th>
+          <td class="text-center" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId, element.carNumber)">
+            {{ element.classType }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="afr">
+          <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;AFR</th>
+          <td class="text-center" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId, element.carNumber)">
+            {{ element.afr || 0 | number:'1.1-1' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="countDetect">
+          <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;Count</th>
+          <td class="text-center" mat-cell *matCellDef="let element" (click)="navigateToLoggerDetail(element.loggerId, element.carNumber)">
+            {{ element.currentCountDetect || 0 }}
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </div>
+    <mat-paginator [pageSizeOptions]="[5,10,20,40,50,100]" [pageSize]="40" showFirstLastButtons></mat-paginator>
+  </div>
+</div>

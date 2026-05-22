@@ -1,0 +1,31 @@
+<div class="logger-monitor-wrap">
+  <div class="logger-monitor-header">
+    <button type="button" class="btn btn-danger" (click)="goBack()">ย้อนกลับ All Logger</button>
+  </div>
+
+  <div class="logger-monitor-card">
+    <div class="top-row">
+      <div><strong>Logger:</strong> TSS{{ loggerId }}</div>
+      <div><strong>Car:</strong> {{ carNumber || '-' }}</div>
+      <div><strong>Name:</strong> {{ (firstName + ' ' + lastName).trim() || '-' }}</div>
+      <div><strong>Class:</strong> {{ classType || '-' }}</div>
+    </div>
+
+    <div class="status-row">
+      <span class="status-badge" [ngClass]="status === 'online' ? 'is-online' : 'is-offline'">
+        {{ status | uppercase }}
+      </span>
+      <span class="status-time" *ngIf="status === 'online'">
+        Online time: {{ onlineTime ? (onlineTime | date:'dd MMM, yyyy HH:mm:ss') : '-' }}
+      </span>
+      <span class="status-time" *ngIf="status !== 'online'">
+        Disconnect time: {{ disconnectTime ? (disconnectTime | date:'dd MMM, yyyy HH:mm:ss') : '-' }}
+      </span>
+    </div>
+
+    <div class="metrics-row">
+      <div><strong>AFR:</strong> {{ afr | number:'1.1-1' }}</div>
+      <div><strong>Count:</strong> {{ currentCountDetect }}</div>
+    </div>
+  </div>
+</div>

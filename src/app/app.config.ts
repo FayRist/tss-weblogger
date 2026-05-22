@@ -66,6 +66,7 @@ export const APP_CONFIG = {
       RESET_LOGGER: '/logger/resetLoger',
       LIST_LOGGER_FOREXCEL: '/logger/getListLoger',
       GET_DETAIL_LOGGERS_IN_RACE: '/logger/getDetailLoggerInRace',
+      GET_DETAIL_LOGGER_MONITOR: '/logger/getDetailLoggerMonitor',
       GET_ALL_DATA_HISTORY_LOGGERS_IN_RACE: '/logger/getHistoryLoggerInRace',
       GET_ALL_LOGGERS_DATE: '/logger/getLoggerDate',
 
@@ -110,6 +111,7 @@ export const APP_CONFIG = {
   AUTH: {
     MENU_VISIBILITY: {
       DASHBOARD: ['super_admin', 'admin', 'mechanic_user', 'race_team_user', 'scruitineer'],
+      ALL_LOGGER: ['super_admin', 'admin', 'mechanic_user', 'scruitineer'],
       ALL_SEASONS: ['super_admin', 'admin', 'race_team_user'],
       SETTING_LOGGER: ['super_admin', 'admin'],
       USER_MANAGEMENT: ['super_admin', 'admin'],

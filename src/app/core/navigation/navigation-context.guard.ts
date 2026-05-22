@@ -54,3 +54,17 @@ export const requireLoggerContextGuard: CanActivateFn = () => {
 
   return redirectToFallback(router, auth);
 };
+
+export const requireLoggerMonitorContextGuard: CanActivateFn = () => {
+  const navContext = inject(NavigationContextService);
+  const router = inject(Router);
+  const auth = inject(AuthService);
+  const ctx = navContext.snapshot;
+
+  const hasLoggerId = !!(ctx.loggerId && String(ctx.loggerId).trim());
+  if (hasLoggerId) {
+    return true;
+  }
+
+  return redirectToFallback(router, auth);
+};

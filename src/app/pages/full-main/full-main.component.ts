@@ -134,6 +134,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
   /** true เฉพาะเมื่อ URL เริ่มด้วย /pages/dashboard */
   isDashboard$: Observable<boolean>;
   isRace$: Observable<boolean>;
+  isAllLogger$: Observable<boolean>;
   isSettingLogger$: Observable<boolean>;
   isLogger$: Observable<boolean>;
 
@@ -154,6 +155,12 @@ export class FullMainComponent implements OnInit, OnDestroy {
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       startWith({ url: this.router.url } as NavigationEnd),        // ให้มีค่าเริ่มต้นตอนโหลดครั้งแรก
       map(() => this.router.url.startsWith('/pages/race'))    // หรือจะใช้ regex ก็ได้
+    );
+
+    this.isAllLogger$ = this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      startWith({ url: this.router.url } as NavigationEnd),
+      map(() => this.router.url.startsWith('/pages/all-logger'))
     );
 
     this.isSettingLogger$ = this.router.events.pipe(
@@ -350,6 +357,7 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
   navigateToListAllSeason() { this.router.navigate(['/pages', 'event']); }
+  navigateToAllLogger() { this.router.navigate(['/pages', 'all-logger']); }
   navigateToListSettingLogger() {
     const now = toDate(this.time.now());
     this.eventService.getLoggerByDate(now).subscribe({

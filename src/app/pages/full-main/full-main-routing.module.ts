@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { roleGuard } from '../../core/auth/role.guard';
-import { requireDashboardContextGuard, requireLoggerContextGuard } from '../../core/navigation/navigation-context.guard';
+import { requireDashboardContextGuard, requireLoggerContextGuard, requireLoggerMonitorContextGuard } from '../../core/navigation/navigation-context.guard';
 
 const routes: Routes = [
   {
@@ -31,6 +31,15 @@ const routes: Routes = [
     path: 'logger',
     canActivate: [requireLoggerContextGuard],
     loadComponent: () => import('./logger/logger.component').then(m => m.LoggerComponent)
+  }, {
+    path: 'logger-monitor',
+    canActivate: [requireLoggerMonitorContextGuard],
+    loadComponent: () => import('./logger-monitor/logger-monitor.component').then(m => m.LoggerMonitorComponent)
+  }, {
+    path: 'all-logger',
+    canActivate: [roleGuard],
+    data: { roles: ['super_admin', 'admin', 'mechanic_user', 'scruitineer'] },
+    loadComponent: () => import('./all-logger/all-logger.component').then(m => m.AllLoggerComponent)
   }, {
     path: 'logger/add-logger',
     canActivate: [roleGuard],
