@@ -6485,6 +6485,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  getAFRRealTime() {
+
+  }
+
   getFormattedCarSpeed(): string {
     if (!Number.isFinite(this.currentCarSpeedKmh as number)) {
       return '-';
