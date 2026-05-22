@@ -54,6 +54,9 @@ interface LoginPublicKeyApiResponse {
 const LS_KEY = 'auth_state_v2';
 const TIMEOUT_NOTICE_KEY = 'auth_timeout_notice';
 const SESSION_TIMEOUT_PROD_MS = 4 * 60 * 60 * 1000;
+// TEMP: Timeout is intentionally disabled for urgent operations.
+// TODO: Re-enable and redesign session-timeout flow.
+const DISABLE_SESSION_TIMEOUT = true;
 // const SESSION_TIMEOUT_TEST_MS = 1 * 60 * 1000;
 const USE_TEST_TIMEOUT = false;
 // const SESSION_TIMEOUT_MS = USE_TEST_TIMEOUT ? SESSION_TIMEOUT_TEST_MS : SESSION_TIMEOUT_PROD_MS;
@@ -99,7 +102,13 @@ export class AuthService {
       const lastActivityAt = Number(parsed.lastActivityAt || now);
       const expiresAt = Number(parsed.expiresAt || (lastActivityAt + SESSION_TIMEOUT_PROD_MS));
 
-      if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+      if (!Number.isFinite(expiresAt)) {
+        localStorage.removeItem(LS_KEY);
+        localStorage.setItem(TIMEOUT_NOTICE_KEY, '1');
+        return null;
+      }
+
+      if (!DISABLE_SESSION_TIMEOUT && expiresAt <= now) {
         localStorage.removeItem(LS_KEY);
         localStorage.setItem(TIMEOUT_NOTICE_KEY, '1');
         return null;
@@ -293,7 +302,7 @@ export class AuthService {
       return false;
     }
 
-    if (this.isExpired(user)) {
+    if (!DISABLE_SESSION_TIMEOUT && this.isExpired(user)) {
       this.logoutDueToTimeout();
       return false;
     }
@@ -386,6 +395,10 @@ export class AuthService {
   }
 
   private scheduleSessionTimer(): void {
+    if (DISABLE_SESSION_TIMEOUT) {
+      return;
+    }
+
     if (this.sessionTimer) {
       clearTimeout(this.sessionTimer);
       this.sessionTimer = null;
@@ -438,7 +451,7 @@ export class AuthService {
       return;
     }
 
-    if (this.isExpired(current)) {
+    if (!DISABLE_SESSION_TIMEOUT && this.isExpired(current)) {
       this.logoutDueToTimeout();
       return;
     }

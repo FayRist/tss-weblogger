@@ -80,7 +80,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
 
   displayedColumns: string[] = [
     'carNumber',
-    'loggerStatus',
+    // 'loggerStatus',
     'loggerId',
     'firstName',
     'classType',

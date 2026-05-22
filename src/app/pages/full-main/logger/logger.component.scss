@@ -411,7 +411,6 @@ button[mat-raised-button] {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
 
     small {
       font-size: 0.65rem;
@@ -506,6 +505,14 @@ button[mat-raised-button] {
   margin-top: 0 !important;
 }
 
+:host ::ng-deep .logger-meta-grid input:disabled {
+  -webkit-text-fill-color: #fff !important;
+}
+:host ::ng-deep .logger-meta-grid mat-label { color:#fff !important; }
+:host ::ng-deep .logger-meta-grid .mdc-text-field--disabled {
+  border: 1px solid #fff;
+}
+
 .logger-meta-item--alerts {
   position: relative;
   z-index: 1040;
@@ -529,13 +536,8 @@ button[mat-raised-button] {
   text-align: center;
 }
 
-.logger-alert-item {
-  background: rgba(255, 255, 255, 0.02);
-}
-
 .logger-alert-item-head {
   display: flex;
-  justify-content: space-between;
 }
 
 .logger-meta-grid--race-team {
