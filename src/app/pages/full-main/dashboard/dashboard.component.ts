@@ -253,30 +253,43 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         return isOnlineB - isOnlineA;
       }
 
-      // 2) Priority ภายในกลุ่ม: penalty ขึ้นก่อน
-      const penaltyPriorityA = this.getPenaltyPriorityForSort(a, now);
-      const penaltyPriorityB = this.getPenaltyPriorityForSort(b, now);
-      if (penaltyPriorityA !== penaltyPriorityB) {
-        return penaltyPriorityB - penaltyPriorityA;
-      }
-
-      // 3) Priority ภายในกลุ่ม: Count มาก -> น้อย
       const countA = a.currentCountDetect ?? 0;
       const countB = b.currentCountDetect ?? 0;
-      if (countA !== countB) {
-        return countB - countA;
+      const penaltyPriorityA = this.getPenaltyPriorityForSort(a, now);
+      const penaltyPriorityB = this.getPenaltyPriorityForSort(b, now);
+
+      // 2) Priority ภายในกลุ่ม online: penalty -> count -> NBR
+      if (isOnlineA === 1 && isOnlineB === 1) {
+        if (penaltyPriorityA !== penaltyPriorityB) {
+          return penaltyPriorityB - penaltyPriorityA;
+        }
+        if (countA !== countB) {
+          return countB - countA;
+        }
       }
 
-      // 4) Tie-break: ถ้า offline ทั้งคู่ ให้เวลา onlineTime ใหม่กว่าแสดงก่อน
+      // 3) Priority ภายในกลุ่ม offline: onlineTime -> count -> NBR -> penalty
       if (isOnlineA === 0 && isOnlineB === 0) {
         const timeA = a.onlineTime ? toDate(a.onlineTime).getTime() : 0;
         const timeB = b.onlineTime ? toDate(b.onlineTime).getTime() : 0;
         if (timeA !== timeB) {
           return timeB - timeA;
         }
+        if (countA !== countB) {
+          return countB - countA;
+        }
+		const carNumA = Number(a.carNumber) || 0;
+		const carNumB = Number(b.carNumber) || 0;
+		if (carNumA !== carNumB) {
+			return carNumA - carNumB;
+		}
+
+		if (penaltyPriorityA !== penaltyPriorityB) {
+			return penaltyPriorityB - penaltyPriorityA;
+		}
       }
 
-      // 5) Tie-break สุดท้าย: NBR น้อย -> มาก
+      // 4) Tie-break สุดท้าย: NBR น้อย -> มาก
       const carNumA = Number(a.carNumber) || 0;
       const carNumB = Number(b.carNumber) || 0;
       return carNumA - carNumB;
@@ -326,7 +339,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
     this.onShowAllLoggers = filtered;
-    this.sortStatus = 'Status(online→offline) / Penalty↑ / Count↓ / OfflineTime↓ / NBR.↑';
+    this.sortStatus = 'Status(online→offline) / Offline: OnlineTime↓ -> Count↓ -> NBR.↑ -> Penalty↑';
     this.dataSource.data = this.onShowAllLoggers;
   }
 
@@ -454,7 +467,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         this.subscriptions.push(sub);
 
-        this.sortStatus = 'Status(online→offline) / Penalty↑ / Count↓ / OfflineTime↓ / NBR.↑';
+        this.sortStatus = 'Status(online→offline) / Offline: OnlineTime↓ -> Count↓ -> NBR.↑ -> Penalty↑';
       }
     });
     this.subscriptions.push(contextSub);

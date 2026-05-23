@@ -158,7 +158,7 @@
       <ng-container matColumnDef="resetLimit">
         <th mat-header-cell *matHeaderCellDef class="text-center">  </th>
 
-        <td class="text-center" mat-cell *matCellDef="let element" (click)="$event.stopPropagation()">
+        <td class="text-center" mat-cell *matCellDef="let element">
           <div class="row d-flex justify-content-center">
             <div class="col-12 d-flex justify-content-center">
               <button type="button" class="btn btn-warning w-100 clear-btn" (click)="$event.stopPropagation(); navigateToResetLogger('0ms','0ms', 'logger', element.loggerId)">Clear</button>
