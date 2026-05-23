@@ -569,6 +569,16 @@ button[mat-raised-button] {
   display: flex;
 }
 
+.logger-meta-toggle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 6px 10px 0;
+}
+
+.logger-meta-toggle-btn {
+  min-width: 190px;
+}
+
 .logger-map-col > .card,
 .logger-chart-col > .card {
   width: 100%;
@@ -585,7 +595,7 @@ button[mat-raised-button] {
 
 .logger-metric-card {
   width: 100%;
-  border: 1px solid #2b3035;
+  border: 1px solid #ffffff;
   background: linear-gradient(150deg, #121619 0%, #181f24 100%);
   color: #ffffff;
 }
@@ -600,7 +610,7 @@ button[mat-raised-button] {
 
 .logger-metric-label {
   display: block;
-  color: #9aa7b2;
+  color: #ffffff;
   font-size: 0.8rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -608,9 +618,17 @@ button[mat-raised-button] {
 
 .logger-metric-value {
   margin: 0;
-  color: #4fc3f7;
+  color: #FFF;
+  // color: #4fc3f7;
   font-weight: 700;
   font-size: clamp(1.45rem, 2.5vw, 2rem);
+}
+
+@media (min-width: 768px) {
+  .logger-side-metrics-row > .logger-metric-col {
+    flex: 0 0 33.333333%;
+    max-width: 33.333333%;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -708,6 +726,26 @@ button[mat-raised-button] {
 
   :host ::ng-deep .status-badge {
     min-height: 42px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .logger-side-metrics-row {
+    --bs-gutter-x: 0.75rem;
+  }
+
+  .logger-side-metrics-row > .logger-metric-col {
+    flex: 0 0 33.333333%;
+    max-width: 33.333333%;
+  }
+
+  .logger-metric-card .card-body {
+    min-height: 88px;
+    gap: 6px;
+  }
+
+  .logger-metric-value {
+    font-size: clamp(1.2rem, 2vw, 1.6rem);
   }
 }
 

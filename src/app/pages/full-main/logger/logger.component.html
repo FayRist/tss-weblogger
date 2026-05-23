@@ -42,6 +42,8 @@
 
 <div class="logger-page" style="margin: 20px 0 0 10px;">
 
+
+    @if (!(isReadOnlyRaceTeamUser() && raceTeamMetaCollapsed)) {
     <div class="logger-meta-grid" [ngClass]="isReadOnlyRaceTeamUser() ? 'logger-meta-grid--race-team' : ''">
       <div class="logger-meta-item logger-meta-item--car">
         <form class="mat-input-form">
@@ -104,7 +106,21 @@
         </div>
       }
     </div>
+    }
 
+    @if (isReadOnlyRaceTeamUser()) {
+      <div class="logger-meta-toggle-row">
+        <button
+          type="button"
+          class="btn btn-outline-light w-100"
+          style="border: 1px solid #2b3035; font-size: 0.8rem;"
+          [attr.title]="raceTeamMetaCollapsed ? 'แสดงข้อมูลหัวตาราง' : 'ซ่อนข้อมูลหัวตาราง'"
+          [attr.aria-label]="raceTeamMetaCollapsed ? 'แสดงข้อมูลหัวตาราง' : 'ซ่อนข้อมูลหัวตาราง'"
+          (click)="toggleRaceTeamMetaCollapsed()">
+          <mat-icon>{{ raceTeamMetaCollapsed ? 'keyboard_arrow_down' : 'keyboard_arrow_up' }}</mat-icon>
+        </button>
+      </div>
+    }
     <!-- ข้อมูลจุดเริ่มต้น -->
     <!-- <div class="row w-100 mt-2" *ngIf="startLatLongPoint">
       <div class="col-12">
@@ -309,7 +325,7 @@
       @if (isReadOnlyRaceTeamUser()) {
         <div class="col-12 logger-side-col">
           <div class="row g-3 logger-side-metrics-row">
-            <div class="col-12 col-md-4">
+            <div class="col-12 logger-metric-col">
               <div class="card logger-metric-card h-100">
                 <div class="card-body">
                   <span class="logger-metric-label">Car Speed</span>
@@ -318,7 +334,7 @@
               </div>
             </div>
 
-            <div class="col-12 col-md-4">
+            <div class="col-12 logger-metric-col">
               <div class="card logger-metric-card h-100">
                 <div class="card-body">
                   <span class="logger-metric-label">AFR Realtime</span>
@@ -327,7 +343,7 @@
               </div>
             </div>
 
-            <div class="col-12 col-md-4">
+            <div class="col-12 logger-metric-col">
               <div class="card logger-metric-card h-100">
                 <div class="card-body">
                   <span class="logger-metric-label">Count</span>

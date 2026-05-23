@@ -181,6 +181,7 @@ interface LapState {
   ]
 })
 export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
+  raceTeamMetaCollapsed = false;
   segmentsByKey: Record<string, Array<{ i: number; x1:number; y1:number; x2:number; y2:number; c:string; afr:number;  }>> = {};
   currentMapPoints: Array<{ x:number; y:number; ts:number; afr:number }> = [];
   readonly dialog = inject(MatDialog);
@@ -1450,6 +1451,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return this.auth.current?.role === 'race_team_user';
   }
 
+  toggleRaceTeamMetaCollapsed(): void {
+    if (!this.isReadOnlyRaceTeamUser()) {
+      return;
+    }
+    this.raceTeamMetaCollapsed = !this.raceTeamMetaCollapsed;
+  }
+
   isSuperAdminUser(): boolean {
     return this.auth.current?.role === 'super_admin';
   }
@@ -1620,6 +1628,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ---------- ตั้งค่า DEFAULT ----------
 
   ngOnInit() {
+    this.raceTeamMetaCollapsed = false;
     const ctx = this.navContext.snapshot;
     const statusRace = ctx.raceMode ?? 'live';
     this.isHistoryMode = statusRace === 'history';
