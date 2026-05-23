@@ -41,19 +41,19 @@
             <td class="text-center w-25" (click)="navigateToDashboard(raceData)">
               {{ getSessionName(raceData.session_value) }}
             </td>
-            <td class="text-center" >
+            <td class="text-center" (click)="navigateToDashboard(raceData)">
               {{ getRaceSegmentName(raceData.segment_value) }}
             </td>
-            <td class="text-center" >
+            <td class="text-center" (click)="navigateToDashboard(raceData)">
               {{ getClassName(raceData.class_value) }}
             </td>
             <!-- วันที่แข่ง -->
-            <td class="text-center">
+            <td class="text-center"(click)="navigateToDashboard(raceData)">
               {{ raceData.session_start | dateRange: raceData.session_end }}
             </td>
 
             <!-- เวลาแข่งขัน -->
-            <td class="text-center">
+            <td class="text-center"(click)="navigateToDashboard(raceData)">
               {{ raceData.session_start | timeRange: raceData.session_end }}
             </td>
 

@@ -12,12 +12,13 @@
 ใช้งานผ่านฟังก์ชัน `sortLoggers(loggers: LoggerItem[])`
 
 ลำดับการเรียงแบบหลายชั้น (multi-key sort):
-1. `currentCountDetect` มาก -> น้อย
-2. ถ้า Count เท่ากัน: `status`/`loggerStatus` ที่เป็น `online` มาก่อน `offline`
-3. ถ้า Count เท่ากันและเป็น `offline` ทั้งคู่: เรียง `onlineTime` ใหม่ -> เก่า
-4. ถ้ายังเท่ากัน: `carNumber` น้อย -> มาก
+1. แยกกลุ่มสถานะก่อน: `online` ทั้งหมดอยู่บน, `offline` ทั้งหมดอยู่ล่าง
+2. ภายในกลุ่มเดียวกัน เรียง `penalty` มาก่อน
+3. ถ้า penalty เท่ากัน: `currentCountDetect` มาก -> น้อย
+4. ถ้าเท่ากันและเป็น `offline` ทั้งคู่: เรียง `onlineTime` ใหม่ -> เก่า
+5. ถ้ายังเท่ากัน: `carNumber` น้อย -> มาก
 
-สรุปสั้น: `Count desc` -> `Status online first` -> `(offline) onlineTime desc` -> `NBR asc`
+สรุปสั้น: `Status split (online first)` -> `Penalty desc` -> `Count desc` -> `(offline) onlineTime desc` -> `NBR asc`
 
 ## 2) Data Source ที่ใช้ในการ sort
 
@@ -95,7 +96,7 @@
 ## 9) สรุปแบบใช้งาน
 
 - ค่า Priority หลักของ Dashboard ตอนนี้คือ:
-  `Count desc -> Online first -> (offline) onlineTime desc -> Car number asc`
+  `Online group first -> Penalty desc -> Count desc -> (offline) onlineTime desc -> Car number asc`
 - ข้อมูล live จะ re-rank ทันทีเมื่อไม่ล็อค
 - ถ้าล็อคตำแหน่ง รายการจะไม่สลับอันดับแม้ค่าเปลี่ยน
 - ผู้ใช้ไม่สามารถ sort เองผ่านการคลิกหัวตาราง (เพื่อคงลำดับตามธุรกิจเสมอ)

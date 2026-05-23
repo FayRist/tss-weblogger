@@ -244,42 +244,42 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private sortLoggers(loggers: LoggerItem[]): LoggerItem[] {
     const now = Date.now();
     return [...loggers].sort((a, b) => {
-      // 1. penalty ขึ้นก่อนเสมอ
+      // 1) แยกกลุ่มสถานะก่อนเสมอ: online อยู่บน, offline อยู่ล่าง
+      const statusA = (a.status ?? a.loggerStatus ?? '').toString().toLowerCase().trim();
+      const statusB = (b.status ?? b.loggerStatus ?? '').toString().toLowerCase().trim();
+      const isOnlineA = statusA === 'online' ? 1 : 0;
+      const isOnlineB = statusB === 'online' ? 1 : 0;
+      if (isOnlineA !== isOnlineB) {
+        return isOnlineB - isOnlineA;
+      }
+
+      // 2) Priority ภายในกลุ่ม: penalty ขึ้นก่อน
       const penaltyPriorityA = this.getPenaltyPriorityForSort(a, now);
       const penaltyPriorityB = this.getPenaltyPriorityForSort(b, now);
       if (penaltyPriorityA !== penaltyPriorityB) {
         return penaltyPriorityB - penaltyPriorityA;
       }
 
-      // 2. เรียงตาม Count (currentCountDetect) จากมากไปน้อย
+      // 3) Priority ภายในกลุ่ม: Count มาก -> น้อย
       const countA = a.currentCountDetect ?? 0;
       const countB = b.currentCountDetect ?? 0;
       if (countA !== countB) {
-        return countB - countA; // มาก→น้อย
+        return countB - countA;
       }
 
-      // 3. เรียงตาม Status (online ก่อน offline)
-      const statusA = (a.status ?? a.loggerStatus ?? '').toString().toLowerCase().trim();
-      const statusB = (b.status ?? b.loggerStatus ?? '').toString().toLowerCase().trim();
-      const isOnlineA = statusA === 'online' ? 1 : 0;
-      const isOnlineB = statusB === 'online' ? 1 : 0;
-      if (isOnlineA !== isOnlineB) {
-        return isOnlineB - isOnlineA; // online (1) ก่อน offline (0)
-      }
-
-      // 4. ถ้าเป็น offline ทั้งคู่ ให้รายการที่เวลา onlineTime ใหม่กว่าแสดงก่อน
+      // 4) Tie-break: ถ้า offline ทั้งคู่ ให้เวลา onlineTime ใหม่กว่าแสดงก่อน
       if (isOnlineA === 0 && isOnlineB === 0) {
         const timeA = a.onlineTime ? toDate(a.onlineTime).getTime() : 0;
         const timeB = b.onlineTime ? toDate(b.onlineTime).getTime() : 0;
         if (timeA !== timeB) {
-          return timeB - timeA; // ใหม่→เก่า
+          return timeB - timeA;
         }
       }
 
-      // 5. เรียงตาม NBR. (carNumber) จากน้อยไปมาก
+      // 5) Tie-break สุดท้าย: NBR น้อย -> มาก
       const carNumA = Number(a.carNumber) || 0;
       const carNumB = Number(b.carNumber) || 0;
-      return carNumA - carNumB; // น้อย→มาก
+      return carNumA - carNumB;
     });
   }
 
@@ -326,7 +326,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // อัปเดต list ให้เป็นอาเรย์ใหม่ทุกครั้ง เพื่อให้ OnPush จับได้
     this.onShowAllLoggers = filtered;
-    this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
+    this.sortStatus = 'Status(online→offline) / Penalty↑ / Count↓ / OfflineTime↓ / NBR.↑';
     this.dataSource.data = this.onShowAllLoggers;
   }
 
@@ -458,7 +458,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         this.subscriptions.push(sub);
 
-        this.sortStatus = 'Penalty↑ / Count↓ / Status(online→offline) / OfflineTime↓ / NBR.↑';
+        this.sortStatus = 'Status(online→offline) / Penalty↑ / Count↓ / OfflineTime↓ / NBR.↑';
       }
     });
     this.subscriptions.push(contextSub);
