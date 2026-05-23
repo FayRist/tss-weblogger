@@ -60,6 +60,7 @@
 
 
 <div style="margin: 20px;" class="">
+
   <div class="row">
     <div class="table-scroll-xy">
     <table class="logger-table  table table-dark table-striped table-hover mat-elevation-z8"
@@ -79,6 +80,13 @@
       <ng-container matColumnDef="loggerStatus">
         <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;
           Status
+            <div class="dashboard-status-summary mb-2">
+    <mat-chip disabled>
+      <span class="online-text">online : {{ displayedOnlineCount }}</span>
+      <span class="divider-text"> | </span>
+      <span class="offline-text">offline : {{ displayedOfflineCount }}</span>
+    </mat-chip>
+  </div>
         </th>
         <td mat-cell *matCellDef="let e" class="text-center">
           <span
@@ -94,9 +102,9 @@
               ) | uppercase
             }}
           </span>
-          @if(e.onlineTime && (statusRace || 'live').toLowerCase() === 'live'){
+          @if(getLatestStatusTime(e) && (statusRace || 'live').toLowerCase() === 'live'){
             <span class="status-badge-time">
-              {{ e.onlineTime | date:'dd MMM, yyyy HH:mm:ss'  }}
+              {{ getLatestStatusTime(e) | date:'dd MMM, yyyy HH:mm:ss'  }}
             </span>
           }
         </td>

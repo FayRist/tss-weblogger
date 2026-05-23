@@ -440,10 +440,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
               return;
             }
             this.allLoggers = loggerRes ?? [];
-            this.allLoggers = this.allLoggers.map(logger => ({
-                ...logger,
-                onlineTime: (logger.onlineTime && logger.disconnectTime && logger.onlineTime > logger.disconnectTime)? logger.onlineTime : logger.disconnectTime
-              }));
             this.updateView(this.allLoggers);
             this.cdr.markForCheck();
             // เชื่อมต่อ WebSocket เฉพาะในโหมด live เท่านั้น
@@ -529,6 +525,42 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       default:
         return loggers;
     }
+  }
+
+  private getDisplayedLoggers(): LoggerItem[] {
+    if ((this.dataSource.filter ?? '').trim().length > 0) {
+      return this.dataSource.filteredData ?? [];
+    }
+    const filtered = this.dataSource.filteredData;
+    if (Array.isArray(filtered) && filtered.length > 0) {
+      return filtered;
+    }
+    return this.dataSource.data ?? [];
+  }
+
+  get displayedTotalCount(): number {
+    return this.getDisplayedLoggers().length;
+  }
+
+  get displayedOnlineCount(): number {
+    return this.getDisplayedLoggers().filter((logger) => {
+      const status = (logger.status ?? logger.loggerStatus ?? '').toString().toLowerCase().trim();
+      return status === 'online';
+    }).length;
+  }
+
+  get displayedOfflineCount(): number {
+    return Math.max(0, this.displayedTotalCount - this.displayedOnlineCount);
+  }
+
+  getLatestStatusTime(logger: LoggerItem): Date | null {
+    const online = logger.onlineTime ? toDate(logger.onlineTime) : null;
+    const disconnect = logger.disconnectTime ? toDate(logger.disconnectTime) : null;
+
+    if (online && disconnect) {
+      return online.getTime() >= disconnect.getTime() ? online : disconnect;
+    }
+    return online ?? disconnect ?? null;
   }
 
   applyAfrConfig(configRows: any[]): void {

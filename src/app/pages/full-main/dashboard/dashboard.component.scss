@@ -290,6 +290,29 @@ td.mat-mdc-cell{
   color: #fef3c7;
 }
 
+.dashboard-status-summary {
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-status-summary .mat-mdc-chip {
+  min-height: 28px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.online-text {
+  color: #22c55e;
+}
+
+.offline-text {
+  color: #ef4444;
+}
+
+.divider-text {
+  color: #9ca3af;
+}
+
 @media (max-width: 1024px) {
   :host ::ng-deep .mat-column-carNumber .mat-sort-header-container,
   :host ::ng-deep .mat-column-loggerStatus .mat-sort-header-container,
