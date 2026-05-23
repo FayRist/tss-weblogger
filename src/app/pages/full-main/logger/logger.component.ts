@@ -40,6 +40,7 @@ import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { LineLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
+import { MatMenuModule } from '@angular/material/menu';
 
 // ===== Unified Telemetry Data Model =====
 type TelemetryPoint = {
@@ -69,6 +70,7 @@ type MapPoint = {
   ts: number;
   lat: any;
   lon: any;
+  isDefaultGps?: boolean;
   velocity?: number;
   heading?: number;
   afrValue?: number;
@@ -172,7 +174,7 @@ interface LapState {
 @Component({
   selector: 'app-logger',
   imports: [FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule
-    , ReactiveFormsModule, MatButtonModule, MatDividerModule, MatIconModule
+    , ReactiveFormsModule, MatButtonModule, MatDividerModule, MatIconModule, MatMenuModule
     , MatSlideToggleModule, MatToolbarModule, NgxApexchartsModule, CommonModule],
   templateUrl: './logger.component.html',
   styleUrl: './logger.component.scss',
@@ -198,6 +200,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private statusTimeout: ReturnType<typeof setTimeout> | null = null; // Timer สำหรับเช็ค status offline หลังจาก 5 วินาที
   private readonly STATUS_TIMEOUT_MS = 5000; // 5 วินาที
   private readonly DB_COUNT_SYNC_COOLDOWN_MS = 8000;
+  private readonly HISTORY_AFR_DEFAULT = 30;
+  private readonly HISTORY_DEFAULT_LAT = -48.8766667; // Point Nemo
+  private readonly HISTORY_DEFAULT_LON = -123.3933333; // Point Nemo
   private lastDbCountSyncAt = 0;
   private dbCountSyncInFlight = false;
   private realtimeReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1221,7 +1226,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private buildMapFromSingleLap(lap: MapPoint[], key: string) {
     this.currentLapDataForChart = lap;
     this.currentLapsDataForChart = null;
-    const all = lap.map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
+    const nonDefaultGps = lap.filter(p => !p.isDefaultGps);
+    const all = (nonDefaultGps.length ? nonDefaultGps : lap)
+      .map(p => this.getLatLon(p))
+      .filter((v): v is {lat:number;lon:number} => !!v);
     if (!all.length) {
       this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: [] };
       this.currentMapPoints = [];
@@ -1891,17 +1899,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
                 console.log(`Received ${dataArray.length} history records`);
 
-                // แปลงข้อมูลจาก API เป็น MapPoint[] พร้อมกรองข้อมูลที่ไม่ถูกต้อง
+                // แปลงข้อมูลจาก API เป็น MapPoint[]
                 const startTime = performance.now();
+                let defaultGpsCount = 0;
                 const mapPoints: MapPoint[] = dataArray
-                  .filter(item => {
-                    // กรองข้อมูลที่ lat/lon ไม่ถูกต้อง
-                    const lat = item.lat;
-                    const lon = item.long;
-                    return Number.isFinite(lat) && Number.isFinite(lon) &&
-                           Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
-                           lat !== 0 && lon !== 0; // กรองค่า 0,0 ที่อาจเป็นค่า default
-                  })
                   .map(item => {
                     // แปลง time_ms เป็น ts (milliseconds)
                     // ถ้า time_ms เป็น epoch milliseconds ใช้ได้เลย
@@ -1912,24 +1913,30 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                       ts = ts * 1000;
                     }
 
+                    const normalizedGps = this.normalizeHistoryGps(item.lat, item.long);
+                    if (normalizedGps.isDefaultGps) {
+                      defaultGpsCount += 1;
+                    }
+
                     return {
                       ts: ts,
-                      lat: item.lat,
-                      lon: item.long,
+                      lat: normalizedGps.lat,
+                      lon: normalizedGps.lon,
+                      isDefaultGps: normalizedGps.isDefaultGps,
                       velocity: Number.isFinite(item.velocity) ? item.velocity : undefined,
                       heading: Number.isFinite(item.heading) ? item.heading : undefined,
-                      afrValue: Number.isFinite(item.afr) ? item.afr : undefined,
+                      afrValue: this.normalizeHistoryAfr(item.afr),
                       time: ts // เก็บ timestamp ไว้ด้วย
                     } as MapPoint;
                   })
                   .sort((a, b) => this.toMillis(a.ts) - this.toMillis(b.ts)); // เรียงตามเวลา
 
                 const filterTime = performance.now() - startTime;
-                console.log(`Filtered and converted ${mapPoints.length} valid points in ${filterTime.toFixed(2)}ms`);
+                console.log(`Converted ${mapPoints.length} history points in ${filterTime.toFixed(2)}ms (default GPS: ${defaultGpsCount})`);
 
                 if (mapPoints.length === 0) {
-                  console.warn('No valid map points after filtering');
-                  this.toastr.warning('No valid GPS data found', 'Info');
+                  console.warn('No history points after conversion');
+                  this.toastr.warning('No history data found', 'Info');
                   return;
                 }
 
@@ -2056,6 +2063,28 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.toastr.error('Failed to load history data: ' + (err.message || 'Unknown error'), 'Error');
       }
     }
+  }
+
+  private normalizeHistoryAfr(rawAfr: unknown): number {
+    const n = Number(rawAfr);
+    if (!Number.isFinite(n) || n <= 0) {
+      return this.HISTORY_AFR_DEFAULT;
+    }
+    return n;
+  }
+
+  private normalizeHistoryGps(rawLat: unknown, rawLon: unknown): { lat: number; lon: number; isDefaultGps: boolean } {
+    const lat = Number(rawLat);
+    const lon = Number(rawLon);
+    const isValid = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && lat !== 0 && lon !== 0;
+    if (isValid) {
+      return { lat, lon, isDefaultGps: false };
+    }
+    return {
+      lat: this.HISTORY_DEFAULT_LAT,
+      lon: this.HISTORY_DEFAULT_LON,
+      isDefaultGps: true
+    };
   }
 
   // ===== Realtime Mode with Late Join =====
@@ -3992,7 +4021,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // เก็บ reference ไปยัง laps data
     this.currentLapsDataForChart = laps;
     this.currentLapDataForChart = null;
-    const all = laps.flat().map(p => this.getLatLon(p)).filter((v): v is {lat:number;lon:number} => !!v);
+    const flatPoints = laps.flat();
+    const nonDefaultGps = flatPoints.filter(p => !p.isDefaultGps);
+    const all = (nonDefaultGps.length ? nonDefaultGps : flatPoints)
+      .map(p => this.getLatLon(p))
+      .filter((v): v is {lat:number;lon:number} => !!v);
     if (!all.length) {
       this.segmentsByKey = { ...(this.segmentsByKey ?? {}), [key]: [] };
       this.currentMapPoints = [];
@@ -5268,7 +5301,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             const ll = this.getLatLon(lapPoint);
             if (ll) {
               // คำนวณพิกัดเหมือน buildMapFromSingleLap
-              const all = this.currentLapDataForChart.map(p => this.getLatLon(p))
+              const nonDefaultGps = this.currentLapDataForChart.filter(p => !p.isDefaultGps);
+              const all = (nonDefaultGps.length ? nonDefaultGps : this.currentLapDataForChart)
+                .map(p => this.getLatLon(p))
                 .filter((v): v is {lat:number;lon:number} => !!v);
               if (all.length > 0) {
                 const minLat = Math.min(...all.map(v => v.lat));
@@ -6881,7 +6916,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           // Prepare data array for export
           const exportData: any[] = detail.map(logger => ({
             sats: logger.sats || '000',
-            time: logger.time_ms || '0',
+            time: this.formatTimeForExportUTC7(logger.time_ms),
             lat: this.formatCoordinate(logger.lat),
             long: this.formatCoordinate(logger.long),
             velocity: this.formatNumber(logger.velocity),
@@ -6944,12 +6979,20 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             content += `${row.sats.padStart(3, '0')} ${row.time} ${row.lat} ${row.long} ${row.velocity} ${row.heading} ${row.height} ${row.FixType} ${row.accelX} ${row.accelY} ${row.accelZ} ${row.accelSqrt} ${row.gyroX} ${row.gyroY} ${row.gyroZ} ${row.magX} ${row.magY} ${row.magZ} ${row.mDirection} ${row.Time_ms} ${row.Afr} ${row.Rpm}\n`;
           });
 
+          const timeMsList = detail
+            .map((r: any) => Number(r.time_ms))
+            .filter((v: number) => Number.isFinite(v) && v > 0)
+            .sort((a: number, b: number) => a - b);
+          const raceStartMs = timeMsList.length > 0 ? timeMsList[0] : now.getTime();
+          const fileDatePart = this.formatRaceDateForFilenameUTC7(raceStartMs);
+          const fileTimePart = this.formatClockForFilenameUTC7(raceStartMs);
+
           // Create and download file
           const blob = new Blob([content], { type: 'text/plain' });
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `logger_export_${now.getTime()}.txt`;
+          link.download = `logger_${logger}_export_${fileDatePart}_${fileTimePart}.txt`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -6961,43 +7004,131 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     })
   }
 
+  exportLoggerDataCompactToTxt(): void {
+    this.eventService
+      .getDataLoggerInRace(this.parameterRaceId, this.parameterLoggerID)
+      .subscribe({
+        next: (detail) => {
+          const rows = detail ?? [];
+          if (rows.length === 0) {
+            this.toastr.warning('ไม่มีข้อมูลสำหรับ export');
+            return;
+          }
+
+          const loggerId = String(this.parameterLoggerID ?? '').trim();
+          const carNumber = String(this.parameterCarNBR ?? this.carNumber ?? '').trim();
+
+          const timeMsList = rows
+            .map((r: any) => Number(r.time_ms))
+            .filter((v: number) => Number.isFinite(v) && v > 0)
+            .sort((a: number, b: number) => a - b);
+
+          const startMs = timeMsList.length > 0 ? timeMsList[0] : Date.now();
+          const endMs = timeMsList.length > 0 ? timeMsList[timeMsList.length - 1] : startMs;
+
+          const fileDate = this.formatRaceDateUTC7(startMs);
+          const startTime = this.formatClockUTC7(startMs);
+          const endTime = this.formatClockUTC7(endMs);
+
+          const exportRows = rows.map((logger: any) => ({
+            sats: String(logger.sats ?? '000').padStart(3, '0'),
+            time: this.formatTimeForExportUTC7(logger.time_ms),
+            lat: this.formatCoordinate(logger.lat),
+            long: this.formatCoordinate(logger.long),
+            velocity: this.formatNumber(Number(logger.velocity ?? 0)),
+            heading: this.formatNumber(Number(logger.heading ?? 0)),
+            height: this.formatNumber(Number(logger.height ?? 0)),
+            fixType: String(logger.fixtype ?? '0'),
+            afr: this.formatNumber(Number(logger.afr ?? 0)),
+          }));
+
+          let content = `File created on ${fileDate} @ ${startTime} - ${endTime}\n`;
+          content += `Logger ID: ${loggerId} | Car Number: ${carNumber}\n\n`;
+          content += `[header]\n`;
+          content += `satellites\n`;
+          content += `time\n`;
+          content += `latitude\n`;
+          content += `longitude\n`;
+          content += `velocity kmh\n`;
+          content += `heading\n`;
+          content += `height\n`;
+          content += `FixType\n`;
+          content += `AFR\n\n`;
+          content += `[channel units]\n\n`;
+          content += `[comments]\n\n`;
+          content += `[columnnames]\n`;
+          content += `sats time lat long velocity heading height FixType AFR\n\n`;
+          content += `[data]\n`;
+
+          exportRows.forEach((row) => {
+            content += `${row.sats} ${row.time} ${row.lat} ${row.long} ${row.velocity} ${row.heading} ${row.height} ${row.fixType} ${row.afr}\n`;
+          });
+
+          const fileDatePart = this.formatRaceDateForFilenameUTC7(startMs);
+          const fileTimePart = this.formatClockForFilenameUTC7(startMs);
+          const blob = new Blob([content], { type: 'text/plain' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `logger_${loggerId}_export_${fileDatePart}_${fileTimePart}.vbo`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          this.toastr.success(`Export compact สำเร็จ (${exportRows.length} records)`);
+        },
+        error: () => {
+          this.toastr.error('Export compact ไม่สำเร็จ');
+        }
+      });
+  }
+
   /**
-   * Format time string to HHMMSS.ss format
+   * Format unix milliseconds to HHMMSS.ss in UTC+7 (Asia/Bangkok).
    */
-  private formatTimeForExport(timeStr: string): string {
-    try {
-      let date: Date;
-
-      // Try to parse as ISO string or timestamp
-      if (timeStr.includes('T') || timeStr.includes('-')) {
-        date = new Date(timeStr);
-      } else if (!isNaN(Number(timeStr)) && timeStr.length > 10) {
-        // Timestamp in milliseconds
-        date = new Date(Number(timeStr));
-      } else {
-        // Try to parse as date string
-        date = new Date(timeStr);
-      }
-
-      if (isNaN(date.getTime())) {
-        // If parsing fails, use current time
-        date = new Date();
-      }
-
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
-      const milliseconds = String(date.getMilliseconds()).padStart(2, '0').slice(0, 2);
-
-      return `${hours}${minutes}${seconds}.${milliseconds}`;
-    } catch (error) {
-      // Fallback to current time
-      const now = new Date();
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      return `${hours}${minutes}${seconds}.00`;
+  private formatTimeForExportUTC7(unixMs: unknown): string {
+    const ms = Number(unixMs);
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return '000000.00';
     }
+
+    const utc7Date = new Date(ms + (7 * 60 * 60 * 1000));
+    const hours = String(utc7Date.getUTCHours()).padStart(2, '0');
+    const minutes = String(utc7Date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(utc7Date.getUTCSeconds()).padStart(2, '0');
+    const centiseconds = String(Math.floor(utc7Date.getUTCMilliseconds() / 10)).padStart(2, '0');
+
+    return `${hours}${minutes}${seconds}.${centiseconds}`;
+  }
+
+  private formatRaceDateUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
+  }
+
+  private formatClockUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    const ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  private formatRaceDateForFilenameUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = String(d.getUTCFullYear());
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  private formatClockForFilenameUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    const ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return `${hh}-${mm}-${ss}`;
   }
 
   /**

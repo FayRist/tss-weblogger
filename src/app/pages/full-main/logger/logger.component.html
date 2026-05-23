@@ -415,11 +415,26 @@
                         </mat-form-field>
                       </form> -->
 
-                        <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="exportLoggerDataToTxt()">
-                          Export Data <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-arrow-up-fill" viewBox="0 0 16 16">
-                                        <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M6.354 9.854a.5.5 0 0 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 8.707V12.5a.5.5 0 0 1-1 0V8.707z"/>
-                                      </svg>
-                        </button>
+                        <div class="logger-export-actions">
+                          <!-- <button type="button" class="btn btn-warning h-75 text-light logger-export-btn" (click)="exportLoggerDataToTxt()">
+                            .txt
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-arrow-up-fill" viewBox="0 0 16 16">
+                                          <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M6.354 9.854a.5.5 0 0 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 8.707V12.5a.5.5 0 0 1-1 0V8.707z"/>
+                                        </svg>
+                          </button> -->
+                          <!-- <button type="button" class="btn btn-outline-warning h-75 logger-export-btn" (click)="exportLoggerDataCompactToTxt()">
+                            .vbo
+                          </button> -->
+                            <button matButton [matMenuTriggerFor]="menu" type="button" class="btn btn-warning h-75 text-light logger-export-btn" >
+                              Export Data  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-arrow-up-fill" viewBox="0 0 16 16">
+                                <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M6.354 9.854a.5.5 0 0 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 8.707V12.5a.5.5 0 0 1-1 0V8.707z"/>
+                              </svg>
+                            </button>
+                            <mat-menu #menu="matMenu">
+                              <button mat-menu-item (click)="exportLoggerDataToTxt()">.txt</button>
+                              <button mat-menu-item  (click)="exportLoggerDataCompactToTxt()">.vbo</button>
+                            </mat-menu>
+                        </div>
                       <!-- <div class="form-check form-switch">
                         <button
                           #selectButton
