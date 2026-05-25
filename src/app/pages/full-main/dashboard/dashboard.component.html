@@ -81,12 +81,12 @@
         <th mat-header-cell *matHeaderCellDef>&nbsp;&nbsp;
           Status
             <div class="dashboard-status-summary mb-2">
-    <mat-chip disabled>
-      <span class="online-text">online : {{ displayedOnlineCount }}</span>
-      <span class="divider-text"> | </span>
-      <span class="offline-text">offline : {{ displayedOfflineCount }}</span>
-    </mat-chip>
-  </div>
+            <mat-chip disabled>
+              <span class="online-text">online : {{ displayedOnlineCount }}</span>
+              <span class="divider-text"> | </span>
+              <span class="offline-text">offline : {{ displayedOfflineCount }}</span>
+            </mat-chip>
+          </div>
         </th>
         <td mat-cell *matCellDef="let e" class="text-center">
           <span
@@ -102,10 +102,21 @@
               ) | uppercase
             }}
           </span>
-          @if(getLatestStatusTime(e) && (statusRace || 'live').toLowerCase() === 'live'){
-            <span class="status-badge-time">
-              {{ getLatestStatusTime(e) | date:'dd MMM, yyyy HH:mm:ss'  }}
-            </span>
+          @if(isLiveMode()){
+            <div class="status-time-stack">
+              @if(getOnlineDisplayTime(e)) {
+                <span class="status-time-row">
+                  <span class="online-dot" aria-hidden="true"></span>
+                  <span class="status-time-text">{{ getOnlineDisplayTime(e) | date:'HH:mm:ss' }}</span>
+                </span>
+              }
+              @if(getOfflineDisplayTime(e)) {
+                <span class="status-time-row">
+                  <mat-icon class="offline-icon" aria-hidden="true">wifi_off</mat-icon>
+                  <span class="status-time-text">{{ getOfflineDisplayTime(e) | date:'HH:mm:ss' }}</span>
+                </span>
+              }
+            </div>
           }
         </td>
       </ng-container>

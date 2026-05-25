@@ -566,6 +566,38 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     return Math.max(0, this.displayedTotalCount - this.displayedOnlineCount);
   }
 
+  isLiveMode(): boolean {
+    return (this.statusRace || 'live').toLowerCase() === 'live';
+  }
+
+  isLoggerOnline(logger: LoggerItem): boolean {
+    const status = (logger.status ?? logger.loggerStatus ?? '').toString().toLowerCase().trim();
+    return status === 'online';
+  }
+
+  getOnlineDisplayTime(logger: LoggerItem): Date | null {
+    if (!this.isLiveMode()) {
+      return null;
+    }
+    if (logger.onlineTime) {
+      return toDate(logger.onlineTime);
+    }
+    if (this.isLoggerOnline(logger)) {
+      return new Date();
+    }
+    return null;
+  }
+
+  getOfflineDisplayTime(logger: LoggerItem): Date | null {
+    if (!this.isLiveMode() || this.isLoggerOnline(logger)) {
+      return null;
+    }
+    if (logger.disconnectTime) {
+      return toDate(logger.disconnectTime);
+    }
+    return null;
+  }
+
   getLatestStatusTime(logger: LoggerItem): Date | null {
     const online = logger.onlineTime ? toDate(logger.onlineTime) : null;
     const disconnect = logger.disconnectTime ? toDate(logger.disconnectTime) : null;
