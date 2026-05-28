@@ -56,7 +56,7 @@ export interface DialogLoggerData {
   teamName: string;
   circuit_name: string;
   event_id: string;
-  existingLoggers: Array<{ id: number; loggerId: string; carNumber: string }>;
+  existingLoggers: Array<{ id: number; loggerId: string; carNumber: string; firstName: string; lastName: string; classType: string; teamName: string }>;
 }
 
 @Component({
@@ -204,7 +204,11 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
         existingLoggers: this.allLoggers.map(item => ({
           id: item.id,
           loggerId: item.loggerId,
-          carNumber: item.carNumber
+          carNumber: item.carNumber,
+          firstName: item.firstName,
+          lastName: item.lastName,
+          classType: item.classType,
+          teamName: item.teamName
         }))
       },
     });

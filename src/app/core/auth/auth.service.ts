@@ -54,9 +54,7 @@ interface LoginPublicKeyApiResponse {
 const LS_KEY = 'auth_state_v2';
 const TIMEOUT_NOTICE_KEY = 'auth_timeout_notice';
 const SESSION_TIMEOUT_PROD_MS = 4 * 60 * 60 * 1000;
-// TEMP: Timeout is intentionally disabled for urgent operations.
-// TODO: Re-enable and redesign session-timeout flow.
-const DISABLE_SESSION_TIMEOUT = true;
+const DISABLE_SESSION_TIMEOUT = false;
 // const SESSION_TIMEOUT_TEST_MS = 1 * 60 * 1000;
 const USE_TEST_TIMEOUT = false;
 // const SESSION_TIMEOUT_MS = USE_TEST_TIMEOUT ? SESSION_TIMEOUT_TEST_MS : SESSION_TIMEOUT_PROD_MS;

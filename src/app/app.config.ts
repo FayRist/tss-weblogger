@@ -62,6 +62,7 @@ export const APP_CONFIG = {
       GET_SETTING_LOGGERS: '/logger/get-setting-logger',
       ADD_LOGGER: '/logger/add-allnew-logger',
       UPDATE_LOGGER: '/logger/updateLoger',
+      SWAP_LOGGER_ID: '/logger/swapLoggerId',
       DELETE_LOGGER: '/logger/deleteLoger',
       RESET_LOGGER: '/logger/resetLoger',
       LIST_LOGGER_FOREXCEL: '/logger/getListLoger',

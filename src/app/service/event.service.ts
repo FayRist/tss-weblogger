@@ -717,6 +717,19 @@ export class EventService {
       );
     }
 
+    swapLoggerId(payload: {
+      eventId: number;
+      circuit: string;
+      source_id: number;
+      target_id: number;
+    }): Observable<unknown> {
+      const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.SWAP_LOGGER_ID);
+      return this.http.post(url, payload).pipe(
+        map(response => response),
+        catchError(error => handleHttpError('swapping logger id', error))
+      );
+    }
+
     deleteLogger(loggerID: any): Observable<unknown> {
       const loggersUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_LOGGER);
       return this.http.post(loggersUrl, loggerID).pipe(

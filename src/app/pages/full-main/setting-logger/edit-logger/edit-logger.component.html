@@ -4,14 +4,46 @@
           <div class="card-body bg-transparen">
 
             <div class="row">
-              <div class="col-12">
+              <div class="col-10">
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Logger ID </mat-label>
-                    <input matInput  class="text-center" [ngModelOptions]="{standalone: true}" [(ngModel)]="logger_id">
+                    <input matInput  class="text-center" [disabled]="isSwapMode" [ngModelOptions]="{standalone: true}" [(ngModel)]="logger_id">
                   </mat-form-field>
                 </form>
               </div>
+
+              <div class="col-2 d-flex justify-content-center align-items-center">
+                  <button type="button" class="btn btn-danger d-flex justify-content-center w-100"
+                    style="padding: 5px; height: 37px;" (click)="toggleSwapMode()">
+                    <mat-icon >swap_vert</mat-icon>
+                  </button>
+              </div>
+
+              @if (isSwapMode) {
+              <div class="col-12">
+                <form class="mat-input-form">
+                  <mat-form-field class="w-100">
+                  <mat-label>Logger ID ที่ต้องการสลับ</mat-label>
+                    <input
+                      matInput
+                      class="text-center"
+                      [ngModelOptions]="{standalone: true}"
+                      [(ngModel)]="swap_logger_id"
+                      (ngModelChange)="onSwapInputChange($event)"
+                      [matAutocomplete]="swapLoggerAuto">
+                    <mat-autocomplete #swapLoggerAuto="matAutocomplete" [displayWith]="formatSwapOption.bind(this)">
+                      @for (item of filteredSwapLoggers; track item.id) {
+                        <mat-option [value]="item" (onSelectionChange)="item && $event.isUserInput ? selectSwapLogger(item) : null">
+                          {{ item.loggerId }} | {{ item.carNumber }} | {{ item.firstName || '-' }}
+                        </mat-option>
+                      }
+                    </mat-autocomplete>
+                  </mat-form-field>
+                </form>
+              </div>
+              }
+
 
               <div class="col-6">
                 <form class="mat-input-form">

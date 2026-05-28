@@ -7025,25 +7025,25 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
           const startMs = timeMsList.length > 0 ? timeMsList[0] : Date.now();
           const endMs = timeMsList.length > 0 ? timeMsList[timeMsList.length - 1] : startMs;
-
           const fileDate = this.formatRaceDateUTC7(startMs);
           const startTime = this.formatClockUTC7(startMs);
           const endTime = this.formatClockUTC7(endMs);
 
-          const exportRows = rows.map((logger: any) => ({
+          const sortedRows = [...rows].sort((a: any, b: any) => Number(a?.time_ms ?? 0) - Number(b?.time_ms ?? 0));
+
+          const exportRows = sortedRows.map((logger: any) => ({
             sats: String(logger.sats ?? '000').padStart(3, '0'),
             time: this.formatTimeForExportUTC7(logger.time_ms),
-            lat: this.formatCoordinate(logger.lat),
-            long: this.formatCoordinate(logger.long),
+            lat: this.formatCoordinateForVbo(logger.lat),
+            long: this.formatLongitudeForVbo(logger.long),
             velocity: this.formatNumber(Number(logger.velocity ?? 0)),
             heading: this.formatNumber(Number(logger.heading ?? 0)),
             height: this.formatNumber(Number(logger.height ?? 0)),
             fixType: String(logger.fixtype ?? '0'),
-            afr: this.formatNumber(Number(logger.afr ?? 0)),
+            afr: this.formatAfrForVbo(Number(logger.afr ?? 0)),
           }));
 
-          let content = `File created on ${fileDate} @ ${startTime} - ${endTime}\n`;
-          content += `Logger ID: ${loggerId} | Car Number: ${carNumber}\n\n`;
+          let content = `File created on ${fileDate} @ ${startTime}\n\n`;
           content += `[header]\n`;
           content += `satellites\n`;
           content += `time\n`;
@@ -7055,7 +7055,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           content += `FixType\n`;
           content += `AFR\n\n`;
           content += `[channel units]\n\n`;
-          content += `[comments]\n\n`;
+          content += `[comments]\n`;
+          content += `Logger ID: ${loggerId}\n`;
+          content += `Car Number: ${carNumber}\n`;
+          content += `Time Range: ${startTime} - ${endTime}\n\n`;
           content += `[columnnames]\n`;
           content += `sats time lat long velocity heading height FixType AFR\n\n`;
           content += `[data]\n`;
@@ -7138,6 +7141,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const num = typeof coord === 'string' ? parseFloat(coord) : coord;
     if (isNaN(num)) return '0.000000';
     return num.toFixed(6);
+  }
+
+  private formatCoordinateForVbo(coord: string | number): string {
+    const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+    if (isNaN(num)) return '0.000000';
+    return Math.abs(num * 60).toFixed(6);
+  }
+
+  private formatLongitudeForVbo(coord: string | number): string {
+    const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+    if (isNaN(num)) return '0.000000';
+    return (-Math.abs(num * 60)).toFixed(6);
+  }
+
+  private formatAfrForVbo(num: number): string {
+    if (isNaN(num)) return '0.00';
+    return num.toFixed(2);
   }
 
   /**
