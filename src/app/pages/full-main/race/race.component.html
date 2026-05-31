@@ -74,11 +74,10 @@
             </td>
             <td class="text-center">
               @if (canManageEventRace()) {
-                <div class="row d-flex justify-content-center"
-                  [class.pointer-events-none]="canEditRace(raceData) === 'live'">
-                  @if (statusOf(raceData) == RaceStatus.Live) {
+                <div class="row d-flex justify-content-center">
+                  @if (isRaceRunning(raceData)) {
                     <div class="col-4">
-                        <button type="button" class="btn btn-danger w-100 p-0" [disabled]="canEditRace(raceData) !== 'live'" (click)="openRaceEnd('0ms', '0ms', raceData.id_list, getSessionName(raceData.session_value))">จบ Race</button>
+                        <button type="button" class="btn btn-danger w-100 p-0" (click)="openRaceEnd('0ms', '0ms', raceData.id_list, getSessionName(raceData.session_value))">จบ Race</button>
                     </div>
                   }
                   <div class="col-2 d-flex justify-content-center">

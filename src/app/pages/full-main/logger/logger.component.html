@@ -353,8 +353,8 @@
             </div>
           </div>
         </div>
-      } @else {
-            <div class="col-12 col-md-7 col-lg-8 logger-chart-col">
+      }
+            <div class="logger-chart-col" [ngClass]="isReadOnlyRaceTeamUser() ? 'col-12' : 'col-12 col-md-7 col-lg-8'">
               <div class="card" style="margin-bottom: 0px;">
                   <div class="card-header d-flex justify-content-between align-items-center">
                     <h5>
@@ -415,6 +415,7 @@
                         </mat-form-field>
                       </form> -->
 
+                        @if (!isReadOnlyRaceTeamUser()) {
                         <div class="logger-export-actions">
                           <!-- <button type="button" class="btn btn-warning h-75 text-light logger-export-btn" (click)="exportLoggerDataToTxt()">
                             .txt
@@ -435,6 +436,7 @@
                               <button mat-menu-item  (click)="exportLoggerDataCompactToTxt()">.vbo</button>
                             </mat-menu>
                         </div>
+                        }
                       <!-- <div class="form-check form-switch">
                         <button
                           #selectButton
@@ -506,7 +508,6 @@
                   </div>
               </div>
             </div>
-      }
     </div>
     <!-- -Map Race ----------------- -->
 

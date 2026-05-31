@@ -66,13 +66,17 @@ export class RaceComponent implements OnInit, OnDestroy {
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
 
+  isRaceRunning(raceData: Pick<RaceModel, 'session_start' | 'session_end' | 'active'>): boolean {
+    return Number(raceData.active ?? 0) === 1 || getRaceStatus(this.time.now(), raceData.session_start, raceData.session_end) === RaceStatus.Live;
+  }
+
   private resolveRaceMode(raceData: Pick<RaceModel, 'session_start' | 'session_end' | 'active'>): 'prerace' | 'live' | 'history' {
+    if (this.isRaceRunning(raceData)) {
+      return 'live';
+    }
     const status = getRaceStatus(this.time.now(), raceData.session_start, raceData.session_end);
     if (status === RaceStatus.Finished) {
       return 'history';
-    }
-    if (Number(raceData.active ?? 0) === 1 || status === RaceStatus.Live) {
-      return 'live';
     }
     return 'prerace';
   }

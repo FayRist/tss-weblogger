@@ -6894,6 +6894,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Export logger data to .txt file in the specified format
    */
   exportLoggerDataToTxt(): void {
+    if (this.isReadOnlyRaceTeamUser()) {
+      this.toastr.error('คุณไม่มีสิทธิ์ export ข้อมูล');
+      return;
+    }
+
     this.eventService
       .getDataLoggerInRace(this.parameterRaceId, this.parameterLoggerID)
       .subscribe({
@@ -7005,6 +7010,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   exportLoggerDataCompactToTxt(): void {
+    if (this.isReadOnlyRaceTeamUser()) {
+      this.toastr.error('คุณไม่มีสิทธิ์ export ข้อมูล');
+      return;
+    }
+
     this.eventService
       .getDataLoggerInRace(this.parameterRaceId, this.parameterLoggerID)
       .subscribe({

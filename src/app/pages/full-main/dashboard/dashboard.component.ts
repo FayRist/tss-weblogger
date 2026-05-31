@@ -1036,6 +1036,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private notifyByRole(severity: 'warning' | 'penalty', message: string, nbr: string): void {
+    if(this.AFRalertOnOff == true){
     if (this.isReadOnlyRaceTeamUser()) {
       const isPenalty = severity === 'penalty';
       void Swal.fire({
@@ -1051,7 +1052,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    if(this.AFRalertOnOff == true){
       if (severity === 'penalty') {
         this.toastr.error(message, `Penalty Alert - NBR ${nbr}`);
       } else {
