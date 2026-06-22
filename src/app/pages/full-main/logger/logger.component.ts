@@ -470,6 +470,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // และ backend REDIS_HISTORY_RETENTION_MINUTES ควรตั้งค่าให้ตรงกัน.
   private readonly LIVE_RETENTION_MINUTES = 10;
   private readonly WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window
+  private readonly CHART_DISPLAY_MINUTES = 5;
   private readonly MAP_RESTORE_MINUTES = 2;
   private readonly MAP_RESTORE_WINDOW_MS = this.MAP_RESTORE_MINUTES * 60 * 1000;
   private readonly WS_BACKLOG_MS = this.MAP_RESTORE_WINDOW_MS;
@@ -482,13 +483,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ===== Chart Performance Constants =====
   // Chart resampling: 5Hz display (200ms buckets) for smooth rendering
   private readonly CHART_BUCKET_MS = 200; // 200ms = 5Hz display rate
-  private readonly CHART_WINDOW_MS = this.LIVE_RETENTION_MINUTES * 60 * 1000; // rolling window for chart
+  private readonly CHART_WINDOW_MS = this.CHART_DISPLAY_MINUTES * 60 * 1000; // rolling window for chart
   private readonly CHART_UPDATE_MS = 220; // Chart update throttle — เพิ่มเล็กน้อยเพื่อลดการกระพริบ
   private readonly CHART_XAXIS_UPDATE_MS = 1000; // อัปเดตแกน X แค่ทุก 1 วินาที (ลด redraw)
   // Expected chart points: 30min * 60s * 5Hz = 9,000 points
   private readonly CHART_MAX_DISPLAY_POINTS = Math.ceil((this.CHART_WINDOW_MS / this.CHART_BUCKET_MS) * 1.1); // ~9,900 with 10% headroom
   /** โหมด live: ให้รองรับย้อนหลังเต็ม retention window (10 นาทีตาม config) */
-  private readonly CHART_LIVE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
+  private readonly CHART_LIVE_MAX_POINTS = Math.ceil(this.INPUT_HZ * this.CHART_DISPLAY_MINUTES * 60);
 
   // ===== Map Performance Constants =====
   private readonly MAP_WINDOW_MS = this.MAP_RESTORE_WINDOW_MS; // rolling window for map (2 minutes)
@@ -503,6 +504,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly CACHE_RETRY_DELAYS_MS = [1000, 3000];
   private readonly CACHE_WARNING_COOLDOWN_MS = 30000;
   private lastCacheWarningAt = 0;
+  private cacheRetryTimers: ReturnType<typeof setTimeout>[] = [];
   private readonly displayOptimizationEnabled = true;
   private readonly chartDedupeAfrEpsilon = 0.02;
   private readonly chartDedupeTimeWindowMs = 250;
@@ -1459,6 +1461,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return this.auth.current?.role === 'race_team_user';
   }
 
+  private shouldEnableMapPipeline(): boolean {
+    return !this.isReadOnlyRaceTeamUser();
+  }
+
+  private shouldEnableChartPipeline(): boolean {
+    return true;
+  }
+
   toggleRaceTeamMetaCollapsed(): void {
     if (!this.isReadOnlyRaceTeamUser()) {
       return;
@@ -1714,7 +1724,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private subscribeWebSocketMessages() {
-    this.webSocketService.message$.subscribe((message) => {
+    const sub = this.webSocketService.message$.subscribe((message) => {
       let msgObj;
 
       if(!message){
@@ -1732,6 +1742,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         // process msgObj.data ตามเดิม (ถ้าต้องการ)
       }
     });
+    this.subscriptions.push(sub);
   }
 
 
@@ -1773,8 +1784,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           // ตั้งค่าเริ่มต้นของการหมุนและกลับด้านตาม circuitName
           this.initializeSvgTransformForCircuit();
 
-          // โหลด background image สำหรับ canvas
-          this.loadCanvasBackgroundImage();
+          // โหลด background image สำหรับ canvas เฉพาะ role ที่ใช้ map pipeline
+          if (this.shouldEnableMapPipeline()) {
+            this.loadCanvasBackgroundImage();
+          }
           this.currentCountDetect  = detail.currentCountDetect;
           this.afr          = detail.afr;
           this.afrAverage   = detail.afrAverage;
@@ -1787,7 +1800,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.initializeDataLoading();
 
           // Initialize canvas after view init
-          if (!this.isReadOnlyRaceTeamUser()) {
+          if (this.shouldEnableMapPipeline()) {
             setTimeout(() => this.initializeCanvas(), 0);
           }
         },
@@ -2231,9 +2244,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.chartDataPoints = sorted.length > this.CHART_LIVE_MAX_POINTS
             ? sorted.slice(-this.CHART_LIVE_MAX_POINTS)
             : sorted;
+          this.trimChartDataPoints(this.chartDataPoints[this.chartDataPoints.length - 1]?.ts ?? Date.now());
         }
 
-        const shouldRestoreMap = this.telemetryBufferCount === 0;
+        const shouldRestoreMap = this.shouldEnableMapPipeline() && this.telemetryBufferCount === 0;
         console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId, 'restoreMap=', shouldRestoreMap);
         this.restoreFromSessionCache(points, shouldRestoreMap);
       },
@@ -2245,9 +2259,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
         if (retryIndex < this.CACHE_RETRY_DELAYS_MS.length) {
           const delayMs = this.CACHE_RETRY_DELAYS_MS[retryIndex];
-          setTimeout(() => {
+          const timer = setTimeout(() => {
+            this.cacheRetryTimers = this.cacheRetryTimers.filter((t) => t !== timer);
+            if (this.componentDestroyed) {
+              return;
+            }
             this.fetchLoggerCacheWithRetry(url, loggerId, retryIndex + 1, false);
           }, delayMs);
+          this.cacheRetryTimers.push(timer);
           this.notifyCacheWarningForSuperAdmin('Realtime cache unavailable, retrying...');
         } else {
           this.notifyCacheWarningForSuperAdmin('Realtime cache restore failed. Showing recent live data only.');
@@ -2286,13 +2305,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return sorted.filter((p) => p.ts >= cutoff);
     })();
 
-    for (const p of pointsForMap) {
-      this.addTelemetryPoint(p, opts);
+    if (this.shouldEnableMapPipeline()) {
+      for (const p of pointsForMap) {
+        this.addTelemetryPoint(p, opts);
+      }
     }
     // chartDataPoints ถูกเซ็ตใน loadAndRestoreLoggerCache แล้ว — อัปเดตกราฟจาก array กลาง
     this.updateChartFromGlobalArray();
-    this.scheduleRender();
-    this.scheduleDeckRender();
+    if (this.shouldEnableMapPipeline()) {
+      this.scheduleRender();
+      this.scheduleDeckRender();
+    }
     this.cdr.markForCheck();
   }
 
@@ -2444,6 +2467,25 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return velocity;
   }
 
+  private trimChartDataPoints(latestTs: number): void {
+    const referenceTs = Number.isFinite(latestTs) && latestTs > 0 ? latestTs : Date.now();
+    const cutoff = referenceTs - this.CHART_WINDOW_MS;
+
+    let trimIndex = 0;
+    while (trimIndex < this.chartDataPoints.length && (this.chartDataPoints[trimIndex]?.ts ?? 0) < cutoff) {
+      trimIndex++;
+    }
+
+    if (trimIndex > 0) {
+      this.chartDataPoints.splice(0, trimIndex);
+    }
+
+    const overflow = this.chartDataPoints.length - this.CHART_LIVE_MAX_POINTS;
+    if (overflow > 0) {
+      this.chartDataPoints.splice(0, overflow);
+    }
+  }
+
   private addTelemetryPoint(point: TelemetryPoint, options?: { skipTimeTrim?: boolean; skipChartUpdate?: boolean }): void {
     const skipTimeTrim = options?.skipTimeTrim === true;
     const skipChartUpdate = options?.skipChartUpdate === true;
@@ -2460,42 +2502,46 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.resetStatusTimeout();
     }
 
-    // Add to ring buffer (O(1) operation, no shift())
-    const writeIdx = this.telemetryBufferHead;
-    this.telemetryBuffer[writeIdx] = point;
-    this.telemetryBufferHead = (this.telemetryBufferHead + 1) % this.TELEMETRY_BUFFER_SIZE;
-    if (this.telemetryBufferCount < this.TELEMETRY_BUFFER_SIZE) {
-      this.telemetryBufferCount++;
-    } else {
-      // Buffer full, advance tail (O(1))
-      this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
-    }
-
-    // Trim buffer by time (skip when restoring from session cache)
-    if (!skipTimeTrim) {
-      const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
-      while (this.telemetryBufferCount > 0 && this.telemetryBuffer[this.telemetryBufferTail]?.ts < cutoff) {
+    if (this.shouldEnableMapPipeline()) {
+      // Add to map/realtime ring buffer only for roles that render map/route.
+      const writeIdx = this.telemetryBufferHead;
+      this.telemetryBuffer[writeIdx] = point;
+      this.telemetryBufferHead = (this.telemetryBufferHead + 1) % this.TELEMETRY_BUFFER_SIZE;
+      if (this.telemetryBufferCount < this.TELEMETRY_BUFFER_SIZE) {
+        this.telemetryBufferCount++;
+      } else {
+        // Buffer full, advance tail (O(1))
         this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
-        this.telemetryBufferCount--;
+      }
+
+      // Trim buffer by time (skip when restoring from session cache)
+      if (!skipTimeTrim) {
+        const cutoff = Date.now() - this.MAX_BUFFER_TIME_MS;
+        while (this.telemetryBufferCount > 0 && this.telemetryBuffer[this.telemetryBufferTail]?.ts < cutoff) {
+          this.telemetryBufferTail = (this.telemetryBufferTail + 1) % this.TELEMETRY_BUFFER_SIZE;
+          this.telemetryBufferCount--;
+        }
       }
     }
 
     // Schedule render (throttled) - for Canvas (only if using canvas mode)
-    if (this.isRealtimeMode && this.useCanvasMode) {
+    if (this.shouldEnableMapPipeline() && this.isRealtimeMode && this.useCanvasMode) {
       this.scheduleRender();
     }
 
     // Ingest point into deck.gl ring buffer (separate from render, O(1) operation)
     // Only if using deck.gl map mode (not canvas mode)
-    if (this.isRealtimeMode && !this.useCanvasMode) {
+    if (this.shouldEnableMapPipeline() && this.isRealtimeMode && !this.useCanvasMode) {
       this.deckIngestPoint(point);
-    } else if (this.isRealtimeMode && this.useCanvasMode) {
+    } else if (this.shouldEnableMapPipeline() && this.isRealtimeMode && this.useCanvasMode) {
       // For canvas mode, draw directly on canvas
       this.drawPointOnCanvas(point);
     }
 
     // Process point for chart resampling (5Hz pipeline)
-    this.processChartResampling(point);
+    if (this.shouldEnableChartPipeline()) {
+      this.processChartResampling(point);
+    }
 
     // อัปเดตกราฟจาก array กลาง: ต่อจุดใหม่เข้า chartDataPoints แล้วอัปเดต (realtime)
     if (!skipChartUpdate) {
@@ -2510,11 +2556,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           this.chartDataPoints.splice(0, trimIndex);
         }
       } else {
-        // โหมด live: เก็บแค่ 2000 จุดล่าสุด (sliding window) ลด lag
-        const overflow = this.chartDataPoints.length - this.CHART_LIVE_MAX_POINTS;
-        if (overflow > 0) {
-          this.chartDataPoints.splice(0, overflow);
-        }
+        this.trimChartDataPoints(point.ts || Date.now());
       }
       const now = Date.now();
       const shouldUpdate = now - this.lastChartUpdate >= this.chartUpdateThrottle;
@@ -2629,7 +2671,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initializeCanvas(): void {
-    if (this.isReadOnlyRaceTeamUser()) {
+    if (!this.shouldEnableMapPipeline()) {
       return;
     }
 
@@ -5997,7 +6039,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Initialize MapLibre map with deck.gl overlay or canvas (if no circuit match)
    */
   private initializeDeckMap(): void {
-    if (this.isReadOnlyRaceTeamUser()) {
+    if (!this.shouldEnableMapPipeline()) {
       return;
     }
 
@@ -6384,7 +6426,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private ro?: ResizeObserver;
   ngAfterViewInit(): void {
     setTimeout(() => {
-      if (!this.isReadOnlyRaceTeamUser()) {
+      if (this.shouldEnableMapPipeline()) {
         this.initializeCanvas();
       }
       this.calculateSvgScale();
@@ -6394,7 +6436,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.initializeSvgTransformForCircuit();
       }
       // Initialize deck.gl map
-      if (!this.isReadOnlyRaceTeamUser()) {
+      if (this.shouldEnableMapPipeline()) {
         this.initializeDeckMap();
       }
     }, 0);
@@ -6566,6 +6608,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     this.stopAlertHistoryPolling();
+    this.cacheRetryTimers.forEach((timer) => clearTimeout(timer));
+    this.cacheRetryTimers = [];
 
     // Close realtime WebSocket connection
     this.closeRealtimeSocket();
@@ -6605,6 +6649,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.wheelInteractionTimer = null;
     }
 
+    try {
+      this.chart?.updateSeries([], false);
+    } catch {
+      // no-op: chart may already be destroyed by Angular
+    }
+
     // Persist current buffers to sessionStorage so re-entering path can restore (e.g. after timeout)
     // this.saveLoggerCache();
 
@@ -6621,6 +6671,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.historyPoints = [];
     this.historyDownsampled = [];
     this.chartDataPoints = [];
+    this.arrayLoggerCache = [];
+    this.allDataLogger = {};
+    this.currentMapPoints = [];
+    this.segmentsByKey = {};
+    this.cachedPathLayers = [];
+    this.segmentDataArray = [];
     this.lastChartRenderSignature = '';
     this.currentCarSpeedKmh = null;
     this.lastSpeedCalcPointByLogger = {};
