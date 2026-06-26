@@ -32,7 +32,7 @@ import { APP_CONFIG, getApiUrl, getApiWebSocket, getMapCenterForCircuit } from '
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 import { RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
 // deck.gl imports
@@ -1646,6 +1646,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ---------- ตั้งค่า DEFAULT ----------
 
   ngOnInit() {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/dashboard');
     this.raceTeamMetaCollapsed = false;
     const ctx = this.navContext.snapshot;
     const statusRace = ctx.raceMode ?? 'live';
@@ -1711,6 +1712,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.subscribeWebSocketMessages();
       this.initializeStatusBroadcastForLive();
     }
+  }
+
+  permissionsListData: PermissionItem[] = [];
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   private initializeStatusBroadcastForLive(): void {

@@ -59,13 +59,14 @@ const DEFAULT_PRE_SEGMENT = 'pickup';
 const DEFAULT_PRE_CLASS = 'abc';
 const DEFAULT_PRE_SESSION = 'testsession';
 
-type MenuKey = 'DASHBOARD' | 'ALL_SEASONS' | 'SETTING_LOGGER' | 'USER_MANAGEMENT' | 'MAP_CONFIG' | 'AFR_CONFIG' | 'LOGOUT';
+type MenuKey = 'DASHBOARD' | 'ALL_SEASONS' | 'SETTING_LOGGER' | 'USER_MANAGEMENT' | 'ROLE_MANAGEMENT' | 'MAP_CONFIG' | 'AFR_CONFIG' | 'LOGOUT';
 
 const MENU_PERMISSION_PATH: Partial<Record<MenuKey, string>> = {
   DASHBOARD: 'pages/dashboard',
   ALL_SEASONS: 'pages/event',
   SETTING_LOGGER: 'pages/setting-logger',
   USER_MANAGEMENT: 'pages/user-management',
+  ROLE_MANAGEMENT: 'pages/role-management',
   MAP_CONFIG: 'pages/admin-config',
   AFR_CONFIG: 'pages/admin-config',
 };
@@ -521,6 +522,9 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   navigateToListConfigAFR2() { this.router.navigate(['/pages', 'admin-config']); }
   navigateToUserManagement() { this.router.navigate(['/pages', 'user-management']); }
+  navigateToRoleManagement() {
+    this.router.navigate(['/pages', 'role-management']);
+  }
   navigateToListConfigAFR(enterAnimationDuration: string, exitAnimationDuration: string) {
     // this.router.navigate(['/pages', 'setting-config-afr']);
     const dialogRef = this.dialog.open(ConfigAfrModalComponent, {

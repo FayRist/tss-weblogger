@@ -98,12 +98,14 @@
         <ng-container matColumnDef="setting">
           <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by setting "></th>
           <td class="text-center" mat-cell *matCellDef="let element">
+            @if(permissionsCheck("EDIT")){
             <div class="row d-flex justify-content-center">
               <div class="col-2 d-flex justify-content-center">
                 <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', element.id)">
                 <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openDelete('0ms', '0ms', element.id)">
               </div>
             </div>
+            }
           </td>
         </ng-container>
 

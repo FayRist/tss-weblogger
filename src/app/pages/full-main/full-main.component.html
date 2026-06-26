@@ -116,6 +116,15 @@
       </button>
       }
 
+      @if (canShowMenu('USER_MANAGEMENT')) {
+      <button (click)="drawer.toggle(); navigateToRoleManagement()" mat-list-item >
+        <div class="row">
+          <div class="col-2"><img style="border-radius:0; height:28px;" src="images/icon/dashboard.png"></div>
+          <div class="col-10 pt-1">จัดการ Roles</div>
+        </div>
+      </button>
+      }
+
       @if (canShowMenu('MAP_CONFIG')) {
       <button (click)="drawer.toggle(); navigateToListConfigAFR2()" mat-list-item >
         <div class="row">

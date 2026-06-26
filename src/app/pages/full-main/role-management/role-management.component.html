@@ -1,0 +1,153 @@
+<div style="margin: 20px;" class="">
+  <div class="row">
+    <div class="col-6">
+      <h3>Role Management</h3>
+    </div>
+  </div>
+  <hr style="margin: 0.3rem 0; color: #FFF;">
+
+  <mat-tab-group class="role-tabs">
+    <mat-tab label="Roles">
+      <div class="tab-content-wrap">
+        <div class="row">
+          <div class="col-4">
+            <form class="mat-input-form">
+              <mat-form-field class="w-100">
+                <mat-label>Search</mat-label>
+                <input matInput (keyup)="searchRoleFilter($event)" placeholder="ID, Name">
+              </mat-form-field>
+            </form>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="table-scroll-xy">
+            <table class="logger-table table table-dark table-striped table-hover mat-elevation-z8"
+              mat-table [dataSource]="roleDataSource" matSort #rolesSort="matSort" (matSortChange)="announceSortChange($event)">
+
+              <ng-container matColumnDef="id">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by id">ID</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.id }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="name">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by name">Role Name</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.name }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="roleType">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by role type">Role Type</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.roleType }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="setting">
+                <th mat-header-cell *matHeaderCellDef class="text-center">
+                  @if (permissionsCheck('ADD')) {
+                    <button type="button" class="btn btn-secondary w-100" (click)="openAddRole()">เพิ่ม Role</button>
+                  }
+                </th>
+                <td class="text-center" mat-cell *matCellDef="let element">
+                  <div class="row d-flex justify-content-center">
+                    <div class="col-2 d-flex justify-content-center">
+                      @if (permissionsCheck('EDIT')) {
+                        <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEditRole(element.id)">
+                      }
+                      @if (permissionsCheck('DELETE')) {
+                        <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="deleteRole(element.id)">
+                      }
+                    </div>
+                  </div>
+                </td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="roleDisplayedColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: roleDisplayedColumns;"></tr>
+            </table>
+          </div>
+          <mat-paginator #rolesPaginator [pageSizeOptions]="[5, 10, 20, 40, 50, 100]" [pageSize]="10" showFirstLastButtons></mat-paginator>
+        </div>
+      </div>
+    </mat-tab>
+
+    <mat-tab label="Role Permissions">
+      <div class="tab-content-wrap">
+        <div class="row align-items-center">
+          <div class="col-4">
+            <form class="mat-input-form">
+              <mat-form-field class="w-100">
+                <mat-label>Search Permissions</mat-label>
+                <input matInput (keyup)="searchPermissionFilter($event)" placeholder="Name, Path, Type, Form Code">
+              </mat-form-field>
+            </form>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="table-scroll-xy">
+            <table class="logger-table permission-table table table-dark table-striped table-hover mat-elevation-z8"
+              mat-table [dataSource]="permissionDataSource" matSort #permissionsSort="matSort" (matSortChange)="announceSortChange($event)">
+
+              <ng-container matColumnDef="id">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by id">ID</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.id }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="permissionsName">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by permission name">Permission Name</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.permissionsName }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="path">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by path">Path</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.path || '-' }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="type">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by type">Type</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.type || '-' }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="formCode">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by form code">Form Code</th>
+                <td class="text-center" mat-cell *matCellDef="let element">{{ element.formCode || '-' }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="active">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by active">Active</th>
+                <td class="text-center" mat-cell *matCellDef="let element">
+                  <span [class]="getActiveClass(element.active)">{{ getActiveText(element.active) }}</span>
+                </td>
+              </ng-container>
+
+              <ng-container matColumnDef="setting">
+                <th mat-header-cell *matHeaderCellDef class="text-center">
+                  @if (permissionsCheck('ADD')) {
+                    <button type="button" class="btn btn-secondary w-100" (click)="openAddPermission()">เพิ่ม Permission</button>
+                  }
+                </th>
+                <td class="text-center" mat-cell *matCellDef="let element">
+                  <div class="row d-flex justify-content-center">
+                    <div class="col-2 d-flex justify-content-center">
+                      @if (permissionsCheck('EDIT')) {
+                        <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEditPermission(element.id)">
+                        <img
+                          [class.inactive-toggle-icon]="element.active !== 1"
+                          style="border-radius: 0; height: 24px;"
+                          src="images/icon/icon_delete.png"
+                          (click)="togglePermissionActive(element.id)">
+                      }
+                    </div>
+                  </div>
+                </td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="permissionDisplayedColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: permissionDisplayedColumns;"></tr>
+            </table>
+          </div>
+          <mat-paginator #permissionsPaginator [pageSizeOptions]="[5, 10, 20, 40, 50, 100]" [pageSize]="10" showFirstLastButtons></mat-paginator>
+        </div>
+      </div>
+    </mat-tab>
+  </mat-tab-group>
+</div>

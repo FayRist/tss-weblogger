@@ -8,6 +8,7 @@ import { hashPassword } from '../../utility/password.util';
 import { NavigationEnd, Router } from '@angular/router';
 
 export type Role = 'super_admin' | 'admin' | 'mechanic_user' | 'race_team_user' | 'scruitineer';
+export type RoleType = 'admin' | 'user';
 
 export interface PermissionItem {
   permissions_name: string;
@@ -20,6 +21,7 @@ export interface AuthState {
   userId: number;
   username: string;
   role: Role;
+  roleType: RoleType;
   roleId: number;
   permissions: PermissionItem[];
   allowedRaceIds: number[];
@@ -41,6 +43,7 @@ interface LoginApiResponse {
       username: string;
       role_id: number;
       role: Role;
+      role_type: RoleType;
       permissions: PermissionItem[];
       allowed_race_ids: number[];
       all_race_access: boolean;
@@ -74,9 +77,11 @@ const FALLBACK_PATH_ORDER = [
   'pages/logger',
   'pages/season',
   'pages/setting-logger',
+  'pages/role-management',
   'pages/admin-config',
   'pages/user-management',
 ];
+const USER_ROLE_ALLOWED_GET_PATHS = new Set(['pages/dashboard', 'pages/event', 'pages/race', 'pages/logger']);
 
 function normalizePermissionPath(path: unknown): string {
   return String(path ?? '')
@@ -88,6 +93,10 @@ function normalizePermissionPath(path: unknown): string {
 
 function normalizePermissionType(type: unknown): string {
   return String(type ?? '').trim().toUpperCase();
+}
+
+function normalizeRoleType(roleType: unknown): RoleType {
+  return String(roleType ?? '').trim().toLowerCase() === 'user' ? 'user' : 'admin';
 }
 
 function normalizePermissionItem(raw: unknown): PermissionItem | null {
@@ -195,6 +204,7 @@ export class AuthService {
         userId: Number(parsed.userId || 0),
         username: String(parsed.username || ''),
         role: (parsed.role || '') as Role,
+        roleType: normalizeRoleType((parsed as Partial<AuthState>).roleType ?? (parsed as any).role_type),
         roleId: Number(parsed.roleId || 0),
         permissions: normalizePermissionList(parsed.permissions),
         allowedRaceIds: Array.isArray(parsed.allowedRaceIds) ? parsed.allowedRaceIds.map(Number) : [],
@@ -270,6 +280,7 @@ export class AuthService {
           userId: Number(u.user_id || 0),
           username: u.username,
           role: (u.role || '') as Role,
+          roleType: normalizeRoleType(u.role_type),
           roleId: Number(u.role_id || 0),
           permissions: normalizePermissionList(u.permissions),
           allowedRaceIds: Array.isArray(u.allowed_race_ids) ? u.allowed_race_ids.map(Number) : [],
@@ -455,6 +466,11 @@ export class AuthService {
 
   hasPathPermission(path: string, type = 'GET'): boolean {
     const targetType = normalizePermissionType(type);
+    const targetPath = normalizePermissionPath(path);
+    const user = this.current;
+    if (user?.roleType === 'user' && user.role === 'race_team_user') {
+      return targetType === 'GET' && USER_ROLE_ALLOWED_GET_PATHS.has(targetPath);
+    }
     return this.getPermissionsByPath(path).some(p => normalizePermissionType(p.type) === targetType);
   }
 
@@ -464,6 +480,16 @@ export class AuthService {
 
   getFirstAllowedPath(excludePaths: string[] = []): string | null {
     const excluded = new Set(excludePaths.map(normalizePermissionPath).filter(Boolean));
+    const user = this.current;
+    if (user?.roleType === 'user' && user.role === 'race_team_user') {
+      for (const path of FALLBACK_PATH_ORDER) {
+        const normalizedPath = normalizePermissionPath(path);
+        if (!excluded.has(normalizedPath) && USER_ROLE_ALLOWED_GET_PATHS.has(normalizedPath)) {
+          return normalizedPath;
+        }
+      }
+      return null;
+    }
     const allowedGetPaths = (this.current?.permissions ?? [])
       .filter(p => normalizePermissionType(p.type) === 'GET')
       .map(p => normalizePermissionPath(p.path))
@@ -500,11 +526,15 @@ export class AuthService {
   }
 
   private hasValidRoleAndPermissions(state: AuthState | null): boolean {
-    return !!state?.token &&
-      !!String(state.role ?? '').trim() &&
-      Number(state.roleId ?? 0) > 0 &&
-      Array.isArray(state.permissions) &&
-      state.permissions.length > 0;
+    if (!state?.token || !String(state.role ?? '').trim() || Number(state.roleId ?? 0) <= 0) {
+      return false;
+    }
+
+    if (state.roleType === 'user') {
+      return true;
+    }
+
+    return Array.isArray(state.permissions) && state.permissions.length > 0;
   }
 
   private clearClientCache(showTimeoutNotice: boolean): void {

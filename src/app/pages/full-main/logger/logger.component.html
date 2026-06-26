@@ -98,7 +98,7 @@
         </div>
       </div>
 
-      @if (!isReadOnlyRaceTeamUser()) {
+      @if (!isReadOnlyRaceTeamUser() && permissionsCheck('EDIT')) {
         <div class="logger-meta-item logger-meta-item--clear">
           <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
             Clear Count
@@ -415,7 +415,7 @@
                         </mat-form-field>
                       </form> -->
 
-                        @if (!isReadOnlyRaceTeamUser()) {
+                        @if (!isReadOnlyRaceTeamUser() && permissionsCheck('EXPORT')) {
                         <div class="logger-export-actions">
                           <!-- <button type="button" class="btn btn-warning h-75 text-light logger-export-btn" (click)="exportLoggerDataToTxt()">
                             .txt

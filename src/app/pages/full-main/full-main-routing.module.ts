@@ -53,6 +53,12 @@ const routes: Routes = [
     loadComponent: () => import('./admin-config/admin-config.component').then(m => m.AdminConfigComponent)
   },
    {
+    path: 'role-management',
+    canActivate: [roleGuard],
+    data: { roles: ['admin'], permissionPath: 'pages/role-management' },
+    loadComponent: () => import('./role-management/role-management.component').then(m => m.RoleManagementComponent)
+  },
+   {
     path: 'user-management',
     canActivate: [roleGuard],
     data: { roles: ['admin'], permissionPath: 'pages/user-management' },
