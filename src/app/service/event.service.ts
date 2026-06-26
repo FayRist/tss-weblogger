@@ -69,7 +69,8 @@ export class EventService {
     parameterClass: any,
     parameterLoggerID: any,
     parameterEventID: any,
-    parameterCarNBR: any
+    parameterCarNBR: any,
+    parameterCircuitName?: any
   ): Observable<LoggerRaceDetailModel> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_DETAIL_LOGGERS_IN_RACE);
     const payload = {
@@ -79,6 +80,7 @@ export class EventService {
       logger_id: parameterLoggerID,
       event_id: parameterEventID,
       car_number: parameterCarNBR,
+      circuit_name: parameterCircuitName,
     };
 
     return this.http.post<ApiLoggerRaceResponse>(url, payload).pipe(
@@ -145,6 +147,9 @@ export class EventService {
               mdirection: data.mdirection || 0,
               time_ms: data.time_ms || 0,
               car_id: data.car_id || 0,
+              car_number: data.car_number || 0,
+              first_name: data.first_name || '',
+              last_name: data.last_name || '',
               afr: data.afr || 0,
               rpm: data.rpm || 0,
           }));

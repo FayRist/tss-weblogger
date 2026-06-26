@@ -14,7 +14,7 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogActions, MatDialogClose, MatDialog
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatSelectModule } from '@angular/material/select';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { ToastrService } from 'ngx-toastr';
 import { MatIconModule } from '@angular/material/icon';
 import { eventModel } from '../../../model/season-model';
@@ -94,14 +94,17 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
   private subscriptions: Subscription[] = [];
   private sub!: Subscription;
+  permissionsListData: PermissionItem[] = [];
 
 
   constructor(
-    private userManagementService: UserManagementService
+    private userManagementService: UserManagementService,
+    private auth: AuthService
   ) {
   }
 
   ngOnInit(): void {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/user-management');
     this.loadRole();
     const MatchSub = this.userManagementService.getUser().subscribe(
       res  => {
@@ -134,6 +137,10 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       }
     );
     this.subscriptions.push(MatchSub);
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   getRoleName(roleId: number): string {

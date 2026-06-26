@@ -19,7 +19,7 @@ import { Subscription } from 'rxjs';
 import { AddEventComponent } from '../add-event/add-event.component';
 import { MAPS_LIST } from '../../../constants/race-data';
 import { MatIcon } from '@angular/material/icon';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { TimeService } from '../../../service/time.service';
 import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
@@ -54,6 +54,7 @@ export class EventComponent implements OnInit {
       }];
   private subscriptions: Subscription[] = [];
   private showHistoryOnly = false;
+  permissionsListData: PermissionItem[] = [];
 
   RaceStatus = RaceStatus;           // <-- ให้ template อ้าง enum ได้
 
@@ -67,8 +68,11 @@ export class EventComponent implements OnInit {
   }
 
   canManageEventRace(): boolean {
-    const role = this.authService.current?.role;
-    return role === 'super_admin' || role === 'admin';
+    return this.permissionsCheck('ADD') || this.permissionsCheck('EDIT') || this.permissionsCheck('DELETE');
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.authService.normalizePermissionType(p.type) === this.authService.normalizePermissionType(type));
   }
 
 
@@ -109,6 +113,7 @@ export class EventComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.permissionsListData = this.authService.getPermissionsByPath('pages/event');
     // Admin/Super Admin ต้องเห็น event ทั้งหมดเสมอ
     // ส่วน race_team_user คงพฤติกรรม history filter ตาม context เดิม
     this.showHistoryOnly = this.isReadOnlyRaceTeamUser() && this.navContext.snapshot.raceMode === 'history';

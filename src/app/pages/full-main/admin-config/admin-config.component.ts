@@ -29,7 +29,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { configAFRModel } from '../config-afr-modal/config-afr-modal.component';
 
 @Component({
@@ -51,9 +51,11 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
   formCode:string = ''
   description:string = ''
   valueNewData:string = ''
+  permissionsListData: PermissionItem[] = [];
 
   constructor(private router: Router, private route: ActivatedRoute,
-      private eventService: EventService, private toastr: ToastrService, public time: TimeService) {
+      private eventService: EventService, private toastr: ToastrService, public time: TimeService,
+      private auth: AuthService) {
   }
 
   dataSource = new MatTableDataSource<ApiConfigData>([]);
@@ -91,8 +93,13 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
   }
 
   ngOnInit() {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/admin-config');
     this.loadAndApplyConfig();
 
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   searchFilter(event: Event) {

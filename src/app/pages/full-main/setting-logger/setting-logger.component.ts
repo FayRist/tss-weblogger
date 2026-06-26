@@ -22,6 +22,7 @@ import { MatSort, MatSortModule, Sort } from '@angular/material/sort';
 import { CommonModule } from '@angular/common';
 import { eventModel } from '../../../model/season-model';
 import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 
 // ===== Helper ใช้ร่วมกัน =====
 function toDate(v: Date | string | undefined | null): Date | '' {
@@ -97,6 +98,7 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
   selectedEvent: eventModel | null = null;
   canImportLogger = false;
   canExportLogger = false;
+  permissionsListData: PermissionItem[] = [];
 
 
   // สมมติคุณมีรายการอีเวนต์ 1..n (ถ้าไม่มีให้ส่ง [] ได้)
@@ -109,10 +111,12 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
     // private router: Router, private route: ActivatedRoute,
     private router: Router,
     private eventService: EventService, private toastr: ToastrService,
-    private navContext: NavigationContextService) {
+    private navContext: NavigationContextService,
+    private auth: AuthService) {
 
   }
   ngOnInit() {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/setting-logger');
     const contextSub = this.navContext.context$.subscribe(ctx => {
       this.CurrentEventId = ctx.eventId;
       this.circuitName = ctx.circuit ?? '';
@@ -143,6 +147,10 @@ export class SettingLoggerComponent implements OnInit, AfterViewInit {
       }
     });
     this.subscriptions.push(eventSub);
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   private _eventCache: eventModel[] = [];

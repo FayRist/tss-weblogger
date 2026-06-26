@@ -21,7 +21,7 @@ import { CLASS_LIST, RACE_SEGMENT, SESSION_LIST } from '../../../constants/race-
 import { ToastrService } from 'ngx-toastr';
 import { DateRangePipe } from '../../../utility/date-range.pipe';
 import { TimeRangePipe } from '../../../utility/time-range.pipe';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { MatIcon } from '@angular/material/icon';
 import { getRaceStatus, RaceStatus } from '../../../service/race-status.pipe';
 import { TimeService } from '../../../service/time.service';
@@ -48,6 +48,7 @@ export class RaceComponent implements OnInit, OnDestroy {
   sessionList = SESSION_LIST;
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
+  permissionsListData: PermissionItem[] = [];
 
   constructor(private router: Router
     , private eventService: EventService, private toastr: ToastrService
@@ -60,8 +61,11 @@ export class RaceComponent implements OnInit, OnDestroy {
   }
 
   canManageEventRace(): boolean {
-    const role = this.authService.current?.role;
-    return role === 'super_admin' || role === 'admin';
+    return this.permissionsCheck('ADD') || this.permissionsCheck('EDIT') || this.permissionsCheck('DELETE');
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.authService.normalizePermissionType(p.type) === this.authService.normalizePermissionType(type));
   }
   RaceStatus = RaceStatus;
   statusOf = (e: RaceModel) => getRaceStatus(this.time.now(), e.session_start, e.session_end);
@@ -86,6 +90,7 @@ export class RaceComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.permissionsListData = this.authService.getPermissionsByPath('pages/race');
     const contextSub = this.navContext.context$.subscribe(ctx => {
       this.CurrentEventId = ctx.eventId;
       this.statusRace = ctx.raceMode;

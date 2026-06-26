@@ -1757,7 +1757,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.eventService
       .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID
-          , this.parameterEventID, this.parameterCarNBR
+          , this.parameterEventID, this.parameterCarNBR, this.circuitName
       )
       .subscribe({
         next: (detail) => {
@@ -3833,7 +3833,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.eventService
       .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID
-        , this.parameterEventID, this.parameterCarNBR
+        , this.parameterEventID, this.parameterCarNBR, this.circuitName
       )
       .subscribe({
         next: (detail) => {

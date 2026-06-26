@@ -3,13 +3,14 @@ import { CanActivateFn, Router } from '@angular/router';
 import { NavigationContextService } from './navigation-context.service';
 import { AuthService } from '../auth/auth.service';
 
-function redirectToFallback(router: Router, auth: AuthService): false {
-  const role = auth.current?.role;
-  if (role === 'mechanic_user' || role === 'scruitineer') {
-    router.navigate(['/pages', 'dashboard'], { replaceUrl: true });
+function redirectToFallback(router: Router, auth: AuthService, excludePaths: string[] = []): false {
+  const fallbackPath = auth.getFirstAllowedPath(excludePaths);
+  if (fallbackPath) {
+    router.navigateByUrl(`/${fallbackPath}`, { replaceUrl: true });
     return false;
   }
-  router.navigate(['/pages', 'event'], { replaceUrl: true });
+
+  auth.logoutDueToMissingPermissions();
   return false;
 }
 
@@ -18,6 +19,15 @@ export const requireDashboardContextGuard: CanActivateFn = () => {
   const router = inject(Router);
   const auth = inject(AuthService);
   const ctx = navContext.snapshot;
+
+  if (!auth.isLoggedIn()) {
+    router.navigate(['/login'], { replaceUrl: true });
+    return false;
+  }
+
+  if (!auth.hasPathPermission('pages/dashboard', 'GET')) {
+    return redirectToFallback(router, auth, ['pages/dashboard']);
+  }
 
   const hasEventId = Number(ctx.eventId) > 0;
   const hasRaceId = Number(ctx.raceId) > 0;
@@ -34,7 +44,7 @@ export const requireDashboardContextGuard: CanActivateFn = () => {
     return true;
   }
 
-  return redirectToFallback(router, auth);
+  return redirectToFallback(router, auth, ['pages/dashboard']);
 };
 
 export const requireLoggerContextGuard: CanActivateFn = () => {
@@ -42,6 +52,15 @@ export const requireLoggerContextGuard: CanActivateFn = () => {
   const router = inject(Router);
   const auth = inject(AuthService);
   const ctx = navContext.snapshot;
+
+  if (!auth.isLoggedIn()) {
+    router.navigate(['/login'], { replaceUrl: true });
+    return false;
+  }
+
+  if (!auth.hasPathPermission('pages/logger', 'GET')) {
+    return redirectToFallback(router, auth, ['pages/logger']);
+  }
 
   const hasRaceId = Number(ctx.raceId) > 0;
   const hasLoggerId = !!(ctx.loggerId && String(ctx.loggerId).trim());
@@ -52,5 +71,5 @@ export const requireLoggerContextGuard: CanActivateFn = () => {
     return true;
   }
 
-  return redirectToFallback(router, auth);
+  return redirectToFallback(router, auth, ['pages/logger']);
 };

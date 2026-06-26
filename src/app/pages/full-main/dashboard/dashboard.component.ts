@@ -29,7 +29,7 @@ import { LoggerItem } from '../../../model/api-response-model';
 import { TimeService } from '../../../service/time.service';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 import Swal from 'sweetalert2';
 import { RaceConfigMode, RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
@@ -108,6 +108,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
 
   allLoggers: LoggerItem[] = [ ];
+  permissionsListData: PermissionItem[] = [];
   readonly dialog = inject(MatDialog);
   onShowAllLoggers: LoggerItem[] = []
   countMax: number = 0;
@@ -204,6 +205,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   isSuperAdminUser(): boolean {
     return this.auth.current?.role === 'super_admin';
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   getConfigSourceLabel(): string {
@@ -357,6 +362,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   statusRace:string = '';
 
   ngOnInit() {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/dashboard');
     if (this.isReadOnlyRaceTeamUser()) {
       this.displayedColumns = this.displayedColumns.filter((col) => col !== 'resetLimit');
     }

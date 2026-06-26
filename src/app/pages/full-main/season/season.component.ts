@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { EventService } from '../../../service/event.service';
 import { Subscription } from 'rxjs';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 
 @Component({
   selector: 'app-season',
@@ -12,11 +13,13 @@ import { Subscription } from 'rxjs';
 export class SeasonComponent implements OnInit {
   allSeason: any[] = [];
   private subscriptions: Subscription[] = [];
+  permissionsListData: PermissionItem[] = [];
 
-  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService) {
+  constructor(private router: Router, private route: ActivatedRoute, private eventService: EventService, private auth: AuthService) {
   }
 
   ngOnInit() {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/season');
     this.allSeason = [
       {
         seasonId: 1,
@@ -24,6 +27,10 @@ export class SeasonComponent implements OnInit {
       }
     ]
     this.loadSeason();
+  }
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   navigateToEvent(){

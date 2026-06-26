@@ -169,6 +169,9 @@ export interface ExportDataLoggerInRaceModel {
   mdirection: number;
   time_ms: number;       // int64 (TS number ใช้ได้ แต่ถ้าใหญ่มากอาจพิจารณา bigint)
   car_id: number;        // int32
+  car_number?: number;
+  first_name?: string;
+  last_name?: string;
   afr: number;           // float64
   rpm: number;           // float64
 }
@@ -202,6 +205,9 @@ export interface ExportDataLoggerInRaceRes {
 
   time_ms: number;       // int64 (TS number ใช้ได้ แต่ถ้าใหญ่มากอาจพิจารณา bigint)
   car_id: number;        // int32
+  car_number?: number;
+  first_name?: string;
+  last_name?: string;
 
   afr: number;           // float64
   rpm: number;           // float64
