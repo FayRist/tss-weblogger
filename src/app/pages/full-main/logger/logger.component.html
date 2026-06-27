@@ -488,20 +488,22 @@
                         ></apx-chart>
                       </div>
 
-                      <div id="chart-brush">
-                        <apx-chart
-                          [series]="brushOpts.series"
-                          [chart]="brushOpts.chart"
-                          [xaxis]="brushOpts.xaxis"
-                          [yaxis]="brushOpts.yaxis"
-                          [colors]="brushOpts.colors"
-                          [fill]="brushOpts.fill"
-                          [grid]="brushOpts.grid"
-                          [dataLabels]="brushOpts.dataLabels"
-                          [stroke]="brushOpts.stroke"
-                          [theme]="brushOpts.theme"
-                        ></apx-chart>
-                      </div>
+                      @if (shouldShowBrushChart()) {
+                        <div id="chart-brush">
+                          <apx-chart
+                            [series]="brushOpts.series"
+                            [chart]="brushOpts.chart"
+                            [xaxis]="brushOpts.xaxis"
+                            [yaxis]="brushOpts.yaxis"
+                            [colors]="brushOpts.colors"
+                            [fill]="brushOpts.fill"
+                            [grid]="brushOpts.grid"
+                            [dataLabels]="brushOpts.dataLabels"
+                            [stroke]="brushOpts.stroke"
+                            [theme]="brushOpts.theme"
+                          ></apx-chart>
+                        </div>
+                      }
 
                     </div>
 

@@ -69,7 +69,18 @@
                     {{ raceData.active == 1 ? 'active' : 'inactive' }}
                   </button>
                 </div>
+              } @else {
+                <div class="row d-flex justify-content-center">
+                  <button
+                    type="button"
+                    class="w-100 p-0 btn"
+                    [class]="raceData.active == 1 ? 'btn-info' : 'btn-secondary'"
+                    [disabled]="raceData.active == 0 && (statusOf(raceData) == RaceStatus.Live || statusOf(raceData) == RaceStatus.Finished)">
+                    {{ raceData.active == 1 ? 'active' : 'inactive' }}
+                  </button>
+                </div>
               }
+
               <!-- {{ statusOf(raceData) }} -->
             </td>
             <td class="text-center">

@@ -39,7 +39,7 @@
                 </div>
               </td>
               <td class="text-center">
-                @if (canManageEventRace()) {
+                @if (this.permissionsCheck('ADD') || this.permissionsCheck('EDIT') || this.permissionsCheck('DELETE')) {
                   <div class="row d-flex justify-content-center">
                     <div class="col-12">
                       <button
@@ -48,6 +48,18 @@
                         [class]="eventList.active == 1 ? 'btn-info' : 'btn-secondary'"
                         [disabled]="eventList.active == 0 && (statusOf(eventList) == RaceStatus.Live || statusOf(eventList) == RaceStatus.Finished)"
                         (click)="eventListActive(eventList.event_name ,eventList.event_id, eventList.active, 'event')">
+                        {{ eventList.active == 1 ? 'active' : 'inactive' }}
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="row d-flex justify-content-center">
+                    <div class="col-12">
+                      <button
+                        type="button"
+                        class="w-100 p-0 btn"
+                        [class]="eventList.active == 1 ? 'btn-info' : 'btn-secondary'"
+                        [disabled]="eventList.active == 0 && (statusOf(eventList) == RaceStatus.Live || statusOf(eventList) == RaceStatus.Finished)">
                         {{ eventList.active == 1 ? 'active' : 'inactive' }}
                       </button>
                     </div>

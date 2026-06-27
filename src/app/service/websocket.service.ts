@@ -21,6 +21,7 @@ export class WebSocketService {
   private currentLoggerId: string | null = null; // เก็บ loggerId ปัจจุบัน
   private manualDisconnect = false;
   private lastUrl: string | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   private messageSubject = new BehaviorSubject<WebSocketMessage | null>(null);
   private connectionStatusSubject = new BehaviorSubject<'connected' | 'disconnected' | 'connecting'>('disconnected');
@@ -369,11 +370,18 @@ export class WebSocketService {
       // ถ้าเป็นการ disconnect แบบ manual จะไม่ reconnect
       return;
     }
+    if (this.reconnectTimer) {
+      return;
+    }
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       // console.log(`WebSocket: Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
-      setTimeout(() => {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.manualDisconnect) {
+          return;
+        }
         // ใช้ URL และ loggerId เดิมในการ reconnect (คง query params เดิม)
         const url = this.lastUrl ?? `${APP_CONFIG.API.URL_SOCKET_LOCAL}${APP_CONFIG.API.ENDPOINTS.WEB_SOCKET}`;
         this.connect(url, this.currentLoggerId || undefined);
@@ -388,6 +396,7 @@ export class WebSocketService {
    */
   disconnect(): void {
     this.manualDisconnect = true;
+    this.clearReconnectTimer();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -405,6 +414,13 @@ export class WebSocketService {
     this.currentLoggerId = null; // ล้าง loggerId เมื่อปิดการเชื่อมต่อ
     this.connectionStatusSubject.next('disconnected');
     console.log('WebSocket: Disconnected');
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   /**
