@@ -496,6 +496,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly MAP_WINDOW_MS = this.MAP_RESTORE_WINDOW_MS; // rolling window for map (2 minutes)
   private readonly MAP_PATH_FPS = 30; // Path layer update rate (optimized for smoothness)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
+  readonly defaultPreEventId = 999;
+  readonly defaultPreRaceId = 999;
+  readonly preLogCircuitOptions = [
+    { value: 'bric', label: 'Chang' },
+    { value: 'bsc', label: 'Bangsaen' },
+    { value: 'bic', label: 'Bira' },
+  ];
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
   arrayLoggerCache: TelemetryPoint[] = [];
   /** ตัวเดียวสำหรับ feed กราฟ (detailOpts/brushOpts): เริ่มต้นว่าง, เติมจาก Redis ถ้ามี, ต่อด้วย realtime */
@@ -1465,6 +1472,23 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   isReadOnlyRaceTeamUser(): boolean {
     return this.auth.current?.role === 'race_team_user';
+  }
+
+  isDefaultPreLogMode(): boolean {
+    return Number(this.parameterEventID) === this.defaultPreEventId
+      && Number(this.parameterRaceId) === this.defaultPreRaceId;
+  }
+
+  onPreLogCircuitChange(circuitName: string): void {
+    const nextCircuit = String(circuitName ?? '').trim().toLowerCase();
+    if (!this.isDefaultPreLogMode() || !nextCircuit || nextCircuit === this.circuitName) {
+      return;
+    }
+
+    this.circuitName = nextCircuit;
+    this.applyCircuitToDeckMap(nextCircuit);
+    this.initializeSvgTransformForCircuit();
+    this.cdr.markForCheck();
   }
 
   shouldShowBrushChart(): boolean {
@@ -6163,6 +6187,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Use deck.gl map mode
     this.useCanvasMode = false;
 
+    if (this.deckMap) {
+      this.applyCircuitToDeckMap(this.circuitName);
+      return;
+    }
+
     if (!this.raceMapDeckRef?.nativeElement) {
       console.warn('[deck.gl] Map container not found, retrying...');
       setTimeout(() => this.initializeDeckMap(), 100);
@@ -6200,6 +6229,33 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.useCanvasMode = true;
       this.initializeCanvasMap();
     }
+  }
+
+  private applyCircuitToDeckMap(circuitName: string): void {
+    if (!this.shouldEnableMapPipeline()) {
+      return;
+    }
+
+    const center = getMapCenterForCircuit(circuitName);
+    if (!center) {
+      this.useCanvasMode = true;
+      this.initializeCanvasMap();
+      return;
+    }
+
+    this.useCanvasMode = false;
+
+    if (!this.deckMap) {
+      this.initializeDeckMap();
+      return;
+    }
+
+    this.deckMap.setCenter([center.lng, center.lat]);
+    this.deckMap.setZoom(center.zoom);
+    this.deckMap.setPitch(0);
+    this.deckMap.setBearing(center.rotation);
+    this.deckDirty = true;
+    this.scheduleDeckRender();
   }
 
   /**

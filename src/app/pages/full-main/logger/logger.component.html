@@ -183,14 +183,25 @@
             </div>
           </div>
           <div class="card-body card-body--flush">
-            <!-- deck.gl Map Container (WebGL) - shown when circuit has map center -->
-            <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"></div>
-
-            <!-- Canvas for drawing lines (shown when no circuit match) -->
-            <canvas #raceMapCanvas
-              class="race-map-canvas"
-              [style.display]="useCanvasMode ? 'block' : 'none'">
-            </canvas>
+            <div class="logger-map-stage">
+              <!-- deck.gl Map Container (WebGL) - shown when circuit has map center -->
+              <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"></div>
+              @if (isDefaultPreLogMode()) {
+                <mat-form-field class="prelog-circuit-select prelog-circuit-select--overlay" appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Circuit</mat-label>
+                  <mat-select [value]="circuitName" (selectionChange)="onPreLogCircuitChange($event.value)">
+                    @for (circuit of preLogCircuitOptions; track circuit.value) {
+                      <mat-option [value]="circuit.value">{{ circuit.label }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              }
+              <!-- Canvas for drawing lines (shown when no circuit match) -->
+              <canvas #raceMapCanvas
+                class="race-map-canvas"
+                [style.display]="useCanvasMode ? 'block' : 'none'">
+              </canvas>
+            </div>
 
             <!-- Legacy SVG+Canvas (hidden when using deck.gl) -->
             <div class="track-image-container" style="position: relative; display: none;">

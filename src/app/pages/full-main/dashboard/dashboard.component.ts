@@ -1154,6 +1154,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   navigateToLoggerDetail(LoggerId :any, CarNBR: any) {
     this.navContext.patchContext({
+      eventId: Number(this.parameterEventId),
       raceId: Number(this.parameterRaceId),
       segment: this.parameterSegment,
       classCode: this.parameterClass,
