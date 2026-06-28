@@ -7,17 +7,21 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;background:#f5f5f0;color:#1a1a18;min-height:100vh}
-  .topbar{background:#1a1a18;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px}
+  .topbar{background:#1a1a18;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
   .topbar h1{font-size:16px;font-weight:600;letter-spacing:.02em}
-  .topbar .event{font-size:13px;color:#888;margin-left:auto}
+  .topbar .event{font-size:13px;color:#888}
   .topbar .dot{width:8px;height:8px;border-radius:50%;background:#3ecf8e;flex-shrink:0}
+  .topbar-event-config{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .topbar-event-config .event-name-input{width:120px;border-color:transparent;background:transparent;color:#cfcfc8;padding:7px 8px;font-size:15px;text-align:right}
+  .topbar-event-config .event-name-input:not([readonly]){border-color:#666;background:#fff;color:#1a1a18;text-align:left}
+  .topbar-event-config .event-edit-button{padding:8px 12px;font-size:14px}
   .controls{display:flex;gap:10px;padding:16px 24px;background:#fff;border-bottom:1px solid #e8e8e4;flex-wrap:wrap;align-items:center}
   .controls label{font-size:12px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
-  .controls select{border:1px solid #ddd;border-radius:6px;padding:9px 12px;font-size:15px;background:#fff;color:#1a1a18;cursor:pointer;outline:none}
+  .controls select{border:1px solid #ddd;border-radius:6px;padding:12px 15px;font-size:18px;background:#fff;color:#1a1a18;cursor:pointer;outline:none}
   .controls select:focus{border-color:#1a1a18}
-  .userbox{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px;color:#cfcfc8}
+  .userbox{display:flex;align-items:center;gap:8px;margin-left:0;font-size:12px;color:#cfcfc8}
   .role-badge{background:#2b2b28;color:#fff;border:1px solid #44443f;border-radius:999px;padding:4px 9px;font-size:12px;text-transform:uppercase}
-  button{border:1px solid #d8d8d2;border-radius:6px;background:#fff;color:#1a1a18;padding:9px 14px;font-size:15px;cursor:pointer}
+  button{border:1px solid #d8d8d2;border-radius:6px;background:#fff;color:#1a1a18;padding:12px 17px;font-size:18px;cursor:pointer}
   button:hover{background:#f4f4ef}
   button.danger{color:#991b1b;border-color:#f2c7c7}
   .app{display:none}
@@ -27,40 +31,42 @@
   .login-panel{width:100%;max-width:360px;background:#fff;border:1px solid #e8e8e4;border-radius:10px;padding:24px}
   .login-panel h1{font-size:20px;margin-bottom:6px}
   .login-panel p{font-size:13px;color:#777;margin-bottom:18px}
+  .event-year{font-size:15px;color:#777;white-space:nowrap}
   .form-row{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
   .form-row label{font-size:12px;color:#777;font-weight:600}
-  input[type=text],input[type=password],input[type=number]{border:1px solid #e0e0dc;border-radius:6px;padding:9px 10px;font-size:16px;background:#fafaf8;outline:none;transition:border .15s}
+  input[type=text],input[type=password],input[type=number]{border:1px solid #e0e0dc;border-radius:6px;padding:12px 13px;font-size:19px;background:#fafaf8;outline:none;transition:border .15s}
   input[type=text]:focus,input[type=password]:focus,input[type=number]:focus{border-color:#1a1a18;background:#fff}
   .login-error{min-height:18px;color:#dc2626;font-size:12px;margin-bottom:10px}
   .admin-panel{display:none;gap:10px;padding:14px 24px;background:#fff;border-bottom:1px solid #e8e8e4;flex-wrap:wrap;align-items:end}
   body.role-admin .admin-panel{display:flex}
-  .admin-panel .form-row{margin-bottom:0;min-width:120px}
-  .admin-panel input{width:140px}
+  .admin-panel .form-row{margin-bottom:0;min-width:123px}
+  .admin-panel input{width:143px}
+  .admin-error{flex-basis:100%;min-height:18px;color:#dc2626;font-size:14px;font-weight:600}
   .action-col{display:none}
   body.role-admin .action-col{display:table-cell}
-  .readonly-val{display:inline-block;min-width:48px;color:#555}
+  .readonly-val{display:inline-block;min-width:51px;color:#555}
   .legend{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:12px;color:#888}
   .leg{display:flex;align-items:center;gap:5px}
   .leg-dot{width:8px;height:8px;border-radius:50%}
   .main{padding:20px 24px}
   .table-card{background:#fff;border-radius:10px;border:1px solid #e8e8e4;overflow:auto;max-height:calc(100vh - 250px)}
   table{width:100%;border-collapse:collapse}
-  th{background:#f9f9f7;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#888;padding:10px 12px;text-align:left;border-bottom:1px solid #e8e8e4;white-space:nowrap;position:sticky;top:0;z-index:2}
-  td{padding:9px 12px;border-bottom:1px solid #f0f0ec;vertical-align:middle}
+  th{background:#f9f9f7;font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#888;padding:13px 15px;text-align:left;border-bottom:1px solid #e8e8e4;white-space:nowrap;position:sticky;top:0;z-index:2}
+  td{padding:12px 15px;border-bottom:1px solid #f0f0ec;vertical-align:middle}
   tr:last-child td{border-bottom:none}
   tr:hover td{background:#fafaf8}
-  .num-badge{width:34px;height:34px;border-radius:6px;background:#f0f0ec;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
-  .sub-tag{font-size:11px;background:#f0f0ec;border-radius:4px;padding:2px 7px;color:#555;font-weight:500}
-  .target-val{font-size:13px;font-weight:500;color:#1a1a18}
-  td input[type=text],td input[type=number]{width:110px;text-align:right;font-size:16px;padding:9px 10px}
+  .num-badge{width:37px;height:37px;border-radius:6px;background:#f0f0ec;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:16px}
+  .sub-tag{font-size:14px;background:#f0f0ec;border-radius:4px;padding:5px 10px;color:#555;font-weight:500}
+  .target-val{font-size:16px;font-weight:500;color:#1a1a18}
+  td input[type=text],td input[type=number]{width:113px;text-align:right;font-size:19px;padding:12px 13px}
   input[type=number]::-webkit-inner-spin-button{opacity:.4}
-  .total-val{font-weight:700;font-size:14px}
-  .pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;white-space:nowrap}
+  .total-val{font-weight:700;font-size:17px}
+  .pill{display:inline-block;font-size:15px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap}
   .pill.ok{background:#dcfce7;color:#166534}
   .pill.warn{background:#fef3c7;color:#92400e}
   .pill.over{background:#fee2e2;color:#991b1b}
   .pill.empty{background:#f3f4f6;color:#9ca3af}
-  .pct-text{font-size:12px;color:#999}
+  .pct-text{font-size:15px;color:#999}
   .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
   .stat{background:#fff;border:1px solid #e8e8e4;border-radius:10px;padding:14px 16px}
   .stat-label{font-size:11px;color:#999;font-weight:500;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
@@ -72,12 +78,13 @@
   @media(max-width:700px){
     .topbar{padding:12px 16px}
     .controls{padding:12px 16px}
+    .topbar-event-config{width:100%;margin-left:24px}
     .userbox{width:100%;margin-left:24px;justify-content:space-between}
     .admin-panel{padding:12px 16px}
     .main{padding:12px 16px}
     .summary{grid-template-columns:repeat(3,1fr)}
-    td input[type=text],td input[type=number]{width:82px;font-size:15px}
-    th,td{padding:8px 8px}
+    td input[type=text],td input[type=number]{width:85px;font-size:18px}
+    th,td{padding:11px 11px}
     .legend{display:none}
   }
 </style>
@@ -87,7 +94,7 @@
 <div class="login-wrap">
   <form class="login-panel" onsubmit="login(event)">
     <h1>TSS Weighing Sheet</h1>
-    <p>เข้าสู่ระบบเพื่อใช้งาน BRIC1 · 2026</p>
+    <p>เข้าสู่ระบบเพื่อใช้งาน <span id="login-event-text">BRIC1 · 2026</span></p>
     <div class="form-row">
       <label for="login-user">Username</label>
       <input id="login-user" type="text" autocomplete="username" required>
@@ -105,7 +112,11 @@
   <div class="topbar">
     <div class="dot"></div>
     <h1>TSS Weighing Sheet</h1>
-    <span class="event">BRIC1 · 2026</span>
+    <div class="topbar-event-config">
+      <input id="event-name-input" class="event-name-input" type="text" value="BRIC1" readonly>
+      <span class="event-year">· <span id="event-year-text">2026</span></span>
+      <button type="button" class="event-edit-button" id="event-edit-button" onclick="toggleEventEdit()">แก้ไข</button>
+    </div>
     <div class="userbox">
       <span id="active-user"></span>
       <span class="role-badge" id="active-role"></span>
@@ -140,6 +151,7 @@
     </div>
     <button type="button" onclick="addCar()">เพิ่มรถ</button>
     <button type="button" class="danger" onclick="resetData()">Reset data</button>
+    <div class="admin-error" id="admin-error" aria-live="polite"></div>
   </div>
 
   <div class="main">
@@ -174,148 +186,214 @@ const USERS = {
 };
 const STORAGE_KEYS = {
   user:"tss.activeUser",
-  data:"tss.masterData",
-  weights:"tss.weights"
+  event:"tss.eventName.v1",
+  data:"tss.masterData.v2",
+  weights:"tss.weights.v2"
 };
-const DEFAULT_DATA = {
+
+const CLASS_SESSIONS = {
+  "ECO": ["Qualify", "Race4", "Race5"],
+  "Touring": ["Qualify", "Race3", "Race4"],
+  "PICKUP C": ["Qualify", "Race4", "Race5"],
+  "PICKUP AB": ["Qualify", "Race4", "Race5"],
+  "GR86": ["Qualify", "Race3", "Race4"],
+  "GT4 GTC": ["Qualify", "Race3", "Race4"],
+  "GT3 GTM": ["Qualify", "Race3", "Race4"]
+};
+
+function copyCars(list){ return list.map(car=>({...car})); }
+
+const DEFAULT_SOURCE_DATA = {
   "GT3/GTM": {
     "Qualifying": [
-      {sub:"GT3",num:"12",target:1301},{sub:"GT3",num:"26",target:1302},{sub:"GT3",num:"89",target:1306},
-      {sub:"GT3",num:"888",target:1287},{sub:"GT3",num:"16",target:1344},{sub:"GT3",num:"27",target:1295},
-      {sub:"GTM",num:"55",target:1207},{sub:"GTM",num:"77",target:1388},{sub:"GTM",num:"88",target:1320},
-      {sub:"GTM",num:"8",target:null},{sub:"GTM",num:"10",target:1285}
+      // {sub:"GT3",num:"12",target:1301},{sub:"GT3",num:"26",target:1302},{sub:"GT3",num:"89",target:1306},
+      // {sub:"GT3",num:"888",target:1287},{sub:"GT3",num:"16",target:1344},{sub:"GT3",num:"27",target:1295},
+      // {sub:"GTM",num:"55",target:1207},{sub:"GTM",num:"77",target:1388},{sub:"GTM",num:"88",target:1320},
+      // {sub:"GTM",num:"8",target:null},{sub:"GTM",num:"10",target:1285}
     ],
     "Race 1": [
-      {sub:"GT3",num:"12",target:1301},{sub:"GT3",num:"26",target:1302},{sub:"GT3",num:"89",target:1306},
-      {sub:"GT3",num:"888",target:1287},{sub:"GT3",num:"16",target:1344},{sub:"GT3",num:"27",target:1295},
-      {sub:"GTM",num:"55",target:1207},{sub:"GTM",num:"77",target:1388},{sub:"GTM",num:"88",target:1320},
-      {sub:"GTM",num:"8",target:null},{sub:"GTM",num:"10",target:1285}
+      // {sub:"GT3",num:"12",target:1301},{sub:"GT3",num:"26",target:1302},{sub:"GT3",num:"89",target:1306},
+      // {sub:"GT3",num:"888",target:1287},{sub:"GT3",num:"16",target:1344},{sub:"GT3",num:"27",target:1295},
+      // {sub:"GTM",num:"55",target:1207},{sub:"GTM",num:"77",target:1388},{sub:"GTM",num:"88",target:1320},
+      // {sub:"GTM",num:"8",target:null},{sub:"GTM",num:"10",target:1285}
     ],
     "Race 2": [
-      {sub:"GT3",num:"12",target:1301},{sub:"GT3",num:"26",target:1302},{sub:"GT3",num:"89",target:1306},
-      {sub:"GT3",num:"888",target:1287},{sub:"GT3",num:"16",target:1344},{sub:"GT3",num:"27",target:1295},
-      {sub:"GTM",num:"55",target:1207},{sub:"GTM",num:"77",target:1388},{sub:"GTM",num:"88",target:1320},
-      {sub:"GTM",num:"8",target:null},{sub:"GTM",num:"10",target:1285}
+      // {sub:"GT3",num:"12",target:1301},{sub:"GT3",num:"26",target:1302},{sub:"GT3",num:"89",target:1306},
+      // {sub:"GT3",num:"888",target:1287},{sub:"GT3",num:"16",target:1344},{sub:"GT3",num:"27",target:1295},
+      // {sub:"GTM",num:"55",target:1207},{sub:"GTM",num:"77",target:1388},{sub:"GTM",num:"88",target:1320},
+      // {sub:"GTM",num:"8",target:null},{sub:"GTM",num:"10",target:1285}
     ]
   },
   "GT4/GTC": {
     "Qualifying": [
-      {sub:"GT4",num:"9",target:1373},{sub:"GT4",num:"11",target:1432},{sub:"GT4",num:"16",target:1432},
-      {sub:"GT4",num:"39",target:1426},{sub:"GT4",num:"77",target:1429},{sub:"GT4",num:"91",target:1374},
-      {sub:"GT4",num:"19",target:1410},{sub:"GT4",num:"22",target:1435},{sub:"GT4",num:"95",target:1417},
-      {sub:"GTC",num:"24",target:1243},{sub:"GTC",num:"37",target:1157},{sub:"GTC",num:"88",target:1185}
+      // {sub:"GT4",num:"9",target:1373},{sub:"GT4",num:"11",target:1432},{sub:"GT4",num:"16",target:1432},
+      // {sub:"GT4",num:"39",target:1426},{sub:"GT4",num:"77",target:1429},{sub:"GT4",num:"91",target:1374},
+      // {sub:"GT4",num:"19",target:1410},{sub:"GT4",num:"22",target:1435},{sub:"GT4",num:"95",target:1417},
+      // {sub:"GTC",num:"24",target:1243},{sub:"GTC",num:"37",target:1157},{sub:"GTC",num:"88",target:1185}
     ],
     "Race 1": [
-      {sub:"GT4",num:"9",target:1373},{sub:"GT4",num:"11",target:1432},{sub:"GT4",num:"16",target:1432},
-      {sub:"GT4",num:"39",target:1426},{sub:"GT4",num:"77",target:1429},{sub:"GT4",num:"91",target:1374},
-      {sub:"GT4",num:"19",target:1410},{sub:"GT4",num:"22",target:1435},{sub:"GT4",num:"95",target:1417},
-      {sub:"GTC",num:"24",target:1243},{sub:"GTC",num:"37",target:1157},{sub:"GTC",num:"88",target:1185}
+      // {sub:"GT4",num:"9",target:1373},{sub:"GT4",num:"11",target:1432},{sub:"GT4",num:"16",target:1432},
+      // {sub:"GT4",num:"39",target:1426},{sub:"GT4",num:"77",target:1429},{sub:"GT4",num:"91",target:1374},
+      // {sub:"GT4",num:"19",target:1410},{sub:"GT4",num:"22",target:1435},{sub:"GT4",num:"95",target:1417},
+      // {sub:"GTC",num:"24",target:1243},{sub:"GTC",num:"37",target:1157},{sub:"GTC",num:"88",target:1185}
     ],
     "Race 2": [
-      {sub:"GT4",num:"9",target:1373},{sub:"GT4",num:"11",target:1432},{sub:"GT4",num:"16",target:1432},
-      {sub:"GT4",num:"39",target:1426},{sub:"GT4",num:"77",target:1429},{sub:"GT4",num:"91",target:1374},
-      {sub:"GT4",num:"19",target:1410},{sub:"GT4",num:"22",target:1435},{sub:"GT4",num:"95",target:1417},
-      {sub:"GTC",num:"24",target:1243},{sub:"GTC",num:"37",target:1157},{sub:"GTC",num:"88",target:1185}
+      // {sub:"GT4",num:"9",target:1373},{sub:"GT4",num:"11",target:1432},{sub:"GT4",num:"16",target:1432},
+      // {sub:"GT4",num:"39",target:1426},{sub:"GT4",num:"77",target:1429},{sub:"GT4",num:"91",target:1374},
+      // {sub:"GT4",num:"19",target:1410},{sub:"GT4",num:"22",target:1435},{sub:"GT4",num:"95",target:1417},
+      // {sub:"GTC",num:"24",target:1243},{sub:"GTC",num:"37",target:1157},{sub:"GTC",num:"88",target:1185}
     ]
   },
   "Touring": {
     "Qualifying": [
-      {sub:"Touring",num:"6",target:1088.44},{sub:"Touring",num:"8",target:1047.2},{sub:"Touring",num:"9",target:985},
-      {sub:"Touring",num:"14",target:1062.37},{sub:"Touring",num:"18",target:1040},{sub:"Touring",num:"19",target:992.08},
-      {sub:"Touring",num:"24",target:1040},{sub:"Touring",num:"25",target:969.26},{sub:"Touring",num:"32",target:960},
-      {sub:"Touring",num:"33",target:1040},{sub:"Touring",num:"34",target:1055},{sub:"Touring",num:"36",target:989.65},
-      {sub:"Touring",num:"38",target:985},{sub:"Touring",num:"39",target:989.17},{sub:"Touring",num:"41",target:null},
-      {sub:"Touring",num:"45",target:1051.23},{sub:"Touring",num:"55",target:1047},{sub:"Touring",num:"57",target:1010},
-      {sub:"Touring",num:"63",target:995},{sub:"Touring",num:"65",target:1071.26},{sub:"Touring",num:"66",target:1040},
-      {sub:"Touring",num:"67",target:979.14},{sub:"Touring",num:"68",target:null},{sub:"Touring",num:"72",target:1029.47},
-      {sub:"Touring",num:"77",target:992.7},{sub:"Touring",num:"88",target:1050},{sub:"Touring",num:"90",target:969.06},
-      {sub:"Touring",num:"91",target:1080}
+      // {sub:"Touring",num:"6",target:1088.44},{sub:"Touring",num:"8",target:1047.2},{sub:"Touring",num:"9",target:985},
+      // {sub:"Touring",num:"14",target:1062.37},{sub:"Touring",num:"18",target:1040},{sub:"Touring",num:"19",target:992.08},
+      // {sub:"Touring",num:"24",target:1040},{sub:"Touring",num:"25",target:969.26},{sub:"Touring",num:"32",target:960},
+      // {sub:"Touring",num:"33",target:1040},{sub:"Touring",num:"34",target:1055},{sub:"Touring",num:"36",target:989.65},
+      // {sub:"Touring",num:"38",target:985},{sub:"Touring",num:"39",target:989.17},{sub:"Touring",num:"41",target:null},
+      // {sub:"Touring",num:"45",target:1051.23},{sub:"Touring",num:"55",target:1047},{sub:"Touring",num:"57",target:1010},
+      // {sub:"Touring",num:"63",target:995},{sub:"Touring",num:"65",target:1071.26},{sub:"Touring",num:"66",target:1040},
+      // {sub:"Touring",num:"67",target:979.14},{sub:"Touring",num:"68",target:null},{sub:"Touring",num:"72",target:1029.47},
+      // {sub:"Touring",num:"77",target:992.7},{sub:"Touring",num:"88",target:1050},{sub:"Touring",num:"90",target:969.06},
+      // {sub:"Touring",num:"91",target:1080}
     ],
     "Race 1": [
-      {sub:"Touring",num:"6",target:1088.44},{sub:"Touring",num:"8",target:1047.2},{sub:"Touring",num:"9",target:985},
-      {sub:"Touring",num:"14",target:1062.37},{sub:"Touring",num:"18",target:1040},{sub:"Touring",num:"19",target:992.08},
-      {sub:"Touring",num:"24",target:1040},{sub:"Touring",num:"25",target:969.26},{sub:"Touring",num:"32",target:960},
-      {sub:"Touring",num:"33",target:1040},{sub:"Touring",num:"34",target:1055},{sub:"Touring",num:"36",target:989.65},
-      {sub:"Touring",num:"38",target:985},{sub:"Touring",num:"39",target:989.17},{sub:"Touring",num:"41",target:null},
-      {sub:"Touring",num:"45",target:1051.23},{sub:"Touring",num:"55",target:1047},{sub:"Touring",num:"57",target:1010},
-      {sub:"Touring",num:"63",target:995},{sub:"Touring",num:"65",target:1071.26},{sub:"Touring",num:"66",target:1040},
-      {sub:"Touring",num:"67",target:979.14},{sub:"Touring",num:"68",target:null},{sub:"Touring",num:"72",target:1029.47},
-      {sub:"Touring",num:"77",target:992.7},{sub:"Touring",num:"88",target:1050},{sub:"Touring",num:"90",target:969.06},
-      {sub:"Touring",num:"91",target:1080}
+      // {sub:"Touring",num:"6",target:1088.44},{sub:"Touring",num:"8",target:1047.2},{sub:"Touring",num:"9",target:985},
+      // {sub:"Touring",num:"14",target:1062.37},{sub:"Touring",num:"18",target:1040},{sub:"Touring",num:"19",target:992.08},
+      // {sub:"Touring",num:"24",target:1040},{sub:"Touring",num:"25",target:969.26},{sub:"Touring",num:"32",target:960},
+      // {sub:"Touring",num:"33",target:1040},{sub:"Touring",num:"34",target:1055},{sub:"Touring",num:"36",target:989.65},
+      // {sub:"Touring",num:"38",target:985},{sub:"Touring",num:"39",target:989.17},{sub:"Touring",num:"41",target:null},
+      // {sub:"Touring",num:"45",target:1051.23},{sub:"Touring",num:"55",target:1047},{sub:"Touring",num:"57",target:1010},
+      // {sub:"Touring",num:"63",target:995},{sub:"Touring",num:"65",target:1071.26},{sub:"Touring",num:"66",target:1040},
+      // {sub:"Touring",num:"67",target:979.14},{sub:"Touring",num:"68",target:null},{sub:"Touring",num:"72",target:1029.47},
+      // {sub:"Touring",num:"77",target:992.7},{sub:"Touring",num:"88",target:1050},{sub:"Touring",num:"90",target:969.06},
+      // {sub:"Touring",num:"91",target:1080}
     ],
     "Race 2": [
-      {sub:"Touring",num:"6",target:1088.44},{sub:"Touring",num:"8",target:1047.2},{sub:"Touring",num:"9",target:985},
-      {sub:"Touring",num:"14",target:1062.37},{sub:"Touring",num:"18",target:1040},{sub:"Touring",num:"19",target:992.08},
-      {sub:"Touring",num:"24",target:1040},{sub:"Touring",num:"25",target:969.26},{sub:"Touring",num:"32",target:960},
-      {sub:"Touring",num:"33",target:1040},{sub:"Touring",num:"34",target:1055},{sub:"Touring",num:"36",target:989.65},
-      {sub:"Touring",num:"38",target:985},{sub:"Touring",num:"39",target:989.17},{sub:"Touring",num:"41",target:null},
-      {sub:"Touring",num:"45",target:1051.23},{sub:"Touring",num:"55",target:1047},{sub:"Touring",num:"57",target:1010},
-      {sub:"Touring",num:"63",target:995},{sub:"Touring",num:"65",target:1071.26},{sub:"Touring",num:"66",target:1040},
-      {sub:"Touring",num:"67",target:979.14},{sub:"Touring",num:"68",target:null},{sub:"Touring",num:"72",target:1029.47},
-      {sub:"Touring",num:"77",target:992.7},{sub:"Touring",num:"88",target:1050},{sub:"Touring",num:"90",target:969.06},
-      {sub:"Touring",num:"91",target:1080}
+      // {sub:"Touring",num:"6",target:1088.44},{sub:"Touring",num:"8",target:1047.2},{sub:"Touring",num:"9",target:985},
+      // {sub:"Touring",num:"14",target:1062.37},{sub:"Touring",num:"18",target:1040},{sub:"Touring",num:"19",target:992.08},
+      // {sub:"Touring",num:"24",target:1040},{sub:"Touring",num:"25",target:969.26},{sub:"Touring",num:"32",target:960},
+      // {sub:"Touring",num:"33",target:1040},{sub:"Touring",num:"34",target:1055},{sub:"Touring",num:"36",target:989.65},
+      // {sub:"Touring",num:"38",target:985},{sub:"Touring",num:"39",target:989.17},{sub:"Touring",num:"41",target:null},
+      // {sub:"Touring",num:"45",target:1051.23},{sub:"Touring",num:"55",target:1047},{sub:"Touring",num:"57",target:1010},
+      // {sub:"Touring",num:"63",target:995},{sub:"Touring",num:"65",target:1071.26},{sub:"Touring",num:"66",target:1040},
+      // {sub:"Touring",num:"67",target:979.14},{sub:"Touring",num:"68",target:null},{sub:"Touring",num:"72",target:1029.47},
+      // {sub:"Touring",num:"77",target:992.7},{sub:"Touring",num:"88",target:1050},{sub:"Touring",num:"90",target:969.06},
+      // {sub:"Touring",num:"91",target:1080}
     ]
   },
   "Pickup": {
     "Qualifying": [
-      {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
-      {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
-      {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
-      {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
-      {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
-      {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
-      {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
-      {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
-      {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
-      {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
+      // {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
+      // {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
+      // {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
+      // {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
+      // {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
+      // {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
+      // {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
+      // {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
+      // {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
+      // {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
     ],
     "Race 1": [
-      {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
-      {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
-      {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
-      {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
-      {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
-      {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
-      {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
-      {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
-      {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
-      {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
+      // {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
+      // {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
+      // {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
+      // {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
+      // {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
+      // {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
+      // {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
+      // {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
+      // {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
+      // {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
     ],
     "Race 2": [
-      {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
-      {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
-      {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
-      {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
-      {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
-      {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
-      {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
-      {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
-      {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
-      {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
+      // {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
+      // {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
+      // {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
+      // {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
+      // {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
+      // {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
+      // {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
+      // {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
+      // {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
+      // {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
     ],
     "Race 3": [
-      {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
-      {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
-      {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
-      {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
-      {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
-      {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
-      {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
-      {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
-      {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
-      {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
+      // {sub:"A",num:"3",target:1750},{sub:"A",num:"4",target:1750},{sub:"A",num:"7",target:1750},
+      // {sub:"A",num:"9",target:1750},{sub:"A",num:"15",target:1750},{sub:"A",num:"16",target:1570},
+      // {sub:"A",num:"18",target:1750},{sub:"A",num:"19",target:1570},{sub:"A",num:"22",target:1750},
+      // {sub:"A",num:"23",target:1750},{sub:"A",num:"39",target:1510},{sub:"A",num:"45",target:1810},
+      // {sub:"A",num:"47",target:1750},{sub:"A",num:"68",target:1570},{sub:"A",num:"81",target:1645},
+      // {sub:"A",num:"85",target:1750},{sub:"A",num:"88",target:1750},{sub:"A",num:"92",target:1645},
+      // {sub:"A",num:"93",target:1625},{sub:"B",num:"5",target:1750},{sub:"B",num:"10",target:1705},
+      // {sub:"B",num:"13",target:1750},{sub:"B",num:"30",target:1750},{sub:"B",num:"34",target:1570},
+      // {sub:"B",num:"36",target:1750},{sub:"B",num:"46",target:1750},{sub:"B",num:"59",target:1750},
+      // {sub:"B",num:"91",target:1570},{sub:"B",num:"95",target:1570}
     ]
   },
   "GR86": {
-    "Qualifying": [{sub:"GR86",num:"1",target:1200},{sub:"GR86",num:"2",target:1200},{sub:"GR86",num:"3",target:1200}],
-    "Race 1": [{sub:"GR86",num:"1",target:1200},{sub:"GR86",num:"2",target:1200},{sub:"GR86",num:"3",target:1200}],
-    "Race 2": [{sub:"GR86",num:"1",target:1200},{sub:"GR86",num:"2",target:1200},{sub:"GR86",num:"3",target:1200}]
+    "Qualifying": [
+      // {sub:"GR86",num:"1",target:1200},{sub:"GR86",num:"2",target:1200},{sub:"GR86",num:"3",target:1200}
+    ],
+    "Race 1": [
+      // {sub:"GR86",num:"1",target:1200},{sub:"GR86",num:"2",target:1200},{sub:"GR86",num:"3",target:1200}
+    ],
+    "Race 2": [
+      // {sub:"GR86",num:"1",target:1200},{sub:"GR86",num:"2",target:1200},{sub:"GR86",num:"3",target:1200}
+    ]
   },
   "Eco": {
-    "Qualifying": [{sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}],
-    "Race 1": [{sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}],
-    "Race 2": [{sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}],
-    "Race 3": [{sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}]
+    "Qualifying": [
+      // {sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}
+    ],
+    "Race 1": [
+      // {sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}
+    ],
+    "Race 2": [
+      // {sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}
+    ],
+    "Race 3": [
+      // {sub:"Eco",num:"1",target:800},{sub:"Eco",num:"2",target:800},{sub:"Eco",num:"3",target:800}
+    ]
+  }
+};
+
+const DEFAULT_DATA = {
+  "ECO": {
+    "Qualify": copyCars(DEFAULT_SOURCE_DATA["Eco"]["Qualifying"]),
+    "Race4": copyCars(DEFAULT_SOURCE_DATA["Eco"]["Race 1"]),
+    "Race5": copyCars(DEFAULT_SOURCE_DATA["Eco"]["Race 2"])
+  },
+  "Touring": {
+    "Qualify": copyCars(DEFAULT_SOURCE_DATA["Touring"]["Qualifying"]),
+    "Race3": copyCars(DEFAULT_SOURCE_DATA["Touring"]["Race 1"]),
+    "Race4": copyCars(DEFAULT_SOURCE_DATA["Touring"]["Race 2"])
+  },
+  "PICKUP C": {
+    "Qualify": [],
+    "Race4": [],
+    "Race5": []
+  },
+  "PICKUP AB": {
+    "Qualify": copyCars(DEFAULT_SOURCE_DATA["Pickup"]["Qualifying"]),
+    "Race4": copyCars(DEFAULT_SOURCE_DATA["Pickup"]["Race 2"]),
+    "Race5": copyCars(DEFAULT_SOURCE_DATA["Pickup"]["Race 3"])
+  },
+  "GR86": {
+    "Qualify": copyCars(DEFAULT_SOURCE_DATA["GR86"]["Qualifying"]),
+    "Race3": copyCars(DEFAULT_SOURCE_DATA["GR86"]["Race 1"]),
+    "Race4": copyCars(DEFAULT_SOURCE_DATA["GR86"]["Race 2"])
+  },
+  "GT4 GTC": {
+    "Qualify": copyCars(DEFAULT_SOURCE_DATA["GT4/GTC"]["Qualifying"]),
+    "Race3": copyCars(DEFAULT_SOURCE_DATA["GT4/GTC"]["Race 1"]),
+    "Race4": copyCars(DEFAULT_SOURCE_DATA["GT4/GTC"]["Race 2"])
+  },
+  "GT3 GTM": {
+    "Qualify": copyCars(DEFAULT_SOURCE_DATA["GT3/GTM"]["Qualifying"]),
+    "Race3": copyCars(DEFAULT_SOURCE_DATA["GT3/GTM"]["Race 1"]),
+    "Race4": copyCars(DEFAULT_SOURCE_DATA["GT3/GTM"]["Race 2"])
   }
 };
 
@@ -327,12 +405,29 @@ const selSess=document.getElementById('sel-session');
 
 function clone(value){ return JSON.parse(JSON.stringify(value)); }
 
+function ensureDataShape(data){
+  const shaped=data&&typeof data==='object'?data:{};
+  Object.keys(CLASS_SESSIONS).forEach(cls=>{
+    if(!shaped[cls]||typeof shaped[cls]!=='object'||Array.isArray(shaped[cls]))shaped[cls]={};
+    CLASS_SESSIONS[cls].forEach(sess=>{
+      if(!Array.isArray(shaped[cls][sess]))shaped[cls][sess]=[];
+    });
+  });
+  return shaped;
+}
+
+function ensureSessionData(cls,sess){
+  if(!DATA[cls]||typeof DATA[cls]!=='object'||Array.isArray(DATA[cls]))DATA[cls]={};
+  if(!Array.isArray(DATA[cls][sess]))DATA[cls][sess]=[];
+  return DATA[cls][sess];
+}
+
 function loadData(){
   try{
     const saved=localStorage.getItem(STORAGE_KEYS.data);
-    return saved?JSON.parse(saved):clone(DEFAULT_DATA);
+    return ensureDataShape(saved?JSON.parse(saved):clone(DEFAULT_DATA));
   }catch(e){
-    return clone(DEFAULT_DATA);
+    return ensureDataShape(clone(DEFAULT_DATA));
   }
 }
 
@@ -346,6 +441,54 @@ function loadWeights(){
 
 function saveData(){ localStorage.setItem(STORAGE_KEYS.data,JSON.stringify(DATA)); }
 function saveWeights(){ localStorage.setItem(STORAGE_KEYS.weights,JSON.stringify(weights)); }
+
+function currentYear(){ return new Date().getFullYear(); }
+
+function getEventName(){
+  const saved=localStorage.getItem(STORAGE_KEYS.event);
+  return String(saved||'').trim()||'BRIC1';
+}
+
+function eventLabel(){ return getEventName()+' · '+currentYear(); }
+
+function updateEventLabels(){
+  const label=eventLabel();
+  const input=document.getElementById('event-name-input');
+  const loginText=document.getElementById('login-event-text');
+  const yearText=document.getElementById('event-year-text');
+  if(input&&input.readOnly)input.value=getEventName();
+  if(loginText)loginText.textContent=label;
+  if(yearText)yearText.textContent=String(currentYear());
+  document.title='TSS Weighing Sheet — '+getEventName()+' '+currentYear();
+}
+
+function saveEventName(value){
+  const name=String(value||'').trim()||'BRIC1';
+  localStorage.setItem(STORAGE_KEYS.event,name);
+  updateEventLabels();
+}
+
+function toggleEventEdit(){
+  const button=document.getElementById('event-edit-button');
+  const input=document.getElementById('event-name-input');
+  if(!input||!button)return;
+  if(input.readOnly){
+    input.readOnly=false;
+    button.textContent='บันทึก';
+    input.focus();
+    input.select();
+    return;
+  }
+  saveEventName(input.value);
+  input.readOnly=true;
+  input.value=getEventName();
+  button.textContent='แก้ไข';
+}
+
+function setAdminError(message){
+  const el=document.getElementById('admin-error');
+  if(el)el.textContent=message||'';
+}
 
 function currentUser(){
   const username=sessionStorage.getItem(STORAGE_KEYS.user);
@@ -429,10 +572,31 @@ function addCar(){
   const num=document.getElementById('new-num').value.trim();
   const sub=document.getElementById('new-sub').value.trim();
   const targetRaw=document.getElementById('new-target').value.trim();
-  if(!num||!sub)return;
-  const target=targetRaw===''?null:parseFloat(targetRaw);
-  DATA[cls][sess].push({sub,num,target:Number.isFinite(target)?target:null});
+  if(!num){
+    setAdminError('กรุณากรอกเบอร์รถ');
+    document.getElementById('new-num').focus();
+    return;
+  }
+  if(!sub){
+    setAdminError('กรุณากรอกรุ่น');
+    document.getElementById('new-sub').focus();
+    return;
+  }
+  const target=targetRaw===''?null:Number(targetRaw);
+  if(targetRaw!==''&&!Number.isFinite(target)){
+    setAdminError('Target ต้องเป็นตัวเลข');
+    document.getElementById('new-target').focus();
+    return;
+  }
+  const cars=ensureSessionData(cls,sess);
+  if(cars.some(car=>String(car.num).trim().toLowerCase()===num.toLowerCase())){
+    setAdminError('มีเบอร์รถนี้แล้วในรอบนี้');
+    document.getElementById('new-num').focus();
+    return;
+  }
+  cars.push({sub,num,target});
   saveData();
+  setAdminError('');
   document.getElementById('new-num').value='';
   document.getElementById('new-sub').value='';
   document.getElementById('new-target').value='';
@@ -457,6 +621,7 @@ function resetData(){
   weights={};
   saveData();
   saveWeights();
+  setAdminError('');
   refreshClassOptions();
   render();
 }
@@ -464,23 +629,25 @@ function resetData(){
 function refreshClassOptions(){
   const selectedClass=selClass.value;
   selClass.innerHTML='';
-  Object.keys(DATA).forEach(c=>{
+  Object.keys(CLASS_SESSIONS).forEach(c=>{
     const o=document.createElement('option');
     o.value=c;o.textContent=c;selClass.appendChild(o);
   });
-  if(DATA[selectedClass])selClass.value=selectedClass;
+  if(CLASS_SESSIONS[selectedClass])selClass.value=selectedClass;
   onClassChange();
 }
 
 function onClassChange(){
   const cls=selClass.value;
   const selectedSess=selSess.value;
+  const sessions=CLASS_SESSIONS[cls]||[];
   selSess.innerHTML='';
-  Object.keys(DATA[cls]).forEach(s=>{
+  sessions.forEach(s=>{
     const o=document.createElement('option');
     o.value=s;o.textContent=s;selSess.appendChild(o);
   });
-  if(DATA[cls][selectedSess])selSess.value=selectedSess;
+  if(sessions.includes(selectedSess))selSess.value=selectedSess;
+  if(selSess.value)ensureSessionData(cls,selSess.value);
   render();
 }
 
@@ -566,6 +733,7 @@ function render(){
 }
 
 function initApp(){
+  updateEventLabels();
   const user=currentUser();
   if(!user){
     document.body.className='';
