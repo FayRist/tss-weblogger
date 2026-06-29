@@ -4,8 +4,12 @@
       <h3>ตั้งค่า Logger</h3>
     </div>
     <div class="col-6 d-flex justify-content-end">
+      @if (permissionsCheck('EXPORT')) {
       <button type="button" class="btn btn-success" (click)="exportLoggerEx()" [disabled]="!canExportLogger">Export Format Logger Excel</button>
+      }
+      @if (permissionsCheck('IMPORT')) {
       <button type="button" class="btn ms-2 btn-secondary" (click)="addLogger('0ms','0ms')" [disabled]="!canImportLogger">Import Format Logger Excel</button>
+      }
     </div>
   </div>
   @if (selectedEvent && !canImportLogger) {
@@ -115,15 +119,18 @@
                       <span>ลบ Logger</span>
                     </button>
                   </mat-menu> -->
+                  @if (permissionsCheck('EDIT')) {
                   <button type="button" class="btn btn-outline-secondary d-flex"
                     (click)="settingLogger('0ms','0ms', element.loggerId)" style="margin-left: 10px;">
                     <mat-icon>settings</mat-icon>
                   </button>
-
+                  }
+                  @if (permissionsCheck('DELETE')) {
                   <button type="button" class="btn btn-outline-secondary d-flex"
                     (click)="deleteLogger('0ms','0ms', element.loggerId)" style="margin-left: 10px;">
                     <mat-icon>delete</mat-icon>
                   </button>
+                  }
 
                   <!-- <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" >
                   <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png"> -->

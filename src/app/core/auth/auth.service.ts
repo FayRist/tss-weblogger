@@ -8,13 +8,22 @@ import { hashPassword } from '../../utility/password.util';
 import { NavigationEnd, Router } from '@angular/router';
 
 export type Role = 'super_admin' | 'admin' | 'mechanic_user' | 'race_team_user' | 'scruitineer';
+export type RoleType = 'admin' | 'user';
+
+export interface PermissionItem {
+  permissions_name: string;
+  path: string;
+  type: string;
+  form_code: string;
+}
 
 export interface AuthState {
   userId: number;
   username: string;
   role: Role;
+  roleType: RoleType;
   roleId: number;
-  permissions: string[];
+  permissions: PermissionItem[];
   allowedRaceIds: number[];
   allRaceAccess: boolean;
   token: string;
@@ -34,7 +43,8 @@ interface LoginApiResponse {
       username: string;
       role_id: number;
       role: Role;
-      permissions: string[];
+      role_type: RoleType;
+      permissions: PermissionItem[];
       allowed_race_ids: number[];
       all_race_access: boolean;
     };
@@ -53,12 +63,90 @@ interface LoginPublicKeyApiResponse {
 
 const LS_KEY = 'auth_state_v2';
 const TIMEOUT_NOTICE_KEY = 'auth_timeout_notice';
+const DASHBOARD_LAST_PARAMS_KEY = 'dashboard.lastParams';
 const SESSION_TIMEOUT_PROD_MS = 4 * 60 * 60 * 1000;
 const DISABLE_SESSION_TIMEOUT = false;
 // const SESSION_TIMEOUT_TEST_MS = 1 * 60 * 1000;
 const USE_TEST_TIMEOUT = false;
 // const SESSION_TIMEOUT_MS = USE_TEST_TIMEOUT ? SESSION_TIMEOUT_TEST_MS : SESSION_TIMEOUT_PROD_MS;
 const ACTIVITY_THROTTLE_MS = 5000;
+const FALLBACK_PATH_ORDER = [
+  'pages/dashboard',
+  'pages/event',
+  'pages/race',
+  'pages/logger',
+  'pages/season',
+  'pages/setting-logger',
+  'pages/role-management',
+  'pages/admin-config',
+  'pages/user-management',
+];
+const USER_ROLE_ALLOWED_GET_PATHS = new Set(['pages/dashboard', 'pages/event', 'pages/race', 'pages/logger']);
+
+function normalizePermissionPath(path: unknown): string {
+  return String(path ?? '')
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
+function normalizePermissionType(type: unknown): string {
+  return String(type ?? '').trim().toUpperCase();
+}
+
+function normalizeRoleType(roleType: unknown): RoleType {
+  return String(roleType ?? '').trim().toLowerCase() === 'user' ? 'user' : 'admin';
+}
+
+function normalizePermissionItem(raw: unknown): PermissionItem | null {
+  if (!raw) {
+    return null;
+  }
+
+  if (typeof raw === 'string') {
+    const legacyPermission = raw.trim();
+    if (!legacyPermission) {
+      return null;
+    }
+    return {
+      permissions_name: legacyPermission,
+      path: '',
+      type: normalizePermissionType(legacyPermission),
+      form_code: '',
+    };
+  }
+
+  if (typeof raw !== 'object') {
+    return null;
+  }
+
+  const item = raw as Partial<PermissionItem> & { permission?: string; name?: string };
+  const type = normalizePermissionType(item.type ?? item.permission);
+  const path = normalizePermissionPath(item.path);
+  const permissionsName = String(item.permissions_name ?? item.name ?? '').trim();
+  const formCode = String(item.form_code ?? '').trim();
+
+  if (!type && !path && !permissionsName && !formCode) {
+    return null;
+  }
+
+  return {
+    permissions_name: permissionsName,
+    path,
+    type,
+    form_code: formCode,
+  };
+}
+
+function normalizePermissionList(raw: unknown): PermissionItem[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map(normalizePermissionItem)
+    .filter((item): item is PermissionItem => !!item);
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -115,9 +203,10 @@ export class AuthService {
       const state: AuthState = {
         userId: Number(parsed.userId || 0),
         username: String(parsed.username || ''),
-        role: (parsed.role || 'race_team_user') as Role,
+        role: (parsed.role || '') as Role,
+        roleType: normalizeRoleType((parsed as Partial<AuthState>).roleType ?? (parsed as any).role_type),
         roleId: Number(parsed.roleId || 0),
-        permissions: Array.isArray(parsed.permissions) ? parsed.permissions : [],
+        permissions: normalizePermissionList(parsed.permissions),
         allowedRaceIds: Array.isArray(parsed.allowedRaceIds) ? parsed.allowedRaceIds.map(Number) : [],
         allRaceAccess: !!parsed.allRaceAccess,
         token: String(parsed.token),
@@ -125,6 +214,11 @@ export class AuthService {
         lastActivityAt,
         expiresAt,
       };
+
+      if (!this.hasValidRoleAndPermissions(state)) {
+        this.clearClientCache(false);
+        return null;
+      }
 
       this.writeToLS(state);
       return state;
@@ -185,9 +279,10 @@ export class AuthService {
         const state: AuthState = {
           userId: Number(u.user_id || 0),
           username: u.username,
-          role: (u.role || 'race_team_user') as Role,
+          role: (u.role || '') as Role,
+          roleType: normalizeRoleType(u.role_type),
           roleId: Number(u.role_id || 0),
-          permissions: Array.isArray(u.permissions) ? u.permissions : [],
+          permissions: normalizePermissionList(u.permissions),
           allowedRaceIds: Array.isArray(u.allowed_race_ids) ? u.allowed_race_ids.map(Number) : [],
           allRaceAccess: !!u.all_race_access,
           token: res.data.access_token,
@@ -195,6 +290,11 @@ export class AuthService {
           lastActivityAt: now,
           expiresAt: now + SESSION_TIMEOUT_PROD_MS,
         };
+
+        if (!this.hasValidRoleAndPermissions(state)) {
+          this.clearClientCache(false);
+          return { ok: false, error: 'No role or permissions assigned' };
+        }
 
         this._user$.next(state);
         this.writeToLS(state);
@@ -290,6 +390,14 @@ export class AuthService {
     });
   }
 
+  logoutDueToMissingPermissions(): void {
+    this.clearSession(false);
+    this.router.navigate(['/login'], {
+      queryParams: { reason: 'missing_permissions' },
+      replaceUrl: true,
+    });
+  }
+
   get current(): AuthState | null {
     return this._user$.value;
   }
@@ -301,7 +409,12 @@ export class AuthService {
     }
 
     if (!DISABLE_SESSION_TIMEOUT && this.isExpired(user)) {
-      this.logoutDueToTimeout();
+      this.clearSession(true);
+      return false;
+    }
+
+    if (!this.hasValidRoleAndPermissions(user)) {
+      this.clearSession(false);
       return false;
     }
 
@@ -331,7 +444,65 @@ export class AuthService {
     const user = this.current;
     if (!user) return false;
     if (user.role === 'super_admin') return true;
-    return user.permissions.includes(permission);
+    const target = normalizePermissionType(permission);
+    return user.permissions.some(p => normalizePermissionType(p.type) === target || p.permissions_name === permission);
+  }
+
+  normalizePermissionPath(path: string): string {
+    return normalizePermissionPath(path);
+  }
+
+  normalizePermissionType(type: string): string {
+    return normalizePermissionType(type);
+  }
+
+  getPermissionsByPath(path: string): PermissionItem[] {
+    const targetPath = normalizePermissionPath(path);
+    if (!targetPath) {
+      return [];
+    }
+    return (this.current?.permissions ?? []).filter(p => normalizePermissionPath(p.path) === targetPath);
+  }
+
+  hasPathPermission(path: string, type = 'GET'): boolean {
+    const targetType = normalizePermissionType(type);
+    const targetPath = normalizePermissionPath(path);
+    const user = this.current;
+    if (user?.roleType === 'user' && user.role === 'race_team_user') {
+      return targetType === 'GET' && USER_ROLE_ALLOWED_GET_PATHS.has(targetPath);
+    }
+    return this.getPermissionsByPath(path).some(p => normalizePermissionType(p.type) === targetType);
+  }
+
+  hasActionPermission(path: string, type: string): boolean {
+    return this.hasPathPermission(path, type);
+  }
+
+  getFirstAllowedPath(excludePaths: string[] = []): string | null {
+    const excluded = new Set(excludePaths.map(normalizePermissionPath).filter(Boolean));
+    const user = this.current;
+    if (user?.roleType === 'user' && user.role === 'race_team_user') {
+      for (const path of FALLBACK_PATH_ORDER) {
+        const normalizedPath = normalizePermissionPath(path);
+        if (!excluded.has(normalizedPath) && USER_ROLE_ALLOWED_GET_PATHS.has(normalizedPath)) {
+          return normalizedPath;
+        }
+      }
+      return null;
+    }
+    const allowedGetPaths = (this.current?.permissions ?? [])
+      .filter(p => normalizePermissionType(p.type) === 'GET')
+      .map(p => normalizePermissionPath(p.path))
+      .filter(path => path && !excluded.has(path));
+
+    for (const path of FALLBACK_PATH_ORDER) {
+      const normalizedPath = normalizePermissionPath(path);
+      if (!excluded.has(normalizedPath) && allowedGetPaths.includes(normalizedPath)) {
+        return normalizedPath;
+      }
+    }
+
+    return allowedGetPaths[0] ?? null;
   }
 
   canAccessRace(raceId: number): boolean {
@@ -354,13 +525,33 @@ export class AuthService {
     return state.expiresAt <= Date.now();
   }
 
-  private clearSession(showTimeoutNotice: boolean): void {
+  private hasValidRoleAndPermissions(state: AuthState | null): boolean {
+    if (!state?.token || !String(state.role ?? '').trim() || Number(state.roleId ?? 0) <= 0) {
+      return false;
+    }
+
+    if (state.roleType === 'user') {
+      return true;
+    }
+
+    return Array.isArray(state.permissions) && state.permissions.length > 0;
+  }
+
+  private clearClientCache(showTimeoutNotice: boolean): void {
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(DASHBOARD_LAST_PARAMS_KEY);
     if (showTimeoutNotice) {
       localStorage.setItem(TIMEOUT_NOTICE_KEY, '1');
+    } else {
+      localStorage.removeItem(TIMEOUT_NOTICE_KEY);
     }
+    sessionStorage.clear();
+  }
+
+  private clearSession(showTimeoutNotice: boolean): void {
     this.stopSessionMonitoring();
     this._user$.next(null);
-    this.writeToLS(null);
+    this.clearClientCache(showTimeoutNotice);
   }
 
   private startSessionMonitoring(): void {
@@ -451,6 +642,11 @@ export class AuthService {
 
     if (!DISABLE_SESSION_TIMEOUT && this.isExpired(current)) {
       this.logoutDueToTimeout();
+      return;
+    }
+
+    if (!this.hasValidRoleAndPermissions(current)) {
+      this.logoutDueToMissingPermissions();
       return;
     }
 

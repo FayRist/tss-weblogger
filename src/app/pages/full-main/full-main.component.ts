@@ -16,7 +16,6 @@ import { EventService } from '../../service/event.service';
 import { TimeService } from '../../service/time.service';
 import { ToastrService } from 'ngx-toastr';
 import { ConfigAfrModalComponent } from './config-afr-modal/config-afr-modal.component';
-import { APP_CONFIG } from '../../app.config';
 import { NavigationContextService } from '../../core/navigation/navigation-context.service';
 import { eventModel } from '../../model/season-model';
 
@@ -52,6 +51,25 @@ type UrlParams = {
   statusRace :    String | null;
 };
 const KEY = 'dashboard.lastParams';
+const DEFAULT_PRE_EVENT_ID = 999;
+const DEFAULT_PRE_RACE_ID = 999;
+const DEFAULT_PRE_EVENT_NAME = 'Pre Log Event';
+const DEFAULT_PRE_CIRCUIT = 'bric';
+const DEFAULT_PRE_SEGMENT = 'pickup';
+const DEFAULT_PRE_CLASS = 'abc';
+const DEFAULT_PRE_SESSION = 'testsession';
+
+type MenuKey = 'DASHBOARD' | 'ALL_SEASONS' | 'SETTING_LOGGER' | 'USER_MANAGEMENT' | 'ROLE_MANAGEMENT' | 'MAP_CONFIG' | 'AFR_CONFIG' | 'LOGOUT';
+
+const MENU_PERMISSION_PATH: Partial<Record<MenuKey, string>> = {
+  DASHBOARD: 'pages/dashboard',
+  ALL_SEASONS: 'pages/event',
+  SETTING_LOGGER: 'pages/setting-logger',
+  USER_MANAGEMENT: 'pages/user-management',
+  ROLE_MANAGEMENT: 'pages/role-management',
+  MAP_CONFIG: 'pages/admin-config',
+  AFR_CONFIG: 'pages/admin-config',
+};
 
 @Component({
   selector: 'app-full-main',
@@ -71,7 +89,6 @@ export class FullMainComponent implements OnInit, OnDestroy {
   private time = inject(TimeService);
   currentTime = this.time.now;                        // ใช้ใน template ได้เลย
   startOfDay = computed(() => new Date(this.time.now().setHours(0,0,0,0)));
-  readonly menuVisibility = APP_CONFIG.AUTH.MENU_VISIBILITY;
 
   eventNameSelect:String = '';
   SessionNameSelect:String = '';
@@ -185,12 +202,15 @@ export class FullMainComponent implements OnInit, OnDestroy {
       if(!eventId && !raceId && !classCode && !segment && isDashboardPage){
         // ส่งเป็น UTC เสมอ
         const now = toDate(this.time.now());
-        this.eventService.getLoggerByDate(now).subscribe({
-          next: ({ items, count }) => {
-            if (items.length <= 0){
-              this.navigateToHistoryEventFallback();
-              return;
-            }
+		this.eventService.getLoggerByDate(now).subscribe({
+		  next: ({ items, count }) => {
+			if (items.length <= 0){
+			  if (this.navigateToDefaultPreLogModeIfAllowed()) {
+				return;
+			  }
+			  this.navigateToHistoryEventFallback();
+			  return;
+			}
 
             this.eventNameSelect = items[0].eventName || 'BANGSAEN';
             this.SegmentNameSelect = items[0].segmentValue;
@@ -237,13 +257,12 @@ export class FullMainComponent implements OnInit, OnDestroy {
     }
   }
 
-  canShowMenu(menuKey: keyof typeof APP_CONFIG.AUTH.MENU_VISIBILITY): boolean {
-    const role = this.auth.current?.role;
-    if (!role) {
-      return false;
+  canShowMenu(menuKey: MenuKey): boolean {
+    if (menuKey === 'LOGOUT') {
+      return this.auth.isLoggedIn();
     }
-    const allowed = this.menuVisibility[menuKey] as readonly string[];
-    return allowed.includes(role);
+    const path = MENU_PERMISSION_PATH[menuKey];
+    return !!path && this.auth.hasPathPermission(path, 'GET');
   }
 
     /** สร้าง observable อ่านค่าจาก URL (รองรับทั้ง path params และ query params) */
@@ -310,12 +329,15 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   navigateToDashboardOnDate() {
       const now = toDate(this.time.now());
-      this.eventService.getLoggerByDate(now).subscribe({
-        next: ({ items, count }) => {
-          if (items.length <= 0){
-            this.navigateToHistoryEventFallback();
-            return
-          }
+	  this.eventService.getLoggerByDate(now).subscribe({
+		next: ({ items, count }) => {
+		  if (items.length <= 0){
+			if (this.navigateToDefaultPreLogModeIfAllowed()) {
+			  return;
+			}
+			this.navigateToHistoryEventFallback();
+			return
+		  }
             this.eventNameSelect = items[0].eventName;
             this.SegmentNameSelect = items[0].segmentValue;
             this.SessionNameSelect = items[0].sessionValue + " ( "+items[0].classValue +" ) ";
@@ -346,6 +368,31 @@ export class FullMainComponent implements OnInit, OnDestroy {
       return;
     }
     this.router.navigate(['/pages', 'event']);
+  }
+
+  private canUseDefaultPreLogMode(role: Role | null | undefined): boolean {
+    return role === 'admin' || role === 'super_admin' || role === 'mechanic_user';
+  }
+
+  private navigateToDefaultPreLogModeIfAllowed(): boolean {
+    if (!this.canUseDefaultPreLogMode(this.auth.current?.role)) {
+      return false;
+    }
+
+    this.eventNameSelect = DEFAULT_PRE_EVENT_NAME;
+    this.SegmentNameSelect = DEFAULT_PRE_SEGMENT;
+    this.SessionNameSelect = `${DEFAULT_PRE_SESSION} ( ${DEFAULT_PRE_CLASS} ) `;
+    this.navContext.replaceContext({
+      eventId: DEFAULT_PRE_EVENT_ID,
+      raceId: DEFAULT_PRE_RACE_ID,
+      segment: DEFAULT_PRE_SEGMENT,
+      classCode: DEFAULT_PRE_CLASS,
+      circuit: DEFAULT_PRE_CIRCUIT,
+      raceMode: 'live',
+      loggerId: null,
+    });
+    this.router.navigate(['/pages', 'dashboard']);
+    return true;
   }
 
   // navigateToListAllSeason() { this.router.navigate(['/pages', 'season']); }
@@ -475,6 +522,9 @@ export class FullMainComponent implements OnInit, OnDestroy {
 
   navigateToListConfigAFR2() { this.router.navigate(['/pages', 'admin-config']); }
   navigateToUserManagement() { this.router.navigate(['/pages', 'user-management']); }
+  navigateToRoleManagement() {
+    this.router.navigate(['/pages', 'role-management']);
+  }
   navigateToListConfigAFR(enterAnimationDuration: string, exitAnimationDuration: string) {
     // this.router.navigate(['/pages', 'setting-config-afr']);
     const dialogRef = this.dialog.open(ConfigAfrModalComponent, {
@@ -540,6 +590,11 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
 
   loadDropDownEvent(eventId?: number) {
+    if (Number(eventId) === DEFAULT_PRE_EVENT_ID) {
+      this.selectedEvent = { value: DEFAULT_PRE_EVENT_ID, name: DEFAULT_PRE_EVENT_NAME };
+      this.eventNameSelect = DEFAULT_PRE_EVENT_NAME;
+      return;
+    }
     const s = this.eventService.getDropDownEvent().subscribe({
       next: (eventRes: OptionEvent[]) => {
         this.eventList = eventRes ?? [];
@@ -560,6 +615,11 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
 
   loadDropDownOptionSegment(eventId?: number, klass?: any, segment?: String, raceId?: any) {
+    if (Number(eventId) === DEFAULT_PRE_EVENT_ID && Number(raceId) === DEFAULT_PRE_RACE_ID) {
+      this.selectedSegment = { value: DEFAULT_PRE_SEGMENT, name: DEFAULT_PRE_SEGMENT };
+      this.SegmentNameSelect = DEFAULT_PRE_SEGMENT;
+      return;
+    }
     const s = this.eventService.getDropDownSegment(eventId, raceId).subscribe({
       next: (eventRes: Option[]) => {
         this.SegmentList = eventRes ?? [];
@@ -587,6 +647,11 @@ export class FullMainComponent implements OnInit, OnDestroy {
   }
 
   loadDropDownOptionSession(eventId?: number, klass?: String, segment?: String, raceId?: any) {
+    if (Number(eventId) === DEFAULT_PRE_EVENT_ID && Number(raceId) === DEFAULT_PRE_RACE_ID) {
+      this.selectedSession = { value: DEFAULT_PRE_RACE_ID, name: `${DEFAULT_PRE_SESSION} ( ${DEFAULT_PRE_CLASS} ) ` };
+      this.SessionNameSelect = `${DEFAULT_PRE_SESSION} ( ${DEFAULT_PRE_CLASS} ) `;
+      return;
+    }
     const s = this.eventService.getDropDownSession(eventId, raceId).subscribe({
       next: (eventRes: Option[]) => {
         this.SessionList = eventRes ?? [];

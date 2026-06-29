@@ -83,6 +83,18 @@ export const APP_CONFIG = {
       SET_USER_RACE_PERMISSIONS: '/users/setUserRacePermissions',
       DELETE_USER: '/users/deleteUser',
 
+      // Roles / Permissions
+      ROLE_MANAGEMENT_GET_ROLES: '/roles/getRoles',
+      ROLE_MANAGEMENT_GET_PERMISSIONS: '/roles/getPermissions',
+      ROLE_MANAGEMENT_GET_ROLE_PERMISSIONS: '/roles/getRolePermissions',
+      ROLE_MANAGEMENT_ADD_ROLE: '/roles/addRole',
+      ROLE_MANAGEMENT_UPDATE_ROLE: '/roles/updateRole',
+      ROLE_MANAGEMENT_DELETE_ROLE: '/roles/deleteRole',
+      ROLE_MANAGEMENT_SET_ROLE_PERMISSIONS: '/roles/setRolePermissions',
+      ROLE_MANAGEMENT_ADD_PERMISSION: '/roles/addPermission',
+      ROLE_MANAGEMENT_UPDATE_PERMISSION: '/roles/updatePermission',
+      ROLE_MANAGEMENT_UPDATE_PERMISSION_ACTIVE: '/roles/updatePermissionActive',
+
       // Authentication (สำหรับอนาคต)
       LOGIN: '/auth/login',
       LOGIN_PUBLIC_KEY: '/auth/public-key',
@@ -114,6 +126,7 @@ export const APP_CONFIG = {
       ALL_SEASONS: ['super_admin', 'admin', 'race_team_user'],
       SETTING_LOGGER: ['super_admin', 'admin'],
       USER_MANAGEMENT: ['super_admin', 'admin'],
+      ROLE_MANAGEMENT: ['super_admin', 'admin'],
       MAP_CONFIG: ['super_admin', 'admin'],
       AFR_CONFIG: ['super_admin', 'admin'],
       LOGOUT: ['super_admin', 'admin', 'mechanic_user', 'race_team_user', 'scruitineer'],

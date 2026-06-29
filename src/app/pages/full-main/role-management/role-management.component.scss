@@ -1,0 +1,148 @@
+.table-scroll-xy {
+  width: 100%;
+  overflow: auto;
+}
+
+.logger-table {
+  width: 100%;
+  min-width: 980px;
+}
+
+.permission-table {
+  min-width: 1180px;
+}
+
+.tab-content-wrap {
+  padding-top: 18px;
+}
+
+.permission-actions {
+  margin-bottom: 18px;
+}
+
+.selected-role-label {
+  color: #fff;
+  font-size: 16px;
+}
+
+.permission-matrix {
+  max-height: 60vh;
+  // overflow: auto;
+  padding-right: 8px;
+}
+
+.permission-group {
+  border: 1px solid #343a40;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  padding: 10px;
+}
+
+.permission-group-title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.permission-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px 14px;
+}
+
+.permission-path {
+  color: #b0bec5;
+  display: block;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.inactive-label {
+  color: #ffc107;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.inactive-toggle-icon {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+th.mat-sort-header-sorted {
+  color: black;
+}
+
+.mat-mdc-table .mat-mdc-header-cell {
+  align-content: center !important;
+  background: #212529 !important;
+}
+
+:host ::ng-deep .mat-sort-header-container {
+  font-size: 18px;
+  width: 100%;
+  justify-content: center;
+}
+
+td.mat-mdc-cell {
+  font-size: 18px;
+}
+
+.mat-column-id {
+  width: 7%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-name {
+  width: 22%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-roleType {
+  width: 14%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-description {
+  width: 48%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-setting {
+  width: 23%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-assigned {
+  width: 9%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-permissionsName {
+  width: 26%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-path {
+  width: 24%;
+  border-right: 1px solid #343a40;
+}
+
+.mat-column-type,
+.mat-column-formCode,
+.mat-column-active {
+  width: 12%;
+  border-right: 1px solid #343a40;
+}
+
+:host ::ng-deep .mat-mdc-tab .mdc-tab__text-label {
+  color: #fff;
+}
+
+:host ::ng-deep .mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+  color: #90caf9;
+}
+
+:host ::ng-deep .mdc-checkbox__background {
+  border-color: #fff !important;
+}

@@ -21,7 +21,7 @@
             <th class="text-center">เวลาแข่งขัน</th>
             <th class="text-center w-15">สถานะ</th>
             <th class="text-center">
-              @if (canManageEventRace()) {
+              @if (permissionsCheck('ADD')) {
                 <button type="button" class="btn btn-secondary w-100" (click)="openAdd('0ms', '0ms')">เพิ่ม รายการแข่ง</button>
               }
             </th>
@@ -58,7 +58,7 @@
             </td>
 
             <td class="text-center">
-              @if (canManageEventRace()) {
+              @if (permissionsCheck('EDIT') || permissionsCheck('DELETE')) {
                 <div class="row d-flex justify-content-center">
                   <button
                     type="button"
@@ -69,11 +69,22 @@
                     {{ raceData.active == 1 ? 'active' : 'inactive' }}
                   </button>
                 </div>
+              } @else {
+                <div class="row d-flex justify-content-center">
+                  <button
+                    type="button"
+                    class="w-100 p-0 btn"
+                    [class]="raceData.active == 1 ? 'btn-info' : 'btn-secondary'"
+                    [disabled]="raceData.active == 0 && (statusOf(raceData) == RaceStatus.Live || statusOf(raceData) == RaceStatus.Finished)">
+                    {{ raceData.active == 1 ? 'active' : 'inactive' }}
+                  </button>
+                </div>
               }
+
               <!-- {{ statusOf(raceData) }} -->
             </td>
             <td class="text-center">
-              @if (canManageEventRace()) {
+              @if (permissionsCheck('EDIT')) {
                 <div class="row d-flex justify-content-center">
                   @if (isRaceRunning(raceData)) {
                     <div class="col-4">
@@ -82,8 +93,12 @@
                   }
                   <div class="col-2 d-flex justify-content-center">
                     @if (canEditRace(raceData) !== 'live' && canEditRace(raceData) !== 'history') {
+                      @if (permissionsCheck('EDIT')) {
                       <img class="me-3" style="border-radius: 0; height: 24px;" src="images/icon/icon_edit.png" (click)="openEdit('0ms', '0ms', raceData.id_list)">
+                      }
+                      @if (permissionsCheck('DELETE')) {
                       <img style="border-radius: 0; height: 24px;" src="images/icon/icon_delete.png" (click)="openRaceDelete('0ms', '0ms',  raceData.id_list)">
+                      }
                     }
                   </div>
                 </div>

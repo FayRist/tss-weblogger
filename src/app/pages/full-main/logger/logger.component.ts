@@ -11,7 +11,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CarLogger } from '../../../../../public/models/car-logger.model';
 import { Subscription, Subject } from 'rxjs';
-import { bufferTime, filter } from 'rxjs/operators';
+import { bufferTime, filter, timeout } from 'rxjs/operators';
 import { formControlWithInitial } from '../../../utility/rxjs-utils';
 import {
   ApexAxisChartSeries, ApexChart, ApexXAxis, ApexYAxis, ApexStroke, ApexDataLabels,
@@ -32,7 +32,7 @@ import { APP_CONFIG, getApiUrl, getApiWebSocket, getMapCenterForCircuit } from '
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
-import { AuthService } from '../../../core/auth/auth.service';
+import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 import { RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
 // deck.gl imports
@@ -441,6 +441,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   /** เมื่อ true จะบังคับ viewport ตามช่วงล่าสุดทุกครั้งที่มี realtime update */
   followRealtimeViewport: boolean = false;
   private wheelInteractionTimer: ReturnType<typeof setTimeout> | null = null;
+  private canvasInitRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   configAFR: any;
   configSource: RaceConfigSource = 'global';
@@ -495,16 +496,26 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly MAP_WINDOW_MS = this.MAP_RESTORE_WINDOW_MS; // rolling window for map (2 minutes)
   private readonly MAP_PATH_FPS = 30; // Path layer update rate (optimized for smoothness)
   private readonly MAP_PATH_UPDATE_MS = 1000 / this.MAP_PATH_FPS; // ~40ms per update
+  readonly defaultPreEventId = 999;
+  readonly defaultPreRaceId = 999;
+  readonly preLogCircuitOptions = [
+    { value: 'bric', label: 'Chang' },
+    { value: 'bsc', label: 'Bangsaen' },
+    { value: 'bic', label: 'Bira' },
+  ];
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
   arrayLoggerCache: TelemetryPoint[] = [];
   /** ตัวเดียวสำหรับ feed กราฟ (detailOpts/brushOpts): เริ่มต้นว่าง, เติมจาก Redis ถ้ามี, ต่อด้วย realtime */
   private chartDataPoints: TelemetryPoint[] = [];
-  /** จำนวนจุดที่ดึงจาก Redis ตอน re-entry ต้องพอสำหรับ retention ทั้งหน้าต่าง */
-  private readonly LOGGER_CACHE_MAX_POINTS = Math.ceil(this.INPUT_HZ * (this.WINDOW_MS / 1000));
-  private readonly CACHE_RETRY_DELAYS_MS = [1000, 3000];
+  private readonly CACHE_PRIMARY_TAIL_MS = 3 * 60 * 1000;
+  private readonly CACHE_FALLBACK_TAIL_MS = 2 * 60 * 1000;
+  private readonly CACHE_PRIMARY_LIMIT = 20000;
+  private readonly CACHE_FALLBACK_LIMIT = 10000;
+  private readonly CACHE_TIMEOUT_MS = 10000;
   private readonly CACHE_WARNING_COOLDOWN_MS = 30000;
   private lastCacheWarningAt = 0;
-  private cacheRetryTimers: ReturnType<typeof setTimeout>[] = [];
+  private cacheRestoreRequestId = 0;
+  private cacheRestoreInFlight = false;
   private readonly displayOptimizationEnabled = true;
   private readonly chartDedupeAfrEpsilon = 0.02;
   private readonly chartDedupeTimeWindowMs = 250;
@@ -1313,13 +1324,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         labels: { formatter: this.intLabel }
       }
     };
-    this.brushOpts = {
-      ...this.brushOpts,
-      yaxis: {
-        ...(this.brushOpts?.yaxis ?? {}),
-        labels: { formatter: this.intLabel }
-      }
-    };
+    if (this.shouldShowBrushChart()) {
+      this.brushOpts = {
+        ...this.brushOpts,
+        yaxis: {
+          ...(this.brushOpts?.yaxis ?? {}),
+          labels: { formatter: this.intLabel }
+        }
+      };
+    }
   }
 
   allDataLogger: Record<string, MapPoint[]> = {};
@@ -1461,6 +1474,27 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     return this.auth.current?.role === 'race_team_user';
   }
 
+  isDefaultPreLogMode(): boolean {
+    return Number(this.parameterEventID) === this.defaultPreEventId
+      && Number(this.parameterRaceId) === this.defaultPreRaceId;
+  }
+
+  onPreLogCircuitChange(circuitName: string): void {
+    const nextCircuit = String(circuitName ?? '').trim().toLowerCase();
+    if (!this.isDefaultPreLogMode() || !nextCircuit || nextCircuit === this.circuitName) {
+      return;
+    }
+
+    this.circuitName = nextCircuit;
+    this.applyCircuitToDeckMap(nextCircuit);
+    this.initializeSvgTransformForCircuit();
+    this.cdr.markForCheck();
+  }
+
+  shouldShowBrushChart(): boolean {
+    return this.isHistoryMode;
+  }
+
   private shouldEnableMapPipeline(): boolean {
     return !this.isReadOnlyRaceTeamUser();
   }
@@ -1594,15 +1628,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           annotations: this.buildAfrAnnotations()
         };
 
-        this.brushOpts = {
-          ...this.brushOpts,
-          yaxis: {
-            ...this.brushOpts.yaxis,
-            min: this.afrYAxisMin,
-            max: this.afrYAxisMax,
-            reversed: this.afrGraphInverted
-          }
-        };
+        if (this.shouldShowBrushChart()) {
+          this.brushOpts = {
+            ...this.brushOpts,
+            yaxis: {
+              ...this.brushOpts.yaxis,
+              min: this.afrYAxisMin,
+              max: this.afrYAxisMax,
+              reversed: this.afrGraphInverted
+            }
+          };
+        }
 
         this.refreshDetail();
         this.refreshBrush();
@@ -1626,15 +1662,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           },
           annotations: this.buildAfrAnnotations()
         };
-        this.brushOpts = {
-          ...this.brushOpts,
-          yaxis: {
-            ...this.brushOpts.yaxis,
-            min: this.afrYAxisMin,
-            max: this.afrYAxisMax,
-            reversed: this.afrGraphInverted
-          }
-        };
+        if (this.shouldShowBrushChart()) {
+          this.brushOpts = {
+            ...this.brushOpts,
+            yaxis: {
+              ...this.brushOpts.yaxis,
+              min: this.afrYAxisMin,
+              max: this.afrYAxisMax,
+              reversed: this.afrGraphInverted
+            }
+          };
+        }
         this.refreshDetail();
         this.refreshBrush();
       }
@@ -1646,6 +1684,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // ---------- ตั้งค่า DEFAULT ----------
 
   ngOnInit() {
+    this.permissionsListData = this.auth.getPermissionsByPath('pages/dashboard');
     this.raceTeamMetaCollapsed = false;
     const ctx = this.navContext.snapshot;
     const statusRace = ctx.raceMode ?? 'live';
@@ -1693,7 +1732,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // ----- WORKFLOW หลัก (ตัวเดียว) -----
-    formControlWithInitial(this.filterRace)
+    const filterRaceSub = formControlWithInitial(this.filterRace)
       .pipe(filter((v): v is string => !!v))
       .subscribe(selectedValue => {
         if (this.isSyncingRace || !selectedValue) {
@@ -1706,11 +1745,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         this.updateMapFromSelection(selectionAsArray);
         this.updateChartsFromSelection(selectionAsArray);
       });
+    this.subscriptions.push(filterRaceSub);
     // สมัคร WebSocket messages เฉพาะโหมด live เท่านั้น
     if (this.isRealtimeMode) {
       this.subscribeWebSocketMessages();
       this.initializeStatusBroadcastForLive();
     }
+  }
+
+  permissionsListData: PermissionItem[] = [];
+
+  permissionsCheck(type: string): boolean {
+    return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }
 
   private initializeStatusBroadcastForLive(): void {
@@ -1757,7 +1803,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.eventService
       .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID
-          , this.parameterEventID, this.parameterCarNBR
+          , this.parameterEventID, this.parameterCarNBR, this.circuitName
       )
       .subscribe({
         next: (detail) => {
@@ -2213,6 +2259,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private loadAndRestoreLoggerCache(): void {
+    if (this.cacheRestoreInFlight) {
+      return;
+    }
     if (this.arrayLoggerCache?.length) {
       this.arrayLoggerCache = [];
     }
@@ -2224,13 +2273,29 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
     const loggerKey = loggerId.startsWith('client_') ? loggerId : `client_${loggerId}`;
-    const url = getApiUrl('/realtime/cache') + `?logger=${encodeURIComponent(loggerKey)}&limit=${this.LOGGER_CACHE_MAX_POINTS}&tail_ms=${this.REALTIME_RETENTION_MS}`;
-    this.fetchLoggerCacheWithRetry(url, loggerId, 0, true);
+    const requestId = ++this.cacheRestoreRequestId;
+    this.cacheRestoreInFlight = true;
+    this.fetchLoggerCacheWithRetry(loggerKey, loggerId, requestId, false, true);
   }
 
-  private fetchLoggerCacheWithRetry(url: string, loggerId: string, retryIndex: number, startRealtimeOnComplete: boolean): void {
-    this.http.get<{ items?: unknown[] }>(url).subscribe({
+  private fetchLoggerCacheWithRetry(
+    loggerKey: string,
+    loggerId: string,
+    requestId: number,
+    useFallback: boolean,
+    startRealtimeOnComplete: boolean
+  ): void {
+    const url = this.buildRealtimeCacheUrl(
+      loggerKey,
+      useFallback ? this.CACHE_FALLBACK_LIMIT : this.CACHE_PRIMARY_LIMIT,
+      useFallback ? this.CACHE_FALLBACK_TAIL_MS : this.CACHE_PRIMARY_TAIL_MS
+    );
+
+    this.http.get<{ items?: unknown[] }>(url).pipe(timeout(this.CACHE_TIMEOUT_MS)).subscribe({
       next: (res) => {
+        if (!this.isActiveCacheRestoreRequest(requestId)) {
+          return;
+        }
         const items = Array.isArray(res?.items) ? res.items : [];
         if (items.length === 0) return;
         const points = items
@@ -2241,43 +2306,73 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         if (this.isHistoryMode) {
           this.chartDataPoints = sorted;
         } else {
-          this.chartDataPoints = sorted.length > this.CHART_LIVE_MAX_POINTS
-            ? sorted.slice(-this.CHART_LIVE_MAX_POINTS)
-            : sorted;
-          this.trimChartDataPoints(this.chartDataPoints[this.chartDataPoints.length - 1]?.ts ?? Date.now());
+          this.mergeCacheWithLivePoints(sorted);
         }
 
         const shouldRestoreMap = this.shouldEnableMapPipeline() && this.telemetryBufferCount === 0;
-        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId, 'restoreMap=', shouldRestoreMap);
+        console.log('[Logger Cache] Restoring', points.length, 'points from Redis for', loggerId, 'restoreMap=', shouldRestoreMap, 'fallback=', useFallback);
         this.restoreFromSessionCache(points, shouldRestoreMap);
       },
       error: (e) => {
+        if (!this.isActiveCacheRestoreRequest(requestId)) {
+          return;
+        }
         console.warn('[Logger Cache] Load from Redis failed:', e);
 
-        // Keep realtime alive even when cache restore fails.
-        this.initializeRealtimeWithBacklog();
+        if (!useFallback) {
+          this.notifyCacheWarningForSuperAdmin('Realtime cache is slow, retrying with a smaller window...');
+          this.fetchLoggerCacheWithRetry(loggerKey, loggerId, requestId, true, startRealtimeOnComplete);
+          return;
+        }
 
-        if (retryIndex < this.CACHE_RETRY_DELAYS_MS.length) {
-          const delayMs = this.CACHE_RETRY_DELAYS_MS[retryIndex];
-          const timer = setTimeout(() => {
-            this.cacheRetryTimers = this.cacheRetryTimers.filter((t) => t !== timer);
-            if (this.componentDestroyed) {
-              return;
-            }
-            this.fetchLoggerCacheWithRetry(url, loggerId, retryIndex + 1, false);
-          }, delayMs);
-          this.cacheRetryTimers.push(timer);
-          this.notifyCacheWarningForSuperAdmin('Realtime cache unavailable, retrying...');
-        } else {
+        this.finishCacheRestore(requestId, startRealtimeOnComplete);
+        if (startRealtimeOnComplete) {
           this.notifyCacheWarningForSuperAdmin('Realtime cache restore failed. Showing recent live data only.');
         }
       },
       complete: () => {
-        if (startRealtimeOnComplete) {
-          this.initializeRealtimeWithBacklog();
-        }
+        this.finishCacheRestore(requestId, startRealtimeOnComplete);
       }
     });
+  }
+
+  private buildRealtimeCacheUrl(loggerKey: string, limit: number, tailMs: number): string {
+    return getApiUrl('/realtime/cache')
+      + `?logger=${encodeURIComponent(loggerKey)}`
+      + `&limit=${limit}`
+      + `&tail_ms=${tailMs}`
+      + '&compact=1';
+  }
+
+  private isActiveCacheRestoreRequest(requestId: number): boolean {
+    return !this.componentDestroyed && requestId === this.cacheRestoreRequestId;
+  }
+
+  private finishCacheRestore(requestId: number, startRealtimeOnComplete: boolean): void {
+    if (!this.isActiveCacheRestoreRequest(requestId)) {
+      return;
+    }
+    this.cacheRestoreInFlight = false;
+    if (startRealtimeOnComplete) {
+      this.initializeRealtimeWithBacklog();
+    }
+  }
+
+  private mergeCacheWithLivePoints(cachePoints: TelemetryPoint[]): void {
+    const byKey = new Map<string, TelemetryPoint>();
+
+    for (const point of cachePoints) {
+      byKey.set(`${point.loggerId}|${point.ts}`, point);
+    }
+    for (const point of this.chartDataPoints) {
+      byKey.set(`${point.loggerId}|${point.ts}`, point);
+    }
+
+    const merged = Array.from(byKey.values()).sort((a, b) => a.ts - b.ts);
+    this.chartDataPoints = merged.length > this.CHART_LIVE_MAX_POINTS
+      ? merged.slice(-this.CHART_LIVE_MAX_POINTS)
+      : merged;
+    this.trimChartDataPoints(this.chartDataPoints[this.chartDataPoints.length - 1]?.ts ?? Date.now());
   }
 
   private notifyCacheWarningForSuperAdmin(message: string): void {
@@ -2408,15 +2503,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const afr = payload.AFR != null ? Number(payload.AFR) : (payload.afr != null ? Number(payload.afr) : undefined);
     const rpm = payload.RPM != null ? Number(payload.RPM) : (payload.rpm != null ? Number(payload.rpm) : undefined);
-    const incomingVelocity = payload.velocity != null
-      ? Number(payload.velocity)
-      : (payload.speed != null ? Number(payload.speed) : undefined);
+    const incomingVelocity = this.readOptionalNumber(payload.velocity)
+      ?? this.readOptionalNumber(payload.speed);
     const timeVal = payload.timestamp ?? payload.time ?? Date.now();
     const ts = typeof timeVal === 'number'
       ? timeVal
       : (Number.isFinite(Number(timeVal)) ? Number(timeVal) : Date.parse(String(timeVal)) || Date.now());
 
-    let velocity = Number.isFinite(incomingVelocity as number) ? (incomingVelocity as number) : undefined;
+    let velocity = incomingVelocity;
     if (this.isReadOnlyRaceTeamUser() && this.isRealtimeMode) {
       velocity = this.resolveRaceTeamVelocityKmh(loggerId, lat, lon, ts, velocity);
       this.currentCarSpeedKmh = Number.isFinite(velocity as number) ? (velocity as number) : null;
@@ -2438,6 +2532,17 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     };
   }
 
+  private readOptionalNumber(value: unknown): number | undefined {
+    if (value == null) {
+      return undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') {
+      return undefined;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : undefined;
+  }
+
   private resolveRaceTeamVelocityKmh(
     loggerId: string,
     lat: number,
@@ -2445,7 +2550,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     ts: number,
     incomingVelocity?: number
   ): number | undefined {
-    const hasIncoming = Number.isFinite(incomingVelocity as number);
+    const hasIncoming = Number.isFinite(incomingVelocity as number) && (incomingVelocity as number) > 0;
     const prev = this.lastSpeedCalcPointByLogger[loggerId];
     let velocity = hasIncoming ? (incomingVelocity as number) : undefined;
 
@@ -2671,6 +2776,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initializeCanvas(): void {
+    if (this.componentDestroyed) {
+      return;
+    }
+
     if (!this.shouldEnableMapPipeline()) {
       return;
     }
@@ -2678,7 +2787,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.trackCanvas?.nativeElement) {
       console.warn('[Canvas] Canvas element not found, retrying...');
       // Retry after a short delay
-      setTimeout(() => this.initializeCanvas(), 100);
+      if (!this.canvasInitRetryTimer) {
+        this.canvasInitRetryTimer = setTimeout(() => {
+          this.canvasInitRetryTimer = null;
+          this.initializeCanvas();
+        }, 100);
+      }
       return;
     }
 
@@ -3106,7 +3220,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       x: p.ts,
       y: p.afr ?? null
     }));
-    const brushData = data.slice(-1000);
+    const shouldUpdateBrush = this.shouldShowBrushChart();
+    const brushData = shouldUpdateBrush ? data.slice(-1000) : [];
 
     if (this.chart) {
       try {
@@ -3117,10 +3232,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         if (this.followRealtimeViewport) {
           this.applyLatestViewport(points);
         }
-        this.brushOpts = {
-          ...this.brushOpts,
-          series: [{ name: 'AFR', type: 'line', data: brushData }]
-        };
+        if (shouldUpdateBrush) {
+          this.brushOpts = {
+            ...this.brushOpts,
+            series: [{ name: 'AFR', type: 'line', data: brushData }]
+          };
+        }
         this.cdr.markForCheck();
         return;
       } catch (err) {
@@ -3142,10 +3259,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         }
       };
     }
-    this.brushOpts = {
-      ...this.brushOpts,
-      series: [{ name: 'AFR', type: 'line', data: brushData }]
-    };
+    if (shouldUpdateBrush) {
+      this.brushOpts = {
+        ...this.brushOpts,
+        series: [{ name: 'AFR', type: 'line', data: brushData }]
+      };
+    }
     this.ngZone.run(() => this.cdr.markForCheck());
   }
 
@@ -3497,7 +3616,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
             time: parsedData.timestamp || new Date().toISOString(),
             lat: parsedData.lat,
             long: parsedData.lon,
-            velocity: parseFloat(parsedData.AFR) || 0,
+            velocity: this.readOptionalNumber(parsedData.velocity) ?? 0,
             heading: '0',
             height: '0',
             FixType: '3',
@@ -3833,7 +3952,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.eventService
       .getDetailLoggerInRace(this.parameterRaceId, this.parameterSegment, this.parameterClass, this.parameterLoggerID
-        , this.parameterEventID, this.parameterCarNBR
+        , this.parameterEventID, this.parameterCarNBR, this.circuitName
       )
       .subscribe({
         next: (detail) => {
@@ -4214,10 +4333,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     };
 
-    this.brushOpts = {
-      ...(this.brushOpts || {}),
-      series: [{ name: `Lap ${lapIndex + 1}`, type: 'line', data: downsampledBrushData }]
-    };
+    if (this.shouldShowBrushChart()) {
+      this.brushOpts = {
+        ...(this.brushOpts || {}),
+        series: [{ name: `Lap ${lapIndex + 1}`, type: 'line', data: downsampledBrushData }]
+      };
+    }
 
     console.log(`Chart updated for lap ${lapIndex + 1}: ${detailSeries[0].data.length} data points (downsampled from ${rawData.length})`);
   }
@@ -4298,10 +4419,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       markers: { ...(this.detailOpts?.markers || {}), size: 0, discrete },
       annotations: { yaxis: [{ y: limit, borderColor: '#ff3b30', label: { text: `AFR Limit ${limit}` } }] }
     };
-    this.brushOpts = {
-      ...(this.brushOpts || {}),
-      series: [{ name: 'AFR', type: 'line', data: downsampledBrushData }]
-    };
+    if (this.shouldShowBrushChart()) {
+      this.brushOpts = {
+        ...(this.brushOpts || {}),
+        series: [{ name: 'AFR', type: 'line', data: downsampledBrushData }]
+      };
+    }
 
     const totalPoints = detailSeries.reduce((sum, s) => sum + s.data.length, 0);
     console.log(`Chart built: ${detailSeries.length} series, ${totalPoints} total points (downsampled), brush: ${downsampledBrushData.length} points`);
@@ -4675,10 +4798,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       series: downsampledSeries
     };
 
-    this.brushOpts = {
-      ...this.brushOpts,
-      series: fullSeries
-    };
+    if (this.shouldShowBrushChart()) {
+      this.brushOpts = {
+        ...this.brushOpts,
+        series: fullSeries
+      };
+    }
   }
 
 
@@ -5145,10 +5270,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ...this.detailOpts,
       yaxis: { ...this.detailOpts.yaxis, min: this.afrYAxisMin, max: this.afrYAxisMax, reversed: this.afrGraphInverted }
     };
-    this.brushOpts = {
-      ...this.brushOpts,
-      yaxis: { ...this.brushOpts.yaxis, min: this.afrYAxisMin, max: this.afrYAxisMax, reversed: this.afrGraphInverted }
-    };
+    if (this.shouldShowBrushChart()) {
+      this.brushOpts = {
+        ...this.brushOpts,
+        yaxis: { ...this.brushOpts.yaxis, min: this.afrYAxisMin, max: this.afrYAxisMax, reversed: this.afrGraphInverted }
+      };
+    }
     // this.refreshDetail();
     // this.refreshBrush();
   }
@@ -5258,6 +5385,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private refreshBrush(): void {
+    if (!this.shouldShowBrushChart()) {
+      return;
+    }
+
     // ถ้า filterData == false ให้ใช้ทุก keys, ถ้าไม่ใช่ให้ใช้ selectedKeys
     const keysToUse = this.filterData ? this.selectedKeys : (this.options.map(o => o.value) as ChartKey[]);
     const series = this.buildSeries(keysToUse);
@@ -6056,6 +6187,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     // Use deck.gl map mode
     this.useCanvasMode = false;
 
+    if (this.deckMap) {
+      this.applyCircuitToDeckMap(this.circuitName);
+      return;
+    }
+
     if (!this.raceMapDeckRef?.nativeElement) {
       console.warn('[deck.gl] Map container not found, retrying...');
       setTimeout(() => this.initializeDeckMap(), 100);
@@ -6093,6 +6229,33 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.useCanvasMode = true;
       this.initializeCanvasMap();
     }
+  }
+
+  private applyCircuitToDeckMap(circuitName: string): void {
+    if (!this.shouldEnableMapPipeline()) {
+      return;
+    }
+
+    const center = getMapCenterForCircuit(circuitName);
+    if (!center) {
+      this.useCanvasMode = true;
+      this.initializeCanvasMap();
+      return;
+    }
+
+    this.useCanvasMode = false;
+
+    if (!this.deckMap) {
+      this.initializeDeckMap();
+      return;
+    }
+
+    this.deckMap.setCenter([center.lng, center.lat]);
+    this.deckMap.setZoom(center.zoom);
+    this.deckMap.setPitch(0);
+    this.deckMap.setBearing(center.rotation);
+    this.deckDirty = true;
+    this.scheduleDeckRender();
   }
 
   /**
@@ -6594,6 +6757,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.componentDestroyed = true;
     this.shouldRealtimeReconnect = false;
     this.realtimeConnectInProgress = false;
+    this.cacheRestoreRequestId++;
+    this.cacheRestoreInFlight = false;
 
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
@@ -6608,9 +6773,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     this.stopAlertHistoryPolling();
-    this.cacheRetryTimers.forEach((timer) => clearTimeout(timer));
-    this.cacheRetryTimers = [];
-
     // Close realtime WebSocket connection
     this.closeRealtimeSocket();
     this.ro?.disconnect();
@@ -6647,6 +6809,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.wheelInteractionTimer) {
       clearTimeout(this.wheelInteractionTimer);
       this.wheelInteractionTimer = null;
+    }
+    if (this.canvasInitRetryTimer) {
+      clearTimeout(this.canvasInitRetryTimer);
+      this.canvasInitRetryTimer = null;
     }
 
     try {

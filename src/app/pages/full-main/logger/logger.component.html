@@ -98,7 +98,7 @@
         </div>
       </div>
 
-      @if (!isReadOnlyRaceTeamUser()) {
+      @if (!isReadOnlyRaceTeamUser() && permissionsCheck('EDIT')) {
         <div class="logger-meta-item logger-meta-item--clear">
           <button type="button" class="btn btn-warning w-100 h-75 text-light" (click)="navigateToResetLogger('0ms','0ms', 'logger')">
             Clear Count
@@ -183,14 +183,25 @@
             </div>
           </div>
           <div class="card-body card-body--flush">
-            <!-- deck.gl Map Container (WebGL) - shown when circuit has map center -->
-            <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"></div>
-
-            <!-- Canvas for drawing lines (shown when no circuit match) -->
-            <canvas #raceMapCanvas
-              class="race-map-canvas"
-              [style.display]="useCanvasMode ? 'block' : 'none'">
-            </canvas>
+            <div class="logger-map-stage">
+              <!-- deck.gl Map Container (WebGL) - shown when circuit has map center -->
+              <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"></div>
+              @if (isDefaultPreLogMode()) {
+                <mat-form-field class="prelog-circuit-select prelog-circuit-select--overlay" appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Circuit</mat-label>
+                  <mat-select [value]="circuitName" (selectionChange)="onPreLogCircuitChange($event.value)">
+                    @for (circuit of preLogCircuitOptions; track circuit.value) {
+                      <mat-option [value]="circuit.value">{{ circuit.label }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              }
+              <!-- Canvas for drawing lines (shown when no circuit match) -->
+              <canvas #raceMapCanvas
+                class="race-map-canvas"
+                [style.display]="useCanvasMode ? 'block' : 'none'">
+              </canvas>
+            </div>
 
             <!-- Legacy SVG+Canvas (hidden when using deck.gl) -->
             <div class="track-image-container" style="position: relative; display: none;">
@@ -415,7 +426,7 @@
                         </mat-form-field>
                       </form> -->
 
-                        @if (!isReadOnlyRaceTeamUser()) {
+                        @if (!isReadOnlyRaceTeamUser() && permissionsCheck('EXPORT')) {
                         <div class="logger-export-actions">
                           <!-- <button type="button" class="btn btn-warning h-75 text-light logger-export-btn" (click)="exportLoggerDataToTxt()">
                             .txt
@@ -488,20 +499,22 @@
                         ></apx-chart>
                       </div>
 
-                      <div id="chart-brush">
-                        <apx-chart
-                          [series]="brushOpts.series"
-                          [chart]="brushOpts.chart"
-                          [xaxis]="brushOpts.xaxis"
-                          [yaxis]="brushOpts.yaxis"
-                          [colors]="brushOpts.colors"
-                          [fill]="brushOpts.fill"
-                          [grid]="brushOpts.grid"
-                          [dataLabels]="brushOpts.dataLabels"
-                          [stroke]="brushOpts.stroke"
-                          [theme]="brushOpts.theme"
-                        ></apx-chart>
-                      </div>
+                      @if (shouldShowBrushChart()) {
+                        <div id="chart-brush">
+                          <apx-chart
+                            [series]="brushOpts.series"
+                            [chart]="brushOpts.chart"
+                            [xaxis]="brushOpts.xaxis"
+                            [yaxis]="brushOpts.yaxis"
+                            [colors]="brushOpts.colors"
+                            [fill]="brushOpts.fill"
+                            [grid]="brushOpts.grid"
+                            [dataLabels]="brushOpts.dataLabels"
+                            [stroke]="brushOpts.stroke"
+                            [theme]="brushOpts.theme"
+                          ></apx-chart>
+                        </div>
+                      }
 
                     </div>
 
