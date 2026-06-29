@@ -1,0 +1,194 @@
+@if (!activeUser) {
+  <div class="login-wrap">
+    <form class="login-panel" (ngSubmit)="login()">
+      <h1>TSS Weighing Sheet</h1>
+      <p>เข้าสู่ระบบเพื่อใช้งาน {{ eventLabel }}</p>
+      <div class="form-row">
+        <label for="login-user">Username</label>
+        <input id="login-user" type="text" autocomplete="username" [(ngModel)]="loginUser" name="loginUser" required>
+      </div>
+      <div class="form-row">
+        <label for="login-pass">Password</label>
+        <input id="login-pass" type="password" autocomplete="current-password" [(ngModel)]="loginPass" name="loginPass" required>
+      </div>
+      <div class="login-error">{{ loginError }}</div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+} @else {
+  <div class="app role-{{ activeUser.role }}">
+    <div class="topbar">
+      <div class="dot"></div>
+      <h1>TSS Weighing Sheet</h1>
+      <div class="topbar-event-config">
+        @if (isEditingEvent){
+          <input class="event-name-input" type="text" [(ngModel)]="eventName" [readonly]="!isEditingEvent">
+        } @else {
+          <span class="event-name"> {{ eventName }}</span>
+        }
+        <span class="event-year">· {{ currentYear }}</span>
+        <button type="button" class="event-edit-button" (click)="toggleEventEdit()">{{ isEditingEvent ? 'บันทึก' : 'แก้ไข' }}</button>
+      </div>
+      <div class="userbox">
+        <span>{{ activeUsername }}</span>
+        <span class="role-badge">{{ activeUser.label }}</span>
+        <button type="button" (click)="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label for="sel-class" style="font-size: 16px;">คลาส</label>
+      <select id="sel-class" [(ngModel)]="selectedClass" (ngModelChange)="onClassChange()">
+        @for (cls of classOptions; track cls) {
+          <option [value]="cls">{{ cls }}</option>
+        }
+      </select>
+      <label for="sel-session" style="font-size: 16px;">รอบ</label>
+      <select id="sel-session" [(ngModel)]="selectedSession" (ngModelChange)="onSessionChange()">
+        @for (sess of sessions; track sess) {
+          <option [value]="sess">{{ sess }}</option>
+        }
+      </select>
+      @if (canKeyIn) {
+      <button type="button" (click)="exportSelectedClassExcel()">Export Class</button>
+      }
+      <div class="legend">
+        <div class="leg"><div class="leg-dot ok-dot"></div>ผ่าน ≤5%</div>
+        <div class="leg"><div class="leg-dot warn-dot"></div>เกิน &gt;5%</div>
+        <div class="leg"><div class="leg-dot bad-dot"></div>ต่ำกว่า target</div>
+      </div>
+    </div>
+
+    @if (canEditMaster) {
+      <div class="admin-panel">
+        <div class="form-row">
+          <label for="new-num" style="font-size: 18px;">เบอร์</label>
+          <input id="new-num" type="text" inputmode="numeric" placeholder="เบอร์รถ" [(ngModel)]="newNum">
+        </div>
+        <div class="form-row">
+          <label for="new-sub" style="font-size: 18px;">รุ่น</label>
+          <input id="new-sub" type="text" placeholder="รุ่น" [(ngModel)]="newSub">
+        </div>
+        <div class="form-row">
+          <label for="new-target" style="font-size: 18px;">Target (kg)</label>
+          <input id="new-target" type="number" step="0.01" placeholder="0" [(ngModel)]="newTarget">
+        </div>
+        <button type="button" (click)="addCar()">เพิ่มรถ</button>
+        <button type="button" class="danger" (click)="resetCurrentClass()">Reset data</button>
+
+        <div class="admin-error">{{ adminError }}</div>
+      </div>
+    }
+
+      @if (canKeyIn) {
+      <div class="sync-panel">
+        <button type="button" (click)="exportAllExcel()">Export ALL</button>
+        <div class="sync-status" [class.error]="syncError">{{ syncStatus }}</div>
+      </div>
+      }
+
+    <div class="main">
+      <div class="summary">
+        <div class="stat"><div class="stat-label">รถทั้งหมด</div><div class="stat-val">{{ summary.total }}</div></div>
+        <div class="stat"><div class="stat-label">ชั่งแล้ว</div><div class="stat-val">{{ summary.counted }}</div></div>
+        <div class="stat"><div class="stat-label">ผ่าน ≤5%</div><div class="stat-val ok">{{ summary.ok }}</div></div>
+        <div class="stat"><div class="stat-label">เกิน &gt;5%</div><div class="stat-val warn">{{ summary.warn }}</div></div>
+        <div class="stat"><div class="stat-label">ต่ำกว่า target</div><div class="stat-val bad">{{ summary.under }}</div></div>
+      </div>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">#</th>
+              <th rowspan="2">เบอร์</th>
+              <th rowspan="2">รุ่น</th>
+              <th rowspan="2">Target (kg)</th>
+              <th colspan="5">INCLUDING FUEL</th>
+              <th colspan="5">DRY WEIGHT</th>
+              @if (canEditMaster) { <th rowspan="2">Action</th> }
+            </tr>
+            <tr>
+              <th>ชั่ง 1</th>
+              <th>ชั่ง 2</th>
+              <th>Total</th>
+              <th>Diff</th>
+              <th>%</th>
+              <th>ชั่ง 1</th>
+              <th>ชั่ง 2</th>
+              <th>Total</th>
+              <th>Diff</th>
+              <th>%</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (car of cars; track car.num; let i = $index) {
+              @let fuel = calcWeightGroup(car, 'fuel');
+              @let dry = calcWeightGroup(car, 'dry');
+              <tr>
+                <td class="row-index">{{ i + 1 }}</td>
+                <td>
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.num" (ngModelChange)="setCarField(car, 'num', $event)">
+                  } @else {
+                    <span class="num-badge">{{ car.num }}</span>
+                  }
+                </td>
+                <td>
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.sub" (ngModelChange)="setCarField(car, 'sub', $event)">
+                  } @else {
+                    <span class="sub-tag">{{ car.sub }}</span>
+                  }
+                </td>
+                <td class="target-val">
+                  @if (canEditMaster) {
+                    <input type="number" step="0.01" [ngModel]="car.target" (ngModelChange)="setCarField(car, 'target', $event)">
+                  } @else {
+                    {{ targetText(car.target) }}
+                  }
+                </td>
+
+                <td>
+                  @if (canKeyIn) {
+                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w1)" (ngModelChange)="setWeight(car, 'fuel_w1', $event)">
+                  } @else { <span class="readonly-val">{{ fuel.w1 || '—' }}</span> }
+                </td>
+                <td>
+                  @if (canKeyIn) {
+                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w2)" (ngModelChange)="setWeight(car, 'fuel_w2', $event)">
+                  } @else { <span class="readonly-val">{{ fuel.w2 || '—' }}</span> }
+                </td>
+                <td class="total-val">{{ fuel.total !== null ? fuel.total.toFixed(1) : '—' }}</td>
+                <td><span class="pill" [ngClass]="pillClass(fuel)">{{ diffText(fuel) }}</span></td>
+                <td class="pct-text">{{ pctText(fuel) }}</td>
+
+                <td>
+                  @if (canKeyIn) {
+                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w1)" (ngModelChange)="setWeight(car, 'dry_w1', $event)">
+                  } @else { <span class="readonly-val">{{ dry.w1 || '—' }}</span> }
+                </td>
+                <td>
+                  @if (canKeyIn) {
+                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w2)" (ngModelChange)="setWeight(car, 'dry_w2', $event)">
+                  } @else { <span class="readonly-val">{{ dry.w2 || '—' }}</span> }
+                </td>
+                <td class="total-val">{{ dry.total !== null ? dry.total.toFixed(1) : '—' }}</td>
+                <td><span class="pill" [ngClass]="pillClass(dry)">{{ diffText(dry) }}</span></td>
+                <td class="pct-text">{{ pctText(dry) }}</td>
+
+                @if (canEditMaster) {
+                  <td><button type="button" class="danger" (click)="deleteCar(i)">ลบ</button></td>
+                }
+              </tr>
+            } @empty {
+              <tr>
+                <td class="no-data" [attr.colspan]="canEditMaster ? 15 : 14">ยังไม่มีข้อมูลรถในคลาส/รอบนี้</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+}

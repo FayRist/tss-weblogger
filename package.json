@@ -28,6 +28,7 @@
     "angularx-flatpickr": "^8.1.0",
     "apexcharts": "^5.3.4",
     "crypto-js": "^4.2.0",
+    "exceljs": "^4.4.0",
     "flatpickr": "^4.6.13",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^5.15.0",
