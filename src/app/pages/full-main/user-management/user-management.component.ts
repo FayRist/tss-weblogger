@@ -494,7 +494,7 @@ export class UserRacePermissionModalComponent implements OnInit {
 
     this.userManagementService.getRaceLoggerCandidates(this.selectedEventId).subscribe({
       next: (rows) => {
-        this.loggerCandidates = rows || [];
+        this.loggerCandidates = (rows || []).sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
         if (this.mode === 'edit' && this.initialCarNumbers.length > 0) {
           const candidateSet = new Set(this.loggerCandidates.map((x) => x.carNumber));
           this.selectedCarNumbers = this.initialCarNumbers.filter((c) => candidateSet.has(c));
