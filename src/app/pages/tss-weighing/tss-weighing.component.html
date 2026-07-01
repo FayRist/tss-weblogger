@@ -22,17 +22,19 @@
       <h1>TSS Weighing Sheet</h1>
       <div class="topbar-event-config">
         @if (isEditingEvent){
-          <input class="event-name-input" type="text" [(ngModel)]="eventName" [readonly]="!isEditingEvent">
+          <input class="event-name-input" type="text" [(ngModel)]="eventDraftName">
         } @else {
           <span class="event-name"> {{ eventName }}</span>
         }
         <span class="event-year">· {{ currentYear }}</span>
-        <button type="button" class="event-edit-button" (click)="toggleEventEdit()">{{ isEditingEvent ? 'บันทึก' : 'แก้ไข' }}</button>
+        @if (canEditMaster) {
+          <button type="button" class="event-edit-button" (click)="toggleEventEdit()">{{ isEditingEvent ? 'บันทึก' : 'แก้ไข' }}</button>
+        }
       </div>
       <div class="userbox">
         <span>{{ activeUsername }}</span>
         <span class="role-badge">{{ activeUser.label }}</span>
-        <button type="button" (click)="logout()">Logout</button>
+        <button type="button" class="btn btn-danger" (click)="logout()">Logout</button>
       </div>
     </div>
 
@@ -49,14 +51,18 @@
           <option [value]="sess">{{ sess }}</option>
         }
       </select>
-      @if (canKeyIn) {
-      <button type="button" (click)="exportSelectedClassExcel()">Export Class</button>
+      @if (canEditMaster) {
+        <input type="file" accept=".xlsx" hidden #importClassExcelInput (change)="importExcelForSelectedClass($event)">
+        <button type="button" class="btn btn-success" (click)="importClassExcelInput.click()">IMPORT in class</button>
       }
-      <div class="legend">
+      @if (canKeyIn) {
+        <button type="button" class="btn btn-primary" (click)="exportSelectedClassExcel()">Export Class</button>
+      }
+      <!-- <div class="legend">
         <div class="leg"><div class="leg-dot ok-dot"></div>ผ่าน ≤5%</div>
         <div class="leg"><div class="leg-dot warn-dot"></div>เกิน &gt;5%</div>
         <div class="leg"><div class="leg-dot bad-dot"></div>ต่ำกว่า target</div>
-      </div>
+      </div> -->
     </div>
 
     @if (canEditMaster) {
@@ -65,10 +71,17 @@
           <label for="new-num" style="font-size: 18px;">เบอร์</label>
           <input id="new-num" type="text" inputmode="numeric" placeholder="เบอร์รถ" [(ngModel)]="newNum">
         </div>
-        <div class="form-row">
-          <label for="new-sub" style="font-size: 18px;">รุ่น</label>
-          <input id="new-sub" type="text" placeholder="รุ่น" [(ngModel)]="newSub">
-        </div>
+        @if (hasSubOptions) {
+          <div class="form-row">
+            <label for="new-sub" style="font-size: 18px;">รุ่น</label>
+            <select id="new-sub" [(ngModel)]="newSub">
+              @for (sub of subOptions; track sub) {
+                <option [value]="sub">{{ sub }}</option>
+              }
+            </select>
+          </div>
+        }
+
         <div class="form-row">
           <label for="new-target" style="font-size: 18px;">Target (kg)</label>
           <input id="new-target" type="number" step="0.01" placeholder="0" [(ngModel)]="newTarget">
@@ -80,20 +93,25 @@
       </div>
     }
 
-      @if (canKeyIn) {
       <div class="sync-panel">
-        <button type="button" (click)="exportAllExcel()">Export ALL</button>
+        <!-- <button type="button" (click)="loadRedisCache()">Load Redis</button> -->
+        @if (canEditMaster) {
+          <input type="file" accept=".xlsx" hidden #importExcelInput (change)="importExcel($event)">
+          <!-- <button type="button" class="btn btn-success" (click)="importExcelInput.click()">IMPORT all class</button> -->
+        }
+        @if (canKeyIn) {
+          <!-- <button type="button" (click)="saveRedisCache()">Save Redis</button> -->
+          <button type="button" class="btn btn-primary" (click)="exportAllExcel()">Export ALL</button>
+        }
         <div class="sync-status" [class.error]="syncError">{{ syncStatus }}</div>
       </div>
-      }
 
     <div class="main">
       <div class="summary">
         <div class="stat"><div class="stat-label">รถทั้งหมด</div><div class="stat-val">{{ summary.total }}</div></div>
         <div class="stat"><div class="stat-label">ชั่งแล้ว</div><div class="stat-val">{{ summary.counted }}</div></div>
-        <div class="stat"><div class="stat-label">ผ่าน ≤5%</div><div class="stat-val ok">{{ summary.ok }}</div></div>
-        <div class="stat"><div class="stat-label">เกิน &gt;5%</div><div class="stat-val warn">{{ summary.warn }}</div></div>
-        <div class="stat"><div class="stat-label">ต่ำกว่า target</div><div class="stat-val bad">{{ summary.under }}</div></div>
+        <div class="stat"><div class="stat-label">ผ่าน</div><div class="stat-val ok">{{ summary.pass }}</div></div>
+        <div class="stat"><div class="stat-label">ไม่ผ่าน</div><div class="stat-val bad">{{ summary.fail }}</div></div>
       </div>
 
       <div class="table-card">
@@ -102,7 +120,7 @@
             <tr>
               <th rowspan="2">#</th>
               <th rowspan="2">เบอร์</th>
-              <th rowspan="2">รุ่น</th>
+              @if (hasSubOptions) { <th rowspan="2">รุ่น</th> }
               <th rowspan="2">Target (kg)</th>
               <th colspan="5">INCLUDING FUEL</th>
               <th colspan="5">DRY WEIGHT</th>
@@ -134,13 +152,19 @@
                     <span class="num-badge">{{ car.num }}</span>
                   }
                 </td>
-                <td>
-                  @if (canEditMaster) {
-                    <input type="text" [ngModel]="car.sub" (ngModelChange)="setCarField(car, 'sub', $event)">
-                  } @else {
-                    <span class="sub-tag">{{ car.sub }}</span>
-                  }
-                </td>
+                @if (hasSubOptions) {
+                  <td>
+                    @if (canEditMaster) {
+                      <select [ngModel]="car.sub" (ngModelChange)="setCarField(car, 'sub', $event)">
+                        @for (sub of subOptions; track sub) {
+                          <option [value]="sub">{{ sub }}</option>
+                        }
+                      </select>
+                    } @else {
+                      <span class="sub-tag">{{ car.sub }}</span>
+                    }
+                  </td>
+                }
                 <td class="target-val">
                   @if (canEditMaster) {
                     <input type="number" step="0.01" [ngModel]="car.target" (ngModelChange)="setCarField(car, 'target', $event)">
@@ -183,7 +207,7 @@
               </tr>
             } @empty {
               <tr>
-                <td class="no-data" [attr.colspan]="canEditMaster ? 15 : 14">ยังไม่มีข้อมูลรถในคลาส/รอบนี้</td>
+                <td class="no-data" [attr.colspan]="tableColspan">ยังไม่มีข้อมูลรถในคลาส/รอบนี้</td>
               </tr>
             }
           </tbody>

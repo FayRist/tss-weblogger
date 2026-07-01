@@ -23,6 +23,12 @@ export interface TssWeighingCacheResponse {
   }>;
 }
 
+export interface TssWeighingActiveEventResponse {
+  event: string;
+  year: number;
+  updated_at?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class TssWeighingService {
   constructor(private http: HttpClient) {}
@@ -32,6 +38,18 @@ export class TssWeighingService {
     return this.http.get<TssWeighingCacheResponse>(getApiUrl('/tss-weighing/cache'), {
       headers: this.headers(token),
       params,
+    });
+  }
+
+  getActiveEvent(token: string): Observable<TssWeighingActiveEventResponse> {
+    return this.http.get<TssWeighingActiveEventResponse>(getApiUrl('/tss-weighing/active-event'), {
+      headers: this.headers(token),
+    });
+  }
+
+  setActiveEvent(eventName: string, year: number, token: string): Observable<TssWeighingActiveEventResponse> {
+    return this.http.put<TssWeighingActiveEventResponse>(getApiUrl('/tss-weighing/active-event'), { event: eventName, year }, {
+      headers: this.headers(token),
     });
   }
 
