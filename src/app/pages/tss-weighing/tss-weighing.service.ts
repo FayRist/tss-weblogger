@@ -29,6 +29,14 @@ export interface TssWeighingActiveEventResponse {
   updated_at?: string;
 }
 
+export interface TssWeighingConfigResponse {
+  event: string;
+  year: number;
+  updated_at?: string;
+  class_sessions: Record<string, string[]>;
+  locked_sessions?: Record<string, string[]>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class TssWeighingService {
   constructor(private http: HttpClient) {}
@@ -49,6 +57,25 @@ export class TssWeighingService {
 
   setActiveEvent(eventName: string, year: number, token: string): Observable<TssWeighingActiveEventResponse> {
     return this.http.put<TssWeighingActiveEventResponse>(getApiUrl('/tss-weighing/active-event'), { event: eventName, year }, {
+      headers: this.headers(token),
+    });
+  }
+
+  getConfig(eventName: string, year: number, token: string): Observable<TssWeighingConfigResponse> {
+    const params = new HttpParams().set('event', eventName).set('year', String(year));
+    return this.http.get<TssWeighingConfigResponse>(getApiUrl('/tss-weighing/config'), {
+      headers: this.headers(token),
+      params,
+    });
+  }
+
+  setConfig(eventName: string, year: number, classSessions: Record<string, string[]>, lockedSessions: Record<string, string[]>, token: string): Observable<TssWeighingConfigResponse> {
+    return this.http.put<TssWeighingConfigResponse>(getApiUrl('/tss-weighing/config'), {
+      event: eventName,
+      year,
+      class_sessions: classSessions,
+      locked_sessions: lockedSessions,
+    }, {
       headers: this.headers(token),
     });
   }

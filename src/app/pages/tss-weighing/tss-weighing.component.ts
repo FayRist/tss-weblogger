@@ -3,7 +3,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import ExcelJS from 'exceljs';
 import { firstValueFrom } from 'rxjs';
-import { TssWeighingActiveEventResponse, TssWeighingCacheResponse, TssWeighingService } from './tss-weighing.service';
+import { TssWeighingActiveEventResponse, TssWeighingCacheResponse, TssWeighingConfigResponse, TssWeighingService } from './tss-weighing.service';
 
 type UserRole = 'admin' | 'keyin' | 'viewer';
 type WeightField = 'fuel_w1' | 'fuel_w2' | 'dry_w1' | 'dry_w2';
@@ -94,13 +94,23 @@ const STORAGE_KEYS = {
 };
 
 const CLASS_SESSIONS: Record<string, string[]> = {
-  ECO: ['Qualify', 'Race4', 'Race5'],
-  Touring: ['Qualify', 'Race3', 'Race4'],
-  'PICKUP C': ['Qualify', 'Race4', 'Race5'],
-  'PICKUP AB': ['Qualify', 'Race4', 'Race5'],
-  GR86: ['Qualify', 'Race3', 'Race4'],
-  'GT4 GTC': ['Qualify', 'Race3', 'Race4'],
-  'GT3 GTM': ['Qualify', 'Race3', 'Race4'],
+  ECO: ['Qualify'],
+  Touring: ['Qualify'],
+  'PICKUP C': ['Qualify'],
+  'PICKUP AB': ['Qualify'],
+  GR86: ['Qualify'],
+  'GT4 GTC': ['Qualify'],
+  'GT3 GTM': ['Qualify'],
+};
+
+const MASTER_CLASS_SESSIONS: Record<string, string[]> = {
+  ECO: ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
+  Touring: ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
+  'PICKUP C': ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
+  'PICKUP AB': ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
+  GR86: ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
+  'GT4 GTC': ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
+  'GT3 GTM': ['Practice', 'Qualify', 'Race1', 'Race2', 'Race3', 'Race4', 'Race5'],
 };
 
 const CLASS_SUB_OPTIONS: Record<string, string[]> = {
@@ -127,11 +137,18 @@ const IMPORT_CLASS_MAP: Record<string, ImportClassMapping> = {
 
 function emptyDefaultData(): Record<string, Record<string, CarRow[]>> {
   const data: Record<string, Record<string, CarRow[]>> = {};
-  Object.keys(CLASS_SESSIONS).forEach((cls) => {
+  Object.keys(MASTER_CLASS_SESSIONS).forEach((cls) => {
     data[cls] = {};
-    CLASS_SESSIONS[cls]?.forEach((sess) => data[cls][sess] = []);
+    MASTER_CLASS_SESSIONS[cls]?.forEach((sess) => data[cls][sess] = []);
   });
   return data;
+}
+
+function cloneClassSessions(source: Record<string, string[]> = CLASS_SESSIONS): Record<string, string[]> {
+  return Object.entries(source).reduce<Record<string, string[]>>((acc, [className, sessions]) => {
+    acc[className] = [...sessions];
+    return acc;
+  }, {});
 }
 
 @Component({
@@ -142,13 +159,16 @@ function emptyDefaultData(): Record<string, Record<string, CarRow[]>> {
   styleUrl: './tss-weighing.component.scss',
 })
 export class TssWeighingComponent implements OnInit, OnDestroy {
-  readonly classSessions = CLASS_SESSIONS;
-  readonly classOptions = Object.keys(CLASS_SESSIONS);
+  readonly defaultClassSessions = MASTER_CLASS_SESSIONS;
+  classSessions: Record<string, string[]> = cloneClassSessions();
+  lockedSessions: Record<string, string[]> = {};
+  configDraft: Record<string, Record<string, boolean>> = {};
+  configLockDraft: Record<string, Record<string, boolean>> = {};
 
   data: Record<string, Record<string, CarRow[]>> = emptyDefaultData();
   weights: Record<string, WeightRecord> = {};
 
-  selectedClass = this.classOptions[0] ?? '';
+  selectedClass = Object.keys(CLASS_SESSIONS)[0] ?? '';
   selectedSession = CLASS_SESSIONS[this.selectedClass]?.[0] ?? '';
 
   loginUser = '';
@@ -160,6 +180,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   eventName = 'BRIC1';
   eventDraftName = 'BRIC1';
   isEditingEvent = false;
+  isConfigModalOpen = false;
 
   newNum = '';
   newSub = '';
@@ -173,8 +194,10 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   private saveInFlight = false;
   private loadInFlight = false;
   private activeEventInFlight = false;
+  private configInFlight = false;
   private lastCacheUpdatedAt = '';
   private lastActiveEventUpdatedAt = '';
+  private lastConfigUpdatedAt = '';
   private pendingAutoSaveClass = '';
   private pendingAutoSaveSession = '';
   private readonly autoSaveDelayMs = 800;
@@ -209,7 +232,15 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   get sessions(): string[] {
-    return CLASS_SESSIONS[this.selectedClass] ?? [];
+    return this.classSessions[this.selectedClass] ?? [];
+  }
+
+  get classOptions(): string[] {
+    return Object.keys(this.classSessions);
+  }
+
+  get masterClassOptions(): string[] {
+    return Object.keys(MASTER_CLASS_SESSIONS);
   }
 
   get cars(): CarRow[] {
@@ -222,6 +253,14 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   get canKeyIn(): boolean {
     return this.activeUser?.role === 'admin' || this.activeUser?.role === 'keyin';
+  }
+
+  get isCurrentSessionLocked(): boolean {
+    return this.isSessionLocked(this.selectedClass, this.selectedSession);
+  }
+
+  get canKeyInCurrentSession(): boolean {
+    return this.canKeyIn && (this.canEditMaster || !this.isCurrentSessionLocked);
   }
 
   get subOptions(): string[] {
@@ -295,6 +334,107 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.saveActiveEvent();
   }
 
+  openConfigModal(): void {
+    if (!this.canEditMaster) return;
+    this.eventDraftName = this.eventName;
+    this.isEditingEvent = true;
+    this.configDraft = {};
+    this.configLockDraft = {};
+    Object.entries(MASTER_CLASS_SESSIONS).forEach(([className, sessions]) => {
+      const enabledSessions = new Set(this.classSessions[className] ?? []);
+      const lockedSessions = new Set(this.lockedSessions[className] ?? []);
+      this.configDraft[className] = {};
+      this.configLockDraft[className] = {};
+      sessions.forEach((sessionName) => {
+        this.configDraft[className][sessionName] = enabledSessions.has(sessionName);
+        this.configLockDraft[className][sessionName] = enabledSessions.has(sessionName) && lockedSessions.has(sessionName);
+      });
+    });
+    this.isConfigModalOpen = true;
+  }
+
+  closeConfigModal(): void {
+    this.isConfigModalOpen = false;
+    this.isEditingEvent = false;
+  }
+
+  isConfigClassEnabled(className: string): boolean {
+    return Object.values(this.configDraft[className] ?? {}).some(Boolean);
+  }
+
+  isConfigSessionEnabled(className: string, sessionName: string): boolean {
+    return !!this.configDraft[className]?.[sessionName];
+  }
+
+  isConfigSessionLocked(className: string, sessionName: string): boolean {
+    return !!this.configLockDraft[className]?.[sessionName];
+  }
+
+  onConfigClassChange(className: string, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.configDraft[className] = this.configDraft[className] ?? {};
+    this.configLockDraft[className] = this.configLockDraft[className] ?? {};
+    (MASTER_CLASS_SESSIONS[className] ?? []).forEach((sessionName) => {
+      this.configDraft[className][sessionName] = checked;
+      if (!checked) this.configLockDraft[className][sessionName] = false;
+    });
+  }
+
+  onConfigSessionChange(className: string, sessionName: string, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.configDraft[className] = this.configDraft[className] ?? {};
+    this.configDraft[className][sessionName] = checked;
+    if (!checked && this.configLockDraft[className]) this.configLockDraft[className][sessionName] = false;
+  }
+
+  onConfigSessionLockChange(className: string, sessionName: string, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    if (!this.isConfigSessionEnabled(className, sessionName)) return;
+    this.configLockDraft[className] = this.configLockDraft[className] ?? {};
+    this.configLockDraft[className][sessionName] = checked;
+  }
+
+  async saveConfigModal(): Promise<void> {
+    if (!this.canEditMaster) return;
+    if (this.autoSaveTimer || this.saveInFlight) {
+      this.setSyncStatus('กรุณารอ auto save ก่อนบันทึก event config', true);
+      return;
+    }
+    const classSessions: Record<string, string[]> = {};
+    const lockedSessions: Record<string, string[]> = {};
+    Object.entries(this.configDraft).forEach(([className, sessions]) => {
+      const selectedSessions = Object.entries(sessions).filter(([, enabled]) => enabled).map(([sessionName]) => sessionName);
+      if (selectedSessions.length > 0) classSessions[className] = selectedSessions;
+      const selectedLocks = selectedSessions.filter((sessionName) => !!this.configLockDraft[className]?.[sessionName]);
+      if (selectedLocks.length > 0) lockedSessions[className] = selectedLocks;
+    });
+    if (Object.keys(classSessions).length === 0) {
+      this.setSyncStatus('Config ต้องเลือกอย่างน้อย 1 class', true);
+      return;
+    }
+    const nextEventName = this.sanitizeEventName(this.eventDraftName);
+    if (!nextEventName) {
+      this.setSyncStatus('กรุณากรอกชื่อ event', true);
+      return;
+    }
+
+    const token = this.getWeighingToken();
+    if (!token) return;
+    this.setSyncStatus('กำลังบันทึก event config...');
+    try {
+      const activeEvent = await firstValueFrom(this.weighingService.setActiveEvent(nextEventName, this.currentYear, token));
+      this.applyActiveEvent(activeEvent, true);
+      const config = await firstValueFrom(this.weighingService.setConfig(this.eventName, this.currentYear, classSessions, lockedSessions, token));
+      this.applyEventConfig(config, true);
+      this.isConfigModalOpen = false;
+      this.isEditingEvent = false;
+      this.setSyncStatus('บันทึก event config แล้ว: ' + this.eventName);
+      this.loadRedisCache(false, true);
+    } catch (err) {
+      this.setSyncStatus(this.errorMessage(err, 'บันทึก event config ไม่สำเร็จ'), true);
+    }
+  }
+
   onClassChange(): void {
     this.selectedSession = this.sessions[0] ?? '';
     this.ensureSessionData(this.selectedClass, this.selectedSession);
@@ -306,7 +446,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   setWeight(car: CarRow, field: WeightField, value: string | number): void {
-    if (!this.canKeyIn) return;
+    if (!this.canKeyInCurrentSession) return;
     const k = this.key(this.selectedClass, this.selectedSession, car.num);
     this.weights[k] = this.weights[k] ?? {};
     const parsed = Number(value);
@@ -376,7 +516,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   saveRedisCache(isAutoSave = false): void {
-    if (!this.canKeyIn) return;
+    if (!this.canKeyInCurrentSession) return;
     this.saveCurrentSessionToRedis(isAutoSave);
   }
 
@@ -427,12 +567,31 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       next: (activeEvent) => {
         const changed = this.applyActiveEvent(activeEvent, forceLoad);
         this.activeEventInFlight = false;
-        if (changed || forceLoad) this.loadRedisCache(showStatus, true);
-        else this.loadRedisCache(false);
+        this.loadEventConfig(showStatus, changed || forceLoad);
       },
       error: (err) => {
         this.activeEventInFlight = false;
         if (showStatus) this.setSyncStatus(this.errorMessage(err, 'โหลด event ไม่สำเร็จ'), true);
+        if (forceLoad) this.loadEventConfig(showStatus, true);
+      },
+    });
+  }
+
+  private loadEventConfig(showStatus = false, forceLoad = false): void {
+    const token = this.getWeighingToken(showStatus);
+    if (!token || this.configInFlight) return;
+    if (this.autoSaveTimer || this.saveInFlight) return;
+    this.configInFlight = true;
+    this.weighingService.getConfig(this.eventName, this.currentYear, token).subscribe({
+      next: (config) => {
+        const changed = this.applyEventConfig(config, forceLoad);
+        this.configInFlight = false;
+        if (changed || forceLoad) this.loadRedisCache(showStatus, true);
+        else this.loadRedisCache(false);
+      },
+      error: (err) => {
+        this.configInFlight = false;
+        if (showStatus) this.setSyncStatus(this.errorMessage(err, 'โหลด config ไม่สำเร็จ'), true);
         if (forceLoad) this.loadRedisCache(showStatus, true);
       },
     });
@@ -449,6 +608,19 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.lastCacheUpdatedAt = '';
     localStorage.setItem(STORAGE_KEYS.event, this.eventName);
     this.updateTitle();
+    return true;
+  }
+
+  private applyEventConfig(config: TssWeighingConfigResponse, force = false): boolean {
+    const nextUpdatedAt = config.updated_at ?? '';
+    const nextClassSessions = this.normalizeEventClassSessions(config.class_sessions);
+    const nextLockedSessions = this.normalizeEventLockedSessions(config.locked_sessions, nextClassSessions);
+    const changed = force || (!!nextUpdatedAt && nextUpdatedAt !== this.lastConfigUpdatedAt) || JSON.stringify(nextClassSessions) !== JSON.stringify(this.classSessions) || JSON.stringify(nextLockedSessions) !== JSON.stringify(this.lockedSessions);
+    if (!changed) return false;
+    this.classSessions = nextClassSessions;
+    this.lockedSessions = nextLockedSessions;
+    this.lastConfigUpdatedAt = nextUpdatedAt;
+    this.ensureSelection();
     return true;
   }
 
@@ -543,7 +715,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
           return;
         }
 
-        (CLASS_SESSIONS[mapping.className] ?? []).forEach((sessionName) => {
+        (this.classSessions[mapping.className] ?? []).forEach((sessionName) => {
           const cars = this.ensureSessionData(mapping.className, sessionName);
           const existing = cars.find((car) => car.num.trim().toLowerCase() === carNumber.toLowerCase());
           if (existing) {
@@ -722,7 +894,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private queueAutoSave(): void {
-    if (!this.canKeyIn) return;
+    if (!this.canKeyInCurrentSession) return;
     this.pendingAutoSaveClass = this.selectedClass;
     this.pendingAutoSaveSession = this.selectedSession;
     this.clearAutoSaveTimer();
@@ -844,14 +1016,39 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   private ensureDataShape(data: Record<string, Record<string, CarRow[]>>): Record<string, Record<string, CarRow[]>> {
     const shaped = data && typeof data === 'object' ? data : emptyDefaultData();
-    Object.keys(CLASS_SESSIONS).forEach((cls) => {
+    Object.keys(MASTER_CLASS_SESSIONS).forEach((cls) => {
       shaped[cls] = shaped[cls] && typeof shaped[cls] === 'object' && !Array.isArray(shaped[cls]) ? shaped[cls] : {};
-      CLASS_SESSIONS[cls]?.forEach((sess) => {
+      MASTER_CLASS_SESSIONS[cls]?.forEach((sess) => {
         if (!Array.isArray(shaped[cls][sess])) shaped[cls][sess] = [];
         shaped[cls][sess] = shaped[cls][sess].map((car) => this.normalizeCarRow(cls, car)).filter((car) => car.num);
       });
     });
     return shaped;
+  }
+
+  private normalizeEventClassSessions(classSessions: Record<string, string[]> | undefined): Record<string, string[]> {
+    const normalized: Record<string, string[]> = {};
+    Object.entries(MASTER_CLASS_SESSIONS).forEach(([className, allowedSessions]) => {
+      const sessions = classSessions?.[className] ?? [];
+      const selectedSessions = (sessions ?? []).filter((sessionName, index, all) => allowedSessions.includes(sessionName) && all.indexOf(sessionName) === index);
+      if (selectedSessions.length > 0) normalized[className] = selectedSessions;
+    });
+    return Object.keys(normalized).length > 0 ? normalized : cloneClassSessions();
+  }
+
+  private normalizeEventLockedSessions(lockedSessions: Record<string, string[]> | undefined, classSessions: Record<string, string[]>): Record<string, string[]> {
+    const normalized: Record<string, string[]> = {};
+    Object.entries(lockedSessions ?? {}).forEach(([className, sessions]) => {
+      const enabledSessions = classSessions[className] ?? [];
+      if (enabledSessions.length === 0) return;
+      const selectedLocks = (sessions ?? []).filter((sessionName, index, all) => enabledSessions.includes(sessionName) && all.indexOf(sessionName) === index);
+      if (selectedLocks.length > 0) normalized[className] = selectedLocks;
+    });
+    return normalized;
+  }
+
+  private isSessionLocked(className: string, sessionName: string): boolean {
+    return !!className && !!sessionName && (this.lockedSessions[className] ?? []).includes(sessionName);
   }
 
   private normalizeCarRow(className: string, car: Partial<CarRow>): CarRow {
@@ -943,9 +1140,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const nextData = emptyDefaultData();
     const nextWeights: Record<string, WeightRecord> = {};
     Object.entries(cache.classes ?? {}).forEach(([cls, classData]) => {
-      if (!CLASS_SESSIONS[cls]) return;
+      if (!MASTER_CLASS_SESSIONS[cls]) return;
       Object.entries(classData.sessions ?? {}).forEach(([sess, sessionData]) => {
-        if (!CLASS_SESSIONS[cls]?.includes(sess)) return;
+        if (!MASTER_CLASS_SESSIONS[cls]?.includes(sess)) return;
         const cars = Object.values(sessionData.cars ?? {}).map((item: any) => {
           const carNumber = String(item?.['เบอร์รถ'] ?? '').trim();
           return {
@@ -978,7 +1175,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   private clearLocalCurrentClass(cls: string): void {
     this.data[cls] = {};
-    (CLASS_SESSIONS[cls] ?? []).forEach((sess) => this.data[cls][sess] = []);
+    (this.classSessions[cls] ?? []).forEach((sess) => this.data[cls][sess] = []);
     Object.keys(this.weights).forEach((k) => {
       if (k.startsWith(`${cls}|`)) delete this.weights[k];
     });
@@ -991,7 +1188,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     workbook.creator = 'TSS Weighing Sheet';
     workbook.created = new Date();
     classNames.forEach((className) => {
-      (CLASS_SESSIONS[className] ?? []).forEach((sessionName) => {
+      (this.classSessions[className] ?? []).forEach((sessionName) => {
         const sheet = workbook.addWorksheet(this.uniqueSheetName(workbook, sessionName, className));
         this.buildWeighingSheet(sheet, className, sessionName);
       });

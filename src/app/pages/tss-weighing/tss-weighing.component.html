@@ -21,14 +21,10 @@
       <div class="dot"></div>
       <h1>TSS Weighing Sheet</h1>
       <div class="topbar-event-config">
-        @if (isEditingEvent){
-          <input class="event-name-input" type="text" [(ngModel)]="eventDraftName">
-        } @else {
-          <span class="event-name"> {{ eventName }}</span>
-        }
+        <span class="event-name"> {{ eventName }}</span>
         <span class="event-year">· {{ currentYear }}</span>
         @if (canEditMaster) {
-          <button type="button" class="event-edit-button" (click)="toggleEventEdit()">{{ isEditingEvent ? 'บันทึก' : 'แก้ไข' }}</button>
+          <button type="button" class="event-edit-button" (click)="openConfigModal()">แก้ไข</button>
         }
       </div>
       <div class="userbox">
@@ -51,7 +47,11 @@
           <option [value]="sess">{{ sess }}</option>
         }
       </select>
+      @if (isCurrentSessionLocked) {
+        <span class="locked-badge">Locked</span>
+      }
       @if (canEditMaster) {
+        <!-- <button type="button" class="btn btn-primary" >CONFIG</button> -->
         <input type="file" accept=".xlsx" hidden #importClassExcelInput (change)="importExcelForSelectedClass($event)">
         <button type="button" class="btn btn-success" (click)="importClassExcelInput.click()">IMPORT in class</button>
       }
@@ -64,6 +64,59 @@
         <div class="leg"><div class="leg-dot bad-dot"></div>ต่ำกว่า target</div>
       </div> -->
     </div>
+
+    @if (isConfigModalOpen) {
+      <div class="modal fade show d-block" tabindex="-1" aria-modal="true" role="dialog">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <div>
+                <h1 class="modal-title fs-5">Event Config</h1>
+                <p>แก้ชื่อ event, รอบที่เปิดใช้งาน และ lock รอบสำหรับ {{ currentYear }}</p>
+              </div>
+              <button type="button" class="btn-close" aria-label="Close" (click)="closeConfigModal()"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="config-event-name">
+                <label for="config-event-name">Event name</label>
+                <input id="config-event-name" type="text" [(ngModel)]="eventDraftName">
+              </div>
+              <div class="config-list">
+                @for (cls of masterClassOptions; track cls) {
+                  <div class="config-class-card">
+                    <label class="config-class-title">
+                      <input type="checkbox" [checked]="isConfigClassEnabled(cls)" (change)="onConfigClassChange(cls, $event)">
+                      <span>{{ cls }}</span>
+                    </label>
+                    <div class="config-session-list">
+                      @for (sess of defaultClassSessions[cls]; track sess) {
+                        <label class="config-session-item with-lock">
+                          <span class="session-toggle">
+                            <input type="checkbox" [checked]="isConfigSessionEnabled(cls, sess)" (change)="onConfigSessionChange(cls, sess, $event)">
+                            <span>{{ sess }}</span>
+                          </span>
+                          <span class="session-lock" [class.disabled]="!isConfigSessionEnabled(cls, sess)" (click)="$event.stopPropagation()">
+                            <input type="checkbox" [disabled]="!isConfigSessionEnabled(cls, sess)" [checked]="isConfigSessionLocked(cls, sess)" (change)="onConfigSessionLockChange(cls, sess, $event)">
+                            <span>Lock</span>
+                          </span>
+                        </label>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" (click)="closeConfigModal()">Close</button>
+              <button type="button" class="btn btn-primary" (click)="saveConfigModal()">Save changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    }
 
     @if (canEditMaster) {
       <div class="admin-panel">
@@ -174,12 +227,12 @@
                 </td>
 
                 <td>
-                  @if (canKeyIn) {
+                  @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w1)" (ngModelChange)="setWeight(car, 'fuel_w1', $event)">
                   } @else { <span class="readonly-val">{{ fuel.w1 || '—' }}</span> }
                 </td>
                 <td>
-                  @if (canKeyIn) {
+                  @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w2)" (ngModelChange)="setWeight(car, 'fuel_w2', $event)">
                   } @else { <span class="readonly-val">{{ fuel.w2 || '—' }}</span> }
                 </td>
@@ -188,12 +241,12 @@
                 <td class="pct-text">{{ pctText(fuel) }}</td>
 
                 <td>
-                  @if (canKeyIn) {
+                  @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w1)" (ngModelChange)="setWeight(car, 'dry_w1', $event)">
                   } @else { <span class="readonly-val">{{ dry.w1 || '—' }}</span> }
                 </td>
                 <td>
-                  @if (canKeyIn) {
+                  @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w2)" (ngModelChange)="setWeight(car, 'dry_w2', $event)">
                   } @else { <span class="readonly-val">{{ dry.w2 || '—' }}</span> }
                 </td>
