@@ -103,7 +103,10 @@ input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, .f
 .config-session-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .config-session-item { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; background: #fff; border: 1px solid #e0e0dc; border-radius: 999px; font-size: 14px; }
 .config-session-item.with-lock { min-width: 178px; justify-content: space-between; gap: 10px; }
+.config-session-item.race-config-item { min-width: 220px; }
 .session-toggle, .session-lock { display: inline-flex; align-items: center; gap: 7px; }
+.race-no-input { width: 54px; border: 1px solid #e0e0dc; border-radius: 6px; padding: 7px 8px; font-size: 14px; text-align: center; background: #fafaf8; }
+.race-no-input:focus { border-color: #1a1a18; background: #fff; outline: none; }
 .session-lock { margin-left: auto; padding-left: 10px; border-left: 1px solid #ecece6; color: #9a3412; font-size: 13px; font-weight: 700; }
 .session-lock.disabled { opacity: .45; color: #888; }
 .modal-content input[type=checkbox] { width: 18px; height: 18px; accent-color: #16a34a; }
@@ -125,9 +128,11 @@ input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, .f
 .table-card { background: #fff; border-radius: 10px; border: 1px solid #e8e8e4; overflow: auto; max-height: calc(100vh - 250px); }
 table { width: 100%; border-collapse: collapse; }
 th { background: #f9f9f7; font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: #888; padding: 13px 15px; text-align: left; border-bottom: 1px solid #e8e8e4; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
-td { padding: 12px 15px; border-bottom: 1px solid #f0f0ec; vertical-align: middle; }
+td { padding: 12px 15px; border-bottom: 1px solid #f0f0ec; vertical-align: top; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fafaf8; }
+.driver-second-row td { background: #fcfcfa; border-top: 1px dashed #ecece6; }
+.driver-second-row:hover td { background: #fafaf8; }
 
 .row-index { color: #aaa; font-size: 12px; }
 .num-badge { width: 37px; height: 37px; border-radius: 6px; background: #f0f0ec; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }

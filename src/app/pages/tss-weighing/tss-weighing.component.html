@@ -80,7 +80,7 @@
             <div class="modal-body">
               <div class="config-event-name">
                 <label for="config-event-name">Event name</label>
-                <input id="config-event-name" type="text" [(ngModel)]="eventDraftName">
+                <input id="config-event-name" type="text" [(ngModel)]="eventDraftName" (ngModelChange)="onEventDraftNameChange($event)">
               </div>
               <div class="config-list">
                 @for (cls of masterClassOptions; track cls) {
@@ -90,14 +90,25 @@
                       <span>{{ cls }}</span>
                     </label>
                     <div class="config-session-list">
-                      @for (sess of defaultClassSessions[cls]; track sess) {
-                        <label class="config-session-item with-lock">
+                      <label class="config-session-item with-lock">
+                        <span class="session-toggle">
+                          <input type="checkbox" [checked]="isConfigSessionEnabled(cls, 'Qualify')" (change)="onConfigSessionChange(cls, 'Qualify', $event)">
+                          <span>Qualify</span>
+                        </span>
+                        <span class="session-lock" [class.disabled]="!isConfigSessionEnabled(cls, 'Qualify')" (click)="$event.stopPropagation()">
+                          <input type="checkbox" [disabled]="!isConfigSessionEnabled(cls, 'Qualify')" [checked]="isConfigSessionLocked(cls, 'Qualify')" (change)="onConfigSessionLockChange(cls, 'Qualify', $event)">
+                          <span>Lock</span>
+                        </span>
+                      </label>
+                      @for (slot of configRaceDraft[cls]; track $index; let raceIndex = $index) {
+                        <label class="config-session-item race-config-item with-lock">
                           <span class="session-toggle">
-                            <input type="checkbox" [checked]="isConfigSessionEnabled(cls, sess)" (change)="onConfigSessionChange(cls, sess, $event)">
-                            <span>{{ sess }}</span>
+                            <input type="checkbox" [checked]="slot.enabled" (change)="onConfigRaceEnabledChange(cls, raceIndex, $event)">
+                            <span>Race</span>
+                            <input class="race-no-input" type="text" inputmode="numeric" [ngModel]="slot.raceNo" (ngModelChange)="onConfigRaceNoChange(cls, raceIndex, $event)" placeholder="#">
                           </span>
-                          <span class="session-lock" [class.disabled]="!isConfigSessionEnabled(cls, sess)" (click)="$event.stopPropagation()">
-                            <input type="checkbox" [disabled]="!isConfigSessionEnabled(cls, sess)" [checked]="isConfigSessionLocked(cls, sess)" (change)="onConfigSessionLockChange(cls, sess, $event)">
+                          <span class="session-lock" [class.disabled]="!slot.enabled" (click)="$event.stopPropagation()">
+                            <input type="checkbox" [disabled]="!slot.enabled" [checked]="slot.locked" (change)="onConfigRaceLockChange(cls, raceIndex, $event)">
                             <span>Lock</span>
                           </span>
                         </label>
@@ -173,13 +184,16 @@
             <tr>
               <th rowspan="2">#</th>
               <th rowspan="2">เบอร์</th>
-              @if (hasSubOptions) { <th rowspan="2">รุ่น</th> }
+              @if (hasSubOptions) { <th >รุ่น</th> }
+              <!-- <th colspan="2">นักแข่ง</th> -->
               <th rowspan="2">Target (kg)</th>
               <th colspan="5">INCLUDING FUEL</th>
               <th colspan="5">DRY WEIGHT</th>
               @if (canEditMaster) { <th rowspan="2">Action</th> }
             </tr>
             <tr>
+              <!-- <th>ชื่อ</th>
+              <th>น้ำหนัก</th> -->
               <th>ชั่ง 1</th>
               <th>ชั่ง 2</th>
               <th>Total</th>
@@ -197,16 +211,18 @@
               @let fuel = calcWeightGroup(car, 'fuel');
               @let dry = calcWeightGroup(car, 'dry');
               <tr>
-                <td class="row-index">{{ i + 1 }}</td>
-                <td>
+                <td class="row-index" >{{ i + 1 }}</td>
+
+                <td >
                   @if (canEditMaster) {
                     <input type="text" [ngModel]="car.num" (ngModelChange)="setCarField(car, 'num', $event)">
                   } @else {
                     <span class="num-badge">{{ car.num }}</span>
                   }
                 </td>
+
                 @if (hasSubOptions) {
-                  <td>
+                  <td >
                     @if (canEditMaster) {
                       <select [ngModel]="car.sub" (ngModelChange)="setCarField(car, 'sub', $event)">
                         @for (sub of subOptions; track sub) {
@@ -218,7 +234,19 @@
                     }
                   </td>
                 }
-                <td class="target-val">
+                <!-- <td>
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.driver1Name" (ngModelChange)="setCarField(car, 'driver1Name', $event)" placeholder="นักแข่ง1">
+                  } @else { <span class="readonly-val">{{ car.driver1Name || '—' }}</span> }
+                </td>
+                <td>
+                  @if (canEditMaster) {
+                    <input type="number" step="0.01" [ngModel]="car.driver1Weight" (ngModelChange)="setCarField(car, 'driver1Weight', $event)" >
+                  } @else { <span class="readonly-val">{{ targetText(car.driver1Weight) }}</span> }
+                </td> -->
+
+
+                <td class="target-val" >
                   @if (canEditMaster) {
                     <input type="number" step="0.01" [ngModel]="car.target" (ngModelChange)="setCarField(car, 'target', $event)">
                   } @else {
@@ -226,38 +254,50 @@
                   }
                 </td>
 
-                <td>
+                <td >
                   @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w1)" (ngModelChange)="setWeight(car, 'fuel_w1', $event)">
                   } @else { <span class="readonly-val">{{ fuel.w1 || '—' }}</span> }
                 </td>
-                <td>
+                <td >
                   @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w2)" (ngModelChange)="setWeight(car, 'fuel_w2', $event)">
                   } @else { <span class="readonly-val">{{ fuel.w2 || '—' }}</span> }
                 </td>
-                <td class="total-val">{{ fuel.total !== null ? fuel.total.toFixed(1) : '—' }}</td>
-                <td><span class="pill" [ngClass]="pillClass(fuel)">{{ diffText(fuel) }}</span></td>
-                <td class="pct-text">{{ pctText(fuel) }}</td>
+                <td class="total-val" >{{ fuel.total !== null ? fuel.total.toFixed(1) : '—' }}</td>
+                <td ><span class="pill" [ngClass]="pillClass(fuel)">{{ diffText(fuel) }}</span></td>
+                <td class="pct-text" >{{ pctText(fuel) }}</td>
 
-                <td>
+                <td >
                   @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w1)" (ngModelChange)="setWeight(car, 'dry_w1', $event)">
                   } @else { <span class="readonly-val">{{ dry.w1 || '—' }}</span> }
                 </td>
-                <td>
+                <td >
                   @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w2)" (ngModelChange)="setWeight(car, 'dry_w2', $event)">
                   } @else { <span class="readonly-val">{{ dry.w2 || '—' }}</span> }
                 </td>
-                <td class="total-val">{{ dry.total !== null ? dry.total.toFixed(1) : '—' }}</td>
-                <td><span class="pill" [ngClass]="pillClass(dry)">{{ diffText(dry) }}</span></td>
-                <td class="pct-text">{{ pctText(dry) }}</td>
+                <td class="total-val" >{{ dry.total !== null ? dry.total.toFixed(1) : '—' }}</td>
+                <td ><span class="pill" [ngClass]="pillClass(dry)">{{ diffText(dry) }}</span></td>
+                <td class="pct-text" >{{ pctText(dry) }}</td>
 
                 @if (canEditMaster) {
-                  <td><button type="button" class="danger" (click)="deleteCar(i)">ลบ</button></td>
+                  <td ><button type="button" class="danger" (click)="deleteCar(i)">ลบ</button></td>
                 }
               </tr>
+              <!-- <tr class="driver-second-row">
+                <td>
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.driver2Name" (ngModelChange)="setCarField(car, 'driver2Name', $event)" placeholder="นักแข่ง2">
+                  } @else { <span class="readonly-val">{{ car.driver2Name || '—' }}</span> }
+                </td>
+                <td>
+                  @if (canEditMaster) {
+                    <input type="number" step="0.01" [ngModel]="car.driver2Weight" (ngModelChange)="setCarField(car, 'driver2Weight', $event)" >
+                  } @else { <span class="readonly-val">{{ targetText(car.driver2Weight) }}</span> }
+                </td>
+              </tr> -->
             } @empty {
               <tr>
                 <td class="no-data" [attr.colspan]="tableColspan">ยังไม่มีข้อมูลรถในคลาส/รอบนี้</td>

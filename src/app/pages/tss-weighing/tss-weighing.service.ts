@@ -11,6 +11,18 @@ export interface TssWeighingSessionPayload {
   cars: Record<string, unknown>;
 }
 
+export interface TssWeighingFieldPayload {
+  event: string;
+  year: number;
+  class_name: string;
+  session_name: string;
+  car_number: string;
+  field: string;
+  value: unknown;
+  expected_version: number;
+  updated_by: string;
+}
+
 export interface TssWeighingCacheResponse {
   event: string;
   year: number;
@@ -82,6 +94,12 @@ export class TssWeighingService {
 
   saveSession(payload: TssWeighingSessionPayload, token: string): Observable<TssWeighingCacheResponse> {
     return this.http.post<TssWeighingCacheResponse>(getApiUrl('/tss-weighing/cache/session'), payload, {
+      headers: this.headers(token),
+    });
+  }
+
+  updateField(payload: TssWeighingFieldPayload, token: string): Observable<{ cache: TssWeighingCacheResponse; car: Record<string, unknown> }> {
+    return this.http.post<{ cache: TssWeighingCacheResponse; car: Record<string, unknown> }>(getApiUrl('/tss-weighing/cache/field'), payload, {
       headers: this.headers(token),
     });
   }
