@@ -183,27 +183,27 @@
           <thead>
             <tr>
               <th rowspan="2">#</th>
-              <th rowspan="2">เบอร์</th>
-              @if (hasSubOptions) { <th >รุ่น</th> }
+              <th rowspan="2" class="text-center">เบอร์</th>
+              @if (hasSubOptions) { <th  rowspan="2" class="text-center">รุ่น</th> }
               <!-- <th colspan="2">นักแข่ง</th> -->
-              <th rowspan="2">Target (kg)</th>
-              <th colspan="5">INCLUDING FUEL</th>
-              <th colspan="5">DRY WEIGHT</th>
-              @if (canEditMaster) { <th rowspan="2">Action</th> }
+              <th rowspan="2" class="text-center">Target (kg)</th>
+              <th colspan="5" class="text-center">INCLUDING FUEL</th>
+              <th colspan="5" class="text-center">DRY WEIGHT</th>
+              @if (canEditMaster) { <th rowspan="2" class="text-center">Action</th> }
             </tr>
             <tr>
               <!-- <th>ชื่อ</th>
               <th>น้ำหนัก</th> -->
-              <th>ชั่ง 1</th>
-              <th>ชั่ง 2</th>
-              <th>Total</th>
-              <th>Diff</th>
-              <th>%</th>
-              <th>ชั่ง 1</th>
-              <th>ชั่ง 2</th>
-              <th>Total</th>
-              <th>Diff</th>
-              <th>%</th>
+              <th class="text-center">ชั่ง 1</th>
+              <th class="text-center">ชั่ง 2</th>
+              <th class="text-center">Total</th>
+              <th class="text-center">Diff</th>
+              <th class="text-center">%</th>
+              <th class="text-center">ชั่ง 1</th>
+              <th class="text-center">ชั่ง 2</th>
+              <th class="text-center">Total</th>
+              <th class="text-center">Diff</th>
+              <th class="text-center">%</th>
             </tr>
           </thead>
           <tbody>
@@ -257,28 +257,28 @@
                 <td >
                   @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w1)" (ngModelChange)="setWeight(car, 'fuel_w1', $event)">
-                  } @else { <span class="readonly-val">{{ fuel.w1 || '—' }}</span> }
+                  } @else { <span class="readonly-val text-center">{{ fuel.w1 || '—' }}</span> }
                 </td>
                 <td >
                   @if (canKeyInCurrentSession) {
                     <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w2)" (ngModelChange)="setWeight(car, 'fuel_w2', $event)">
-                  } @else { <span class="readonly-val">{{ fuel.w2 || '—' }}</span> }
+                  } @else { <span class="readonly-val text-center">{{ fuel.w2 || '—' }}</span> }
                 </td>
-                <td class="total-val" >{{ fuel.total !== null ? fuel.total.toFixed(1) : '—' }}</td>
+                <td class="total-val" class="text-center" >{{ fuel.total !== null ? fuel.total.toFixed(1) : '—' }}</td>
                 <td ><span class="pill" [ngClass]="pillClass(fuel)">{{ diffText(fuel) }}</span></td>
                 <td class="pct-text" >{{ pctText(fuel) }}</td>
 
                 <td >
                   @if (canKeyInCurrentSession) {
-                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w1)" (ngModelChange)="setWeight(car, 'dry_w1', $event)">
-                  } @else { <span class="readonly-val">{{ dry.w1 || '—' }}</span> }
+                    <input type="text" class="text-center" inputmode="decimal" [ngModel]="fmtWeight(dry.w1)" (ngModelChange)="setWeight(car, 'dry_w1', $event)">
+                  } @else { <span class="readonly-val text-center">{{ dry.w1 || '—' }}</span> }
                 </td>
                 <td >
                   @if (canKeyInCurrentSession) {
-                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(dry.w2)" (ngModelChange)="setWeight(car, 'dry_w2', $event)">
-                  } @else { <span class="readonly-val">{{ dry.w2 || '—' }}</span> }
+                    <input type="text"  class="text-center" inputmode="decimal" [ngModel]="fmtWeight(dry.w2)" (ngModelChange)="setWeight(car, 'dry_w2', $event)">
+                  } @else { <span class="readonly-val text-center">{{ dry.w2 || '—' }}</span> }
                 </td>
-                <td class="total-val" >{{ dry.total !== null ? dry.total.toFixed(1) : '—' }}</td>
+                <td class="total-val text-center" >{{ dry.total !== null ? dry.total.toFixed(1) : '—' }}</td>
                 <td ><span class="pill" [ngClass]="pillClass(dry)">{{ diffText(dry) }}</span></td>
                 <td class="pct-text" >{{ pctText(dry) }}</td>
 

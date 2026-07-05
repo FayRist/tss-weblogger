@@ -128,7 +128,7 @@ input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, .f
 .table-card { background: #fff; border-radius: 10px; border: 1px solid #e8e8e4; overflow: auto; max-height: calc(100vh - 250px); }
 table { width: 100%; border-collapse: collapse; }
 th { background: #f9f9f7; font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: #888; padding: 13px 15px; text-align: left; border-bottom: 1px solid #e8e8e4; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
-td { padding: 12px 15px; border-bottom: 1px solid #f0f0ec; vertical-align: top; }
+td { padding: 12px 15px; border-bottom: 1px solid #f0f0ec; vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fafaf8; }
 .driver-second-row td { background: #fcfcfa; border-top: 1px dashed #ecece6; }
