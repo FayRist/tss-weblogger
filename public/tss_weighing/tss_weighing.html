@@ -42,6 +42,10 @@
   .admin-panel .form-row{margin-bottom:0;min-width:123px}
   .admin-panel input{width:143px}
   .admin-error{flex-basis:100%;min-height:18px;color:#dc2626;font-size:14px;font-weight:600}
+  .sync-panel{display:none;gap:10px;padding:14px 24px;background:#fff;border-bottom:1px solid #e8e8e4;flex-wrap:wrap;align-items:center}
+  body.role-admin .sync-panel,body.role-keyin .sync-panel{display:flex}
+  body.role-keyin .admin-only{display:none}
+  .sync-status{min-height:18px;color:#555;font-size:14px;font-weight:600}
   .action-col{display:none}
   body.role-admin .action-col{display:table-cell}
   .readonly-val{display:inline-block;min-width:51px;color:#555}
@@ -81,6 +85,7 @@
     .topbar-event-config{width:100%;margin-left:24px}
     .userbox{width:100%;margin-left:24px;justify-content:space-between}
     .admin-panel{padding:12px 16px}
+    .sync-panel{padding:12px 16px}
     .main{padding:12px 16px}
     .summary{grid-template-columns:repeat(3,1fr)}
     td input[type=text],td input[type=number]{width:85px;font-size:18px}
@@ -150,8 +155,15 @@
       <input id="new-target" type="number" step="0.01" placeholder="0">
     </div>
     <button type="button" onclick="addCar()">เพิ่มรถ</button>
-    <button type="button" class="danger" onclick="resetData()">Reset data</button>
+    <button type="button" class="danger" onclick="resetCurrentClass()">Reset data</button>
     <div class="admin-error" id="admin-error" aria-live="polite"></div>
+  </div>
+
+  <div class="sync-panel">
+    <button type="button" onclick="saveRedisCache()">Save Redis</button>
+    <!-- <button type="button" class="danger admin-only" onclick="resetCurrentClass()">Reset current class</button> -->
+    <button type="button" onclick="exportExcel()">Export Excel</button>
+    <div class="sync-status" id="sync-status" aria-live="polite"></div>
   </div>
 
   <div class="main">
@@ -160,16 +172,25 @@
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>เบอร์</th>
-            <th>รุ่น</th>
-            <th>Target (kg)</th>
-            <th>ชั่ง 1 (kg)</th>
-            <th>ชั่ง 2 (kg)</th>
-            <th>รวม (kg)</th>
+            <th rowspan="2">#</th>
+            <th rowspan="2">เบอร์</th>
+            <th rowspan="2">รุ่น</th>
+            <th rowspan="2">Target (kg)</th>
+            <th colspan="5">INCLUDING FUEL</th>
+            <th colspan="5">DRY WEIGHT</th>
+            <th rowspan="2" class="action-col">Action</th>
+          </tr>
+          <tr>
+            <th>ชั่ง 1</th>
+            <th>ชั่ง 2</th>
+            <th>Total</th>
             <th>Diff</th>
             <th>%</th>
-            <th class="action-col">Action</th>
+            <th>ชั่ง 1</th>
+            <th>ชั่ง 2</th>
+            <th>Total</th>
+            <th>Diff</th>
+            <th>%</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -178,17 +199,15 @@
   </div>
 </div>
 
+<script src="/tss_weighing/config.js"></script>
+<script src="/vendor/xlsx.full.min.js"></script>
 <script>
-const USERS = {
-  admin:{password:"admin123",role:"admin",label:"แก้ไข + Key in"},
-  keyin:{password:"keyin123",role:"keyin",label:"Key in"},
-  viewer:{password:"viewer123",role:"viewer",label:"ดูอย่างเดียว"}
-};
+
 const STORAGE_KEYS = {
   user:"tss.activeUser",
   event:"tss.eventName.v1",
   data:"tss.masterData.v2",
-  weights:"tss.weights.v2"
+  weights:"tss.weights.v3"
 };
 
 const CLASS_SESSIONS = {
@@ -490,6 +509,163 @@ function setAdminError(message){
   if(el)el.textContent=message||'';
 }
 
+function setSyncStatus(message,isError=false){
+  const el=document.getElementById('sync-status');
+  if(!el)return;
+  el.textContent=message||'';
+  el.style.color=isError?'#dc2626':'#166534';
+}
+
+function getWeighingToken(){
+  const token=String(window.TSS_WEIGHING_CONFIG?.token||'').trim();
+  if(!token)setSyncStatus('ไม่พบ TSS weighing token จาก config.js',true);
+  return token;
+}
+
+function weighingApiUrl(path,params={}){
+  const query=new URLSearchParams(params).toString();
+  return '/api/tss-weighing'+path+(query?'?'+query:'');
+}
+
+async function weighingFetch(path,options={}){
+  const token=getWeighingToken();
+  if(!token)throw new Error('ไม่พบ X-Weighing-Token');
+  const headers={...(options.headers||{}),'X-Weighing-Token':token};
+  if(options.body)headers['Content-Type']='application/json';
+  const res=await fetch(path,{...options,headers,cache:'no-store'});
+  if(res.status===401){
+    throw new Error('X-Weighing-Token ไม่ถูกต้อง');
+  }
+  if(!res.ok){
+    let message='API error '+res.status;
+    try{
+      const data=await res.json();
+      if(data?.error)message=data.error;
+    }catch(e){}
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+function buildCarReport(cls,sess,car){
+  return {
+    "รุ่น": car.sub,
+    "เบอร์รถ": String(car.num),
+    "Target Weight (kg)": car.target!=null?Number(car.target):null,
+    "INCLUDING FUEL": weightBlock(cls,sess,car.num,car.target,'fuel'),
+    "DRY WEIGHT": weightBlock(cls,sess,car.num,car.target,'dry')
+  };
+}
+
+function buildCurrentSessionCars(){
+  const cls=selClass.value;
+  const sess=selSess.value;
+  const cars=ensureSessionData(cls,sess);
+  return cars.reduce((acc,car)=>{
+    acc[String(car.num)]=buildCarReport(cls,sess,car);
+    return acc;
+  },{});
+}
+
+async function saveRedisCache(){
+  if(!canKeyIn())return;
+  const cls=selClass.value;
+  const sess=selSess.value;
+  setSyncStatus('กำลังบันทึก Redis...');
+  try{
+    await weighingFetch(weighingApiUrl('/cache/session'),{
+      method:'POST',
+      body:JSON.stringify({
+        event:getEventName(),
+        year:currentYear(),
+        class_name:cls,
+        session_name:sess,
+        cars:buildCurrentSessionCars()
+      })
+    });
+    setSyncStatus('บันทึก Redis แล้ว: '+cls+' / '+sess);
+  }catch(e){
+    setSyncStatus(e.message||'บันทึก Redis ไม่สำเร็จ',true);
+  }
+}
+
+function clearLocalCurrentClass(cls){
+  DATA[cls]={};
+  (CLASS_SESSIONS[cls]||[]).forEach(sess=>{ DATA[cls][sess]=[]; });
+  Object.keys(weights).forEach(k=>{
+    if(k.startsWith(cls+'|'))delete weights[k];
+  });
+  saveData();
+  saveWeights();
+}
+
+async function resetCurrentClass(){
+  if(!canEditMaster())return;
+  const cls=selClass.value;
+  if(!cls||!confirm('Reset class '+cls+' และลบ Redis cache ของ class นี้?'))return;
+  setSyncStatus('กำลังลบ Redis class '+cls+'...');
+  try{
+    await weighingFetch(weighingApiUrl('/cache/class',{event:getEventName(),year:String(currentYear()),class_name:cls}),{method:'DELETE'});
+    clearLocalCurrentClass(cls);
+    refreshClassOptions();
+    setSyncStatus('Reset current class แล้ว: '+cls);
+  }catch(e){
+    setSyncStatus(e.message||'Reset current class ไม่สำเร็จ',true);
+  }
+}
+
+function flattenRowsForExcel(){
+  const rows=[];
+  Object.keys(CLASS_SESSIONS).forEach(cls=>{
+    (CLASS_SESSIONS[cls]||[]).forEach(sess=>{
+      const cars=(DATA[cls]&&DATA[cls][sess])||[];
+      cars.forEach(car=>{
+        const fuel=calcWeightGroup(cls,sess,car.num,car.target,'fuel');
+        const dry=calcWeightGroup(cls,sess,car.num,car.target,'dry');
+        rows.push({
+          "Class": cls,
+          "Session": sess,
+          "รุ่น": car.sub,
+          "เบอร์รถ": String(car.num),
+          "Target Weight (kg)": car.target!=null?Number(car.target):null,
+          "Fuel ชั่ง 1": fuel.has?fuel.w1:null,
+          "Fuel ชั่ง 2": fuel.has?fuel.w2:null,
+          "Fuel Total": fuel.total,
+          "Fuel Diff Cal (KG)": fuel.diff,
+          "Fuel %": fuel.pct!==null?(fuel.pct*100).toFixed(2)+'%':null,
+          "Dry ชั่ง 1": dry.has?dry.w1:null,
+          "Dry ชั่ง 2": dry.has?dry.w2:null,
+          "Dry Total": dry.total,
+          "Dry Diff Cal (KG)": dry.diff,
+          "Dry %": dry.pct!==null?(dry.pct*100).toFixed(2)+'%':null
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+function safeFilePart(value){
+  return String(value||'BRIC1').trim().replace(/[^A-Za-z0-9_-]+/g,'_').replace(/^_+|_+$/g,'')||'BRIC1';
+}
+
+function exportExcel(){
+  if(!window.XLSX){
+    setSyncStatus('ไม่พบ XLSX library สำหรับ export',true);
+    return;
+  }
+  const rows=flattenRowsForExcel();
+  if(rows.length===0){
+    setSyncStatus('ไม่มีข้อมูลสำหรับ export',true);
+    return;
+  }
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Weighing');
+  XLSX.writeFile(wb,'TSS_Weighing_Sheet_'+currentYear()+'_'+safeFilePart(getEventName())+'.xlsx');
+  setSyncStatus('Export Excel แล้ว');
+}
+
 function currentUser(){
   const username=sessionStorage.getItem(STORAGE_KEYS.user);
   return username&&USERS[username]?{username,...USERS[username]}:null;
@@ -510,6 +686,48 @@ function fmtWeight(value){ return value?String(value):''; }
 function targetText(target){ return target!=null?Number(target).toFixed(2):'<span style="color:#ccc">—</span>'; }
 function key(cls,sess,num){ return cls+'|'+sess+'|'+num; }
 function getW(cls,sess,num,f){ return (weights[key(cls,sess,num)]||{})[f]||0; }
+
+function calcWeightGroup(cls,sess,num,target,prefix){
+  const w1=getW(cls,sess,num,prefix+'_w1');
+  const w2=getW(cls,sess,num,prefix+'_w2');
+  const has=w1>0||w2>0;
+  const total=has?w1+w2:null;
+  const diff=(total!==null&&target!=null)?total-target:null;
+  const pct=(diff!==null&&target)?diff/target:null;
+  return {w1,w2,has,total,diff,pct};
+}
+
+function weightBlock(cls,sess,num,target,prefix){
+  const stats=calcWeightGroup(cls,sess,num,target,prefix);
+  return {
+    "เครื่องชั่ง 1": stats.has?Number(stats.w1):null,
+    "เครื่องชั่ง 2": stats.has?Number(stats.w2):null,
+    "Total": stats.total!==null?Number(stats.total.toFixed(2)):null,
+    "Diff Cal (KG)": stats.diff!==null?Number(stats.diff.toFixed(2)):null,
+    "%": stats.pct!==null?(stats.pct*100).toFixed(2)+'%':null
+  };
+}
+
+function weightInputCell(cls,sess,num,field,value){
+  const safeCls=jsArg(cls);
+  const safeSess=jsArg(sess);
+  const safeNum=jsArg(num);
+  const safeField=jsArg(field);
+  return canKeyIn()
+    ? `<input type="text" inputmode="decimal" value="${attr(fmtWeight(value))}" placeholder="0" onchange="setW(${safeCls},${safeSess},${safeNum},${safeField},this.value)">`
+    : `<span class="readonly-val">${value?escapeHtml(value):'—'}</span>`;
+}
+
+function groupResultCells(stats){
+  const pc=stats.diff!==null?pillClass(stats.diff,stats.pct,stats.has):'empty';
+  const diffTxt=stats.diff!==null?(stats.diff>=0?'+':'')+stats.diff.toFixed(1)+' kg':'—';
+  const pctTxt=stats.pct!==null?(stats.pct*100).toFixed(2)+'%':'—';
+  return `
+    <td class="total-val">${stats.total!==null?stats.total.toFixed(1):'<span style="color:#ccc">—</span>'}</td>
+    <td><span class="pill ${pc}">${diffTxt}</span></td>
+    <td class="pct-text">${pctTxt}</td>
+  `;
+}
 
 function login(event){
   event.preventDefault();
@@ -668,34 +886,20 @@ function render(){
   let total=cars.length,counted=0,ok=0,warn=0,under=0;
 
   cars.forEach((car,i)=>{
-    const w1=getW(cls,sess,car.num,'w1');
-    const w2=getW(cls,sess,car.num,'w2');
-    const has=w1>0||w2>0;
-    const tot=has?w1+w2:null;
-    const diff=(tot!==null&&car.target!=null)?tot-car.target:null;
-    const pct=(diff!==null&&car.target)?diff/car.target:null;
+    const fuel=calcWeightGroup(cls,sess,car.num,car.target,'fuel');
+    const dry=calcWeightGroup(cls,sess,car.num,car.target,'dry');
+    const summaryStats=fuel.has?fuel:dry;
 
-    if(has)counted++;
-    if(has&&diff!==null){
-      if(diff<0)under++;
-      else if(pct!==null&&Math.abs(pct)<=0.05)ok++;
+    if(fuel.has||dry.has)counted++;
+    if(summaryStats.has&&summaryStats.diff!==null){
+      if(summaryStats.diff<0)under++;
+      else if(summaryStats.pct!==null&&Math.abs(summaryStats.pct)<=0.05)ok++;
       else warn++;
     }
-
-    const pc=diff!==null?pillClass(diff,pct,has):'empty';
-    const diffTxt=diff!==null?(diff>=0?'+':'')+diff.toFixed(1)+' kg':'—';
-    const pctTxt=pct!==null?(pct*100).toFixed(2)+'%':'—';
 
     const tr=document.createElement('tr');
     const safeCls=jsArg(cls);
     const safeSess=jsArg(sess);
-    const safeNum=jsArg(car.num);
-    const weight1Cell=canKeyIn()
-      ? `<input type="text" inputmode="decimal" value="${attr(fmtWeight(w1))}" placeholder="0" onchange="setW(${safeCls},${safeSess},${safeNum},'w1',this.value)">`
-      : `<span class="readonly-val">${w1?escapeHtml(w1):'—'}</span>`;
-    const weight2Cell=canKeyIn()
-      ? `<input type="text" inputmode="decimal" value="${attr(fmtWeight(w2))}" placeholder="0" onchange="setW(${safeCls},${safeSess},${safeNum},'w2',this.value)">`
-      : `<span class="readonly-val">${w2?escapeHtml(w2):'—'}</span>`;
     const numCell=canEditMaster()
       ? `<input type="text" value="${attr(car.num)}" onchange="setCarField(${safeCls},${safeSess},${i},'num',this.value)">`
       : `<span class="num-badge">${escapeHtml(car.num)}</span>`;
@@ -713,11 +917,12 @@ function render(){
       <td>${numCell}</td>
       <td>${subCell}</td>
       <td class="target-val">${targetCell}</td>
-      <td>${weight1Cell}</td>
-      <td>${weight2Cell}</td>
-      <td class="total-val">${tot!==null?tot.toFixed(1):'<span style="color:#ccc">—</span>'}</td>
-      <td><span class="pill ${pc}">${diffTxt}</span></td>
-      <td class="pct-text">${pctTxt}</td>
+      <td>${weightInputCell(cls,sess,car.num,'fuel_w1',fuel.w1)}</td>
+      <td>${weightInputCell(cls,sess,car.num,'fuel_w2',fuel.w2)}</td>
+      ${groupResultCells(fuel)}
+      <td>${weightInputCell(cls,sess,car.num,'dry_w1',dry.w1)}</td>
+      <td>${weightInputCell(cls,sess,car.num,'dry_w2',dry.w2)}</td>
+      ${groupResultCells(dry)}
       ${actionCell}
     `;
     tbody.appendChild(tr);

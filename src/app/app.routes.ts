@@ -13,7 +13,7 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/login/login.component').then(m => m.LoginComponent)
     }, {
         path: 'tss-weighing',
-        loadComponent: () => import('./pages/tss-weighing.component').then(m => m.TssWeighingComponent)
+        loadComponent: () => import('./pages/tss-weighing/tss-weighing.component').then(m => m.TssWeighingComponent)
     }, {
         path: 'pages',
         canActivate: [authGuard],

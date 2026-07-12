@@ -1,0 +1,311 @@
+@if (!activeUser) {
+  <div class="login-wrap">
+    <form class="login-panel" (ngSubmit)="login()">
+      <h1>TSS Weighing Sheet</h1>
+      <p>เข้าสู่ระบบเพื่อใช้งาน {{ eventLabel }}</p>
+      <div class="form-row">
+        <label for="login-user">Username</label>
+        <input id="login-user" type="text" autocomplete="username" [(ngModel)]="loginUser" name="loginUser" required>
+      </div>
+      <div class="form-row">
+        <label for="login-pass">Password</label>
+        <input id="login-pass" type="password" autocomplete="current-password" [(ngModel)]="loginPass" name="loginPass" required>
+      </div>
+      <div class="login-error">{{ loginError }}</div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+} @else {
+  <div class="app role-{{ activeUser.role }}">
+    <div class="topbar">
+      <div class="dot"></div>
+      <h1>TSS Weighing Sheet</h1>
+      <div class="topbar-event-config">
+        <span class="event-name"> {{ eventName }}</span>
+        <span class="event-year">· {{ currentYear }}</span>
+        @if (canEditMaster) {
+          <button type="button" class="event-edit-button" (click)="openConfigModal()">แก้ไข</button>
+        }
+      </div>
+      <div class="userbox">
+        <span>{{ activeUsername }}</span>
+        <span class="role-badge">{{ activeUser.label }}</span>
+        <button type="button" class="btn btn-danger" (click)="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label for="sel-class" style="font-size: 16px;">คลาส</label>
+      <select id="sel-class" [(ngModel)]="selectedClass" (ngModelChange)="onClassChange()">
+        @for (cls of classOptions; track cls) {
+          <option [value]="cls">{{ cls }}</option>
+        }
+      </select>
+      <label for="sel-session" style="font-size: 16px;">รอบ</label>
+      <select id="sel-session" [(ngModel)]="selectedSession" (ngModelChange)="onSessionChange()">
+        @for (sess of sessions; track sess) {
+          <option [value]="sess">{{ sess }}</option>
+        }
+      </select>
+      @if (isCurrentSessionLocked) {
+        <span class="locked-badge">Locked</span>
+      }
+      @if (canEditMaster) {
+        <!-- <button type="button" class="btn btn-primary" >CONFIG</button> -->
+        <input type="file" accept=".xlsx" hidden #importClassExcelInput (change)="importExcelForSelectedClass($event)">
+        <button type="button" class="btn btn-success" (click)="importClassExcelInput.click()">IMPORT in class</button>
+      }
+      @if (canKeyIn) {
+        <button type="button" class="btn btn-primary" (click)="exportSelectedClassExcel()">Export Class</button>
+      }
+      <!-- <div class="legend">
+        <div class="leg"><div class="leg-dot ok-dot"></div>ผ่าน ≤5%</div>
+        <div class="leg"><div class="leg-dot warn-dot"></div>เกิน &gt;5%</div>
+        <div class="leg"><div class="leg-dot bad-dot"></div>ต่ำกว่า target</div>
+      </div> -->
+    </div>
+
+    @if (isConfigModalOpen) {
+      <div class="modal fade show d-block" tabindex="-1" aria-modal="true" role="dialog">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <div>
+                <h1 class="modal-title fs-5">Event Config</h1>
+                <p>แก้ชื่อ event, รอบที่เปิดใช้งาน และ lock รอบสำหรับ {{ currentYear }}</p>
+              </div>
+              <button type="button" class="btn-close" aria-label="Close" (click)="closeConfigModal()"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="config-event-name">
+                <label for="config-event-name">Event name</label>
+                <input id="config-event-name" type="text" [(ngModel)]="eventDraftName" (ngModelChange)="onEventDraftNameChange($event)">
+              </div>
+              <div class="config-list">
+                @for (cls of masterClassOptions; track cls) {
+                  <div class="config-class-card">
+                    <label class="config-class-title">
+                      <input type="checkbox" [checked]="isConfigClassEnabled(cls)" (change)="onConfigClassChange(cls, $event)">
+                      <span>{{ cls }}</span>
+                    </label>
+                    <div class="config-session-list">
+                      <label class="config-session-item with-lock">
+                        <span class="session-toggle">
+                          <input type="checkbox" [checked]="isConfigSessionEnabled(cls, 'Qualify')" (change)="onConfigSessionChange(cls, 'Qualify', $event)">
+                          <span>Qualify</span>
+                        </span>
+                        <span class="session-lock" [class.disabled]="!isConfigSessionEnabled(cls, 'Qualify')" (click)="$event.stopPropagation()">
+                          <input type="checkbox" [disabled]="!isConfigSessionEnabled(cls, 'Qualify')" [checked]="isConfigSessionLocked(cls, 'Qualify')" (change)="onConfigSessionLockChange(cls, 'Qualify', $event)">
+                          <span>Lock</span>
+                        </span>
+                      </label>
+                      @for (slot of configRaceDraft[cls]; track $index; let raceIndex = $index) {
+                        <label class="config-session-item race-config-item with-lock">
+                          <span class="session-toggle">
+                            <input type="checkbox" [checked]="slot.enabled" (change)="onConfigRaceEnabledChange(cls, raceIndex, $event)">
+                            <span>Race</span>
+                            <input class="race-no-input" type="text" inputmode="numeric" [ngModel]="slot.raceNo" (ngModelChange)="onConfigRaceNoChange(cls, raceIndex, $event)" placeholder="#">
+                          </span>
+                          <span class="session-lock" [class.disabled]="!slot.enabled" (click)="$event.stopPropagation()">
+                            <input type="checkbox" [disabled]="!slot.enabled" [checked]="slot.locked" (change)="onConfigRaceLockChange(cls, raceIndex, $event)">
+                            <span>Lock</span>
+                          </span>
+                        </label>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" (click)="closeConfigModal()">Close</button>
+              <button type="button" class="btn btn-primary" (click)="saveConfigModal()">Save changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    }
+
+    @if (canEditMaster) {
+      <div class="admin-panel">
+        <div class="form-row">
+          <label for="new-num" style="font-size: 18px;">เบอร์</label>
+          <input id="new-num" type="text" inputmode="numeric" placeholder="เบอร์รถ" [(ngModel)]="newNum">
+        </div>
+        @if (hasSubOptions) {
+          <div class="form-row">
+            <label for="new-sub" style="font-size: 18px;">รุ่น</label>
+            <select id="new-sub" [(ngModel)]="newSub">
+              @for (sub of subOptions; track sub) {
+                <option [value]="sub">{{ sub }}</option>
+              }
+            </select>
+          </div>
+        }
+
+        <div class="form-row">
+          <label for="new-target" style="font-size: 18px;">Target (kg)</label>
+          <input id="new-target" type="number" step="0.01" placeholder="0" [(ngModel)]="newTarget">
+        </div>
+        <button type="button" (click)="addCar()">เพิ่มรถ</button>
+        <button type="button" class="danger" (click)="resetCurrentClass()">Reset data</button>
+
+        <div class="admin-error">{{ adminError }}</div>
+      </div>
+    }
+
+      <div class="sync-panel">
+        <!-- <button type="button" (click)="loadRedisCache()">Load Redis</button> -->
+        @if (canEditMaster) {
+          <input type="file" accept=".xlsx" hidden #importExcelInput (change)="importExcel($event)">
+          <!-- <button type="button" class="btn btn-success" (click)="importExcelInput.click()">IMPORT all class</button> -->
+        }
+        @if (canKeyIn) {
+          <!-- <button type="button" (click)="saveRedisCache()">Save Redis</button> -->
+          <button type="button" class="btn btn-primary" (click)="exportAllExcel()">Export ALL</button>
+        }
+        <div class="sync-status" [class.error]="syncError">{{ syncStatus }}</div>
+      </div>
+
+    <div class="main">
+      <div class="summary">
+        <div class="stat"><div class="stat-label">รถทั้งหมด</div><div class="stat-val">{{ summary.total }}</div></div>
+        <div class="stat"><div class="stat-label">ชั่งแล้ว</div><div class="stat-val">{{ summary.counted }}</div></div>
+        <div class="stat"><div class="stat-label">ผ่าน</div><div class="stat-val ok">{{ summary.pass }}</div></div>
+        <div class="stat"><div class="stat-label">ไม่ผ่าน</div><div class="stat-val bad">{{ summary.fail }}</div></div>
+      </div>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">#</th>
+              <th rowspan="2" class="text-center">เบอร์</th>
+              @if (hasSubOptions) { <th  rowspan="2" class="text-center">รุ่น</th> }
+              <!-- <th colspan="2">นักแข่ง</th> -->
+              <th rowspan="2" class="text-center">Target (kg)</th>
+              <th colspan="5" class="text-center">INCLUDING FUEL</th>
+              <th colspan="5" class="text-center">DRY WEIGHT</th>
+              @if (canEditMaster) { <th rowspan="2" class="text-center">Action</th> }
+            </tr>
+            <tr>
+              <!-- <th>ชื่อ</th>
+              <th>น้ำหนัก</th> -->
+              <th class="text-center">ชั่ง 1</th>
+              <th class="text-center">ชั่ง 2</th>
+              <th class="text-center">Total</th>
+              <th class="text-center">Diff</th>
+              <th class="text-center">%</th>
+              <th class="text-center">ชั่ง 1</th>
+              <th class="text-center">ชั่ง 2</th>
+              <th class="text-center">Total</th>
+              <th class="text-center">Diff</th>
+              <th class="text-center">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (car of cars; track car.num; let i = $index) {
+              @let fuel = calcWeightGroup(car, 'fuel');
+              @let dry = calcWeightGroup(car, 'dry');
+              <tr>
+                <td class="row-index" >{{ i + 1 }}</td>
+
+                <td >
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.num" (ngModelChange)="setCarField(car, 'num', $event)">
+                  } @else {
+                    <span class="num-badge">{{ car.num }}</span>
+                  }
+                </td>
+
+                @if (hasSubOptions) {
+                  <td >
+                    @if (canEditMaster) {
+                      <select [ngModel]="car.sub" (ngModelChange)="setCarField(car, 'sub', $event)">
+                        @for (sub of subOptions; track sub) {
+                          <option [value]="sub">{{ sub }}</option>
+                        }
+                      </select>
+                    } @else {
+                      <span class="sub-tag">{{ car.sub }}</span>
+                    }
+                  </td>
+                }
+                <!-- <td>
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.driver1Name" (ngModelChange)="setCarField(car, 'driver1Name', $event)" placeholder="นักแข่ง1">
+                  } @else { <span class="readonly-val">{{ car.driver1Name || '—' }}</span> }
+                </td>
+                <td>
+                  @if (canEditMaster) {
+                    <input type="number" step="0.01" [ngModel]="car.driver1Weight" (ngModelChange)="setCarField(car, 'driver1Weight', $event)" >
+                  } @else { <span class="readonly-val">{{ targetText(car.driver1Weight) }}</span> }
+                </td> -->
+
+
+                <td class="target-val" >
+                  @if (canEditMaster) {
+                    <input type="number" step="0.01" [ngModel]="car.target" (ngModelChange)="setCarField(car, 'target', $event)">
+                  } @else {
+                    {{ targetText(car.target) }}
+                  }
+                </td>
+
+                <td >
+                  @if (canKeyInCurrentSession) {
+                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w1)" (ngModelChange)="setWeight(car, 'fuel_w1', $event)">
+                  } @else { <span class="readonly-val text-center">{{ fuel.w1 || '—' }}</span> }
+                </td>
+                <td >
+                  @if (canKeyInCurrentSession) {
+                    <input type="text" inputmode="decimal" [ngModel]="fmtWeight(fuel.w2)" (ngModelChange)="setWeight(car, 'fuel_w2', $event)">
+                  } @else { <span class="readonly-val text-center">{{ fuel.w2 || '—' }}</span> }
+                </td>
+                <td class="total-val" class="text-center" >{{ fuel.total !== null ? fuel.total.toFixed(1) : '—' }}</td>
+                <td ><span class="pill" [ngClass]="pillClass(fuel)">{{ diffText(fuel) }}</span></td>
+                <td class="pct-text" >{{ pctText(fuel) }}</td>
+
+                <td >
+                  @if (canKeyInCurrentSession) {
+                    <input type="text" class="text-center" inputmode="decimal" [ngModel]="fmtWeight(dry.w1)" (ngModelChange)="setWeight(car, 'dry_w1', $event)">
+                  } @else { <span class="readonly-val text-center">{{ dry.w1 || '—' }}</span> }
+                </td>
+                <td >
+                  @if (canKeyInCurrentSession) {
+                    <input type="text"  class="text-center" inputmode="decimal" [ngModel]="fmtWeight(dry.w2)" (ngModelChange)="setWeight(car, 'dry_w2', $event)">
+                  } @else { <span class="readonly-val text-center">{{ dry.w2 || '—' }}</span> }
+                </td>
+                <td class="total-val text-center" >{{ dry.total !== null ? dry.total.toFixed(1) : '—' }}</td>
+                <td ><span class="pill" [ngClass]="pillClass(dry)">{{ diffText(dry) }}</span></td>
+                <td class="pct-text" >{{ pctText(dry) }}</td>
+
+                @if (canEditMaster) {
+                  <td ><button type="button" class="danger" (click)="deleteCar(i)">ลบ</button></td>
+                }
+              </tr>
+              <!-- <tr class="driver-second-row">
+                <td>
+                  @if (canEditMaster) {
+                    <input type="text" [ngModel]="car.driver2Name" (ngModelChange)="setCarField(car, 'driver2Name', $event)" placeholder="นักแข่ง2">
+                  } @else { <span class="readonly-val">{{ car.driver2Name || '—' }}</span> }
+                </td>
+                <td>
+                  @if (canEditMaster) {
+                    <input type="number" step="0.01" [ngModel]="car.driver2Weight" (ngModelChange)="setCarField(car, 'driver2Weight', $event)" >
+                  } @else { <span class="readonly-val">{{ targetText(car.driver2Weight) }}</span> }
+                </td>
+              </tr> -->
+            } @empty {
+              <tr>
+                <td class="no-data" [attr.colspan]="tableColspan">ยังไม่มีข้อมูลรถในคลาส/รอบนี้</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+}
