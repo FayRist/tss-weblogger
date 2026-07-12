@@ -18,14 +18,14 @@ import { ResetWarningLoggerComponent } from './reset-warning-logger/reset-warnin
 import { MatDialog } from '@angular/material/dialog';
 import { EventService } from '../../../service/event.service';
 import { ToastrService } from 'ngx-toastr';
-import { merge, Subscription, startWith } from 'rxjs';
+import { firstValueFrom, merge, Subscription, startWith } from 'rxjs';
 import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 import { formControlWithInitial } from '../../../utility/rxjs-utils';
 import {MatTableDataSource, MatTableModule} from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSort, MatSortModule, Sort } from '@angular/material/sort';
 import { CommonModule } from '@angular/common';
-import { LoggerItem } from '../../../model/api-response-model';
+import { ExportDataLoggerInRaceModel, LoggerItem } from '../../../model/api-response-model';
 import { TimeService } from '../../../service/time.service';
 import { APP_CONFIG, getApiWebSocket } from '../../../app.config';
 import { createWebSocketConnection, WebSocketConnection } from '../../../utility/websocket-connection.util';
@@ -132,6 +132,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly penaltyCellHoldMs = 2000;
   private readonly countCellAlertState = new Map<number, CountCellAlertState>();
   private readonly countCellAlertTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  isDashboardExporting = false;
 
   configAFR: any;
   configSource: RaceConfigSource = 'global';
@@ -574,6 +575,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   isLiveMode(): boolean {
     return (this.statusRace || 'live').toLowerCase() === 'live';
+  }
+
+  isHistoryMode(): boolean {
+    return (this.statusRace || '').toLowerCase() === 'history';
   }
 
   isLoggerOnline(logger: LoggerItem): boolean {
@@ -1220,6 +1225,293 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         this.subscriptions.push(sub);
       }
     });
+  }
+
+  exportDisplayedLoggersToTxt(): void {
+    void this.exportDisplayedLoggers('txt');
+  }
+
+  exportDisplayedLoggersToVbo(): void {
+    void this.exportDisplayedLoggers('vbo');
+  }
+
+  private async exportDisplayedLoggers(format: 'txt' | 'vbo'): Promise<void> {
+    if (!this.isHistoryMode()) {
+      this.toastr.warning('Export All ใช้ได้เฉพาะ History mode');
+      return;
+    }
+    if (this.isReadOnlyRaceTeamUser()) {
+      this.toastr.error('คุณไม่มีสิทธิ์ export ข้อมูล');
+      return;
+    }
+    if (this.isDashboardExporting) return;
+
+    const loggers = this.getDisplayedLoggers().filter((logger) => !!logger?.loggerId);
+    if (loggers.length === 0) {
+      this.toastr.warning('ไม่มี logger ในตารางสำหรับ export');
+      return;
+    }
+
+    this.isDashboardExporting = true;
+    this.cdr.markForCheck();
+    let successCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (let index = 0; index < loggers.length; index++) {
+        const logger = loggers[index];
+        try {
+          this.toastr.info(`กำลัง export ${index + 1}/${loggers.length}: Logger ${logger.loggerId}`);
+          const rows = await firstValueFrom(this.eventService.getDataLoggerInRace(this.parameterRaceId, logger.loggerId));
+          if (format === 'txt') {
+            this.downloadLoggerTxtFile(logger, rows ?? []);
+          } else {
+            this.downloadLoggerVboFile(logger, rows ?? []);
+          }
+          successCount++;
+          await this.sleep(700);
+        } catch (err) {
+          failedCount++;
+          console.error('[Dashboard Export] logger export failed:', logger.loggerId, err);
+        }
+      }
+
+      if (failedCount > 0) {
+        this.toastr.warning(`Export สำเร็จ ${successCount}/${loggers.length} ไฟล์, ล้มเหลว ${failedCount} ไฟล์`);
+      } else {
+        this.toastr.success(`Export สำเร็จ ${successCount} ไฟล์`);
+      }
+    } finally {
+      this.isDashboardExporting = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  private downloadLoggerTxtFile(logger: LoggerItem, detail: ExportDataLoggerInRaceModel[]): void {
+    const now = new Date();
+    const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+    const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const loggerId = String(logger.loggerId ?? '').trim();
+    const firmwareVersion = '';
+
+    const exportData = (detail ?? []).map((row) => ({
+      sats: String(row.sats || '000'),
+      time: this.formatTimeForExportUTC7(row.time_ms),
+      lat: this.formatCoordinate(row.lat),
+      long: this.formatCoordinate(row.long),
+      velocity: this.formatNumber(Number(row.velocity ?? 0)),
+      heading: row.heading || '0',
+      height: row.height || '0',
+      FixType: row.fixtype || '0',
+      accelX: row.accelx || '0',
+      accelY: row.accely || '0',
+      accelZ: row.accelz || '0',
+      accelSqrt: row.accelsqrt || '0',
+      gyroX: row.gyrox || '0',
+      gyroY: row.gyroy || '0',
+      gyroZ: row.gyroz || '0',
+      magX: row.magx || '0',
+      magY: row.magy || '0',
+      magZ: row.magz || '0',
+      mDirection: row.mdirection || '0',
+      Time_ms: row.time_ms || '0',
+      Afr: row.afr || '0',
+      Rpm: row.rpm || '0',
+    }));
+
+    let content = `File created on ${dateStr} @ ${timeStr}\n\n`;
+    content += `[logger ID] : ${loggerId} , [Firmware Version] : ${firmwareVersion}\n\n`;
+    content += `[header]\n`;
+    content += `satellites\n`;
+    content += `time\n`;
+    content += `latitude\n`;
+    content += `longitude\n`;
+    content += `velocity kmh\n`;
+    content += `heading\n`;
+    content += `height\n`;
+    content += `FixType\n`;
+    content += `accelX\n`;
+    content += `accelY\n`;
+    content += `accelZ\n`;
+    content += `accelSqrt\n`;
+    content += `gyroX\n`;
+    content += `gyroY\n`;
+    content += `gyroZ\n`;
+    content += `magX\n`;
+    content += `magY\n`;
+    content += `magZ\n`;
+    content += `mDirection\n`;
+    content += `Time_ms\n\n`;
+    content += `AFR\n\n`;
+    content += `RPM\n\n`;
+    content += `[channel units]\n`;
+    content += `\n`;
+    content += `[comments]\n`;
+    content += `\n`;
+    content += `[columnnames]\n`;
+    content += `sats time lat long velocity heading height FixType accelX accelY accelZ accelSqrt gyroX gyroY gyroZ magX magY magZ mDirection Time_ms AFR RPM\n`;
+    content += `\n`;
+    content += `[data]\n`;
+
+    exportData.forEach((row) => {
+      content += `${row.sats.padStart(3, '0')} ${row.time} ${row.lat} ${row.long} ${row.velocity} ${row.heading} ${row.height} ${row.FixType} ${row.accelX} ${row.accelY} ${row.accelZ} ${row.accelSqrt} ${row.gyroX} ${row.gyroY} ${row.gyroZ} ${row.magX} ${row.magY} ${row.magZ} ${row.mDirection} ${row.Time_ms} ${row.Afr} ${row.Rpm}\n`;
+    });
+
+    const raceStartMs = this.firstTimeMs(detail) ?? now.getTime();
+    const fileDatePart = this.formatRaceDateForFilenameUTC7(raceStartMs);
+    const fileTimePart = this.formatClockForFilenameUTC7(raceStartMs);
+    this.downloadTextFile(content, `logger_${loggerId}_export_${fileDatePart}_${fileTimePart}.txt`);
+  }
+
+  private downloadLoggerVboFile(logger: LoggerItem, detail: ExportDataLoggerInRaceModel[]): void {
+    const loggerId = String(logger.loggerId ?? '').trim();
+    const carNumber = String(logger.carNumber ?? '').trim();
+    const sortedRows = [...(detail ?? [])].sort((a, b) => Number(a?.time_ms ?? 0) - Number(b?.time_ms ?? 0));
+    const startMs = this.firstTimeMs(sortedRows) ?? Date.now();
+    const endMs = this.lastTimeMs(sortedRows) ?? startMs;
+    const fileDate = this.formatRaceDateUTC7(startMs);
+    const startTime = this.formatClockUTC7(startMs);
+    const endTime = this.formatClockUTC7(endMs);
+
+    const exportRows = sortedRows.map((row) => ({
+      sats: String(row.sats ?? '000').padStart(3, '0'),
+      time: this.formatTimeForExportUTC7(row.time_ms),
+      lat: this.formatCoordinateForVbo(row.lat),
+      long: this.formatLongitudeForVbo(row.long),
+      velocity: this.formatNumber(Number(row.velocity ?? 0)),
+      heading: this.formatNumber(Number(row.heading ?? 0)),
+      height: this.formatNumber(Number(row.height ?? 0)),
+      fixType: String(row.fixtype ?? '0'),
+      afr: this.formatAfrForVbo(Number(row.afr ?? 0)),
+    }));
+
+    let content = `File created on ${fileDate} @ ${startTime}\n\n`;
+    content += `[header]\n`;
+    content += `satellites\n`;
+    content += `time\n`;
+    content += `latitude\n`;
+    content += `longitude\n`;
+    content += `velocity kmh\n`;
+    content += `heading\n`;
+    content += `height\n`;
+    content += `FixType\n`;
+    content += `AFR\n\n`;
+    content += `[channel units]\n\n`;
+    content += `[comments]\n`;
+    content += `Logger ID: ${loggerId}\n`;
+    content += `Car Number: ${carNumber}\n`;
+    content += `Time Range: ${startTime} - ${endTime}\n\n`;
+    content += `[columnnames]\n`;
+    content += `sats time lat long velocity heading height FixType AFR\n\n`;
+    content += `[data]\n`;
+
+    exportRows.forEach((row) => {
+      content += `${row.sats} ${row.time} ${row.lat} ${row.long} ${row.velocity} ${row.heading} ${row.height} ${row.fixType} ${row.afr}\n`;
+    });
+
+    const fileDatePart = this.formatRaceDateForFilenameUTC7(startMs);
+    const fileTimePart = this.formatClockForFilenameUTC7(startMs);
+    this.downloadTextFile(content, `logger_${loggerId}_export_${fileDatePart}_${fileTimePart}.vbo`);
+  }
+
+  private firstTimeMs(rows: ExportDataLoggerInRaceModel[]): number | null {
+    const values = (rows ?? [])
+      .map((row) => Number(row.time_ms))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .sort((a, b) => a - b);
+    return values.length > 0 ? values[0] : null;
+  }
+
+  private lastTimeMs(rows: ExportDataLoggerInRaceModel[]): number | null {
+    const values = (rows ?? [])
+      .map((row) => Number(row.time_ms))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .sort((a, b) => a - b);
+    return values.length > 0 ? values[values.length - 1] : null;
+  }
+
+  private downloadTextFile(content: string, fileName: string): void {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private formatTimeForExportUTC7(unixMs: unknown): string {
+    const ms = Number(unixMs);
+    if (!Number.isFinite(ms) || ms <= 0) return '000000.00';
+    const utc7Date = new Date(ms + (7 * 60 * 60 * 1000));
+    const hours = String(utc7Date.getUTCHours()).padStart(2, '0');
+    const minutes = String(utc7Date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(utc7Date.getUTCSeconds()).padStart(2, '0');
+    const centiseconds = String(Math.floor(utc7Date.getUTCMilliseconds() / 10)).padStart(2, '0');
+    return `${hours}${minutes}${seconds}.${centiseconds}`;
+  }
+
+  private formatRaceDateUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
+  }
+
+  private formatClockUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    const ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  private formatRaceDateForFilenameUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = String(d.getUTCFullYear());
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  private formatClockForFilenameUTC7(unixMs: number): string {
+    const d = new Date(unixMs + (7 * 60 * 60 * 1000));
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    const ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return `${hh}-${mm}-${ss}`;
+  }
+
+  private formatCoordinate(coord: string | number): string {
+    const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+    if (isNaN(num)) return '0.000000';
+    return num.toFixed(6);
+  }
+
+  private formatCoordinateForVbo(coord: string | number): string {
+    const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+    if (isNaN(num)) return '0.000000';
+    return Math.abs(num * 60).toFixed(6);
+  }
+
+  private formatLongitudeForVbo(coord: string | number): string {
+    const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+    if (isNaN(num)) return '0.000000';
+    return (-Math.abs(num * 60)).toFixed(6);
+  }
+
+  private formatAfrForVbo(num: number): string {
+    if (isNaN(num)) return '0.00';
+    return num.toFixed(2);
+  }
+
+  private formatNumber(num: number): string {
+    if (isNaN(num)) return '0.000';
+    return num.toFixed(3);
   }
 
   /**
