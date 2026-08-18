@@ -1,7 +1,7 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { getApiUrl } from '../../app.config';
+import { getApiUrl, getApiWebSocket } from '../../app.config';
 
 export interface TssWeighingSessionPayload {
   event: string;
@@ -21,6 +21,43 @@ export interface TssWeighingFieldPayload {
   value: unknown;
   expected_version: number;
   updated_by: string;
+}
+
+export interface TssWeighingRowPayload {
+  event: string;
+  year: number;
+  class_name: string;
+  session_name: string;
+  car_number: string;
+  car: Record<string, unknown>;
+  expected_versions?: Record<string, number>;
+  updated_by: string;
+}
+
+export interface TssWeighingMoveRowPayload {
+  event: string;
+  year: number;
+  class_name: string;
+  session_name: string;
+  old_car_number: string;
+  new_car_number: string;
+  updated_by: string;
+}
+
+export interface TssWeighingUpdateMessage {
+  type: 'weighing_field_updated' | 'weighing_row_updated' | 'weighing_class_reset';
+  event?: string;
+  year?: number;
+  class_name?: string;
+  session_name?: string;
+  car_number?: string;
+  field?: string;
+  value?: unknown;
+  version?: number;
+  updated_by?: string;
+  updated_at?: string;
+  deleted?: boolean;
+  car?: Record<string, unknown>;
 }
 
 export interface TssWeighingCacheResponse {
@@ -56,6 +93,18 @@ export class TssWeighingService {
   getCache(eventName: string, year: number, token: string): Observable<TssWeighingCacheResponse> {
     const params = new HttpParams().set('event', eventName).set('year', String(year));
     return this.http.get<TssWeighingCacheResponse>(getApiUrl('/tss-weighing/cache'), {
+      headers: this.headers(token),
+      params,
+    });
+  }
+
+  getSessionCache(eventName: string, year: number, className: string, sessionName: string, token: string): Observable<TssWeighingCacheResponse> {
+    const params = new HttpParams()
+      .set('event', eventName)
+      .set('year', String(year))
+      .set('class_name', className)
+      .set('session_name', sessionName);
+    return this.http.get<TssWeighingCacheResponse>(getApiUrl('/tss-weighing/cache/session'), {
       headers: this.headers(token),
       params,
     });
@@ -102,6 +151,43 @@ export class TssWeighingService {
     return this.http.post<{ cache: TssWeighingCacheResponse; car: Record<string, unknown> }>(getApiUrl('/tss-weighing/cache/field'), payload, {
       headers: this.headers(token),
     });
+  }
+
+  saveRow(payload: TssWeighingRowPayload, token: string): Observable<{ event: string; year: number; class_name: string; session_name: string; car_number: string; updated_at: string; car: Record<string, unknown> }> {
+    return this.http.post<{ event: string; year: number; class_name: string; session_name: string; car_number: string; updated_at: string; car: Record<string, unknown> }>(getApiUrl('/tss-weighing/cache/row'), payload, {
+      headers: this.headers(token),
+    });
+  }
+
+  moveRow(payload: TssWeighingMoveRowPayload, token: string): Observable<{ car_number: string; updated_at: string; car: Record<string, unknown> }> {
+    return this.http.post<{ car_number: string; updated_at: string; car: Record<string, unknown> }>(getApiUrl('/tss-weighing/cache/row/move'), payload, {
+      headers: this.headers(token),
+    });
+  }
+
+  deleteRow(eventName: string, year: number, className: string, sessionName: string, carNumber: string, token: string): Observable<TssWeighingCacheResponse> {
+    const params = new HttpParams()
+      .set('event', eventName)
+      .set('year', String(year))
+      .set('class_name', className)
+      .set('session_name', sessionName)
+      .set('car_number', carNumber);
+    return this.http.delete<TssWeighingCacheResponse>(getApiUrl('/tss-weighing/cache/row'), {
+      headers: this.headers(token),
+      params,
+    });
+  }
+
+  weighingUpdatesUrl(eventName: string, year: number, className: string, sessionName: string, token: string): string {
+    const base = getApiWebSocket('/ws/tss-weighing');
+    const params = new URLSearchParams({
+      event: eventName,
+      year: String(year),
+      class_name: className,
+      session_name: sessionName,
+      token,
+    });
+    return `${base}?${params.toString()}`;
   }
 
   deleteClass(eventName: string, year: number, className: string, token: string): Observable<TssWeighingCacheResponse> {

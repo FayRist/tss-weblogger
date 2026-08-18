@@ -145,7 +145,8 @@ input[type=number]::-webkit-inner-spin-button { opacity: .4; }
 .total-val { font-weight: 700; font-size: 17px; }
 .pill { display: inline-block; font-size: 15px; font-weight: 600; padding: 6px 13px; border-radius: 20px; white-space: nowrap; }
 .pill.ok { background: #dcfce7; color: #166534; }
-.pill.warn { background: #fef3c7; color: #92400e; }
+.pill.warn { background: #dcfce7; color: #166534; }
+// .pill.warn { background: #fef3c7; color: #92400e; }
 .pill.over { background: #fee2e2; color: #991b1b; }
 .pill.empty { background: #f3f4f6; color: #9ca3af; }
 .pct-text { font-size: 15px; color: #999; }

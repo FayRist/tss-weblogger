@@ -3,7 +3,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import ExcelJS from 'exceljs';
 import { firstValueFrom } from 'rxjs';
-import { TssWeighingActiveEventResponse, TssWeighingCacheResponse, TssWeighingConfigResponse, TssWeighingService } from './tss-weighing.service';
+import { TssWeighingActiveEventResponse, TssWeighingCacheResponse, TssWeighingConfigResponse, TssWeighingService, TssWeighingUpdateMessage } from './tss-weighing.service';
 
 type UserRole = 'admin' | 'keyin' | 'viewer';
 type WeightField = 'fuel_w1' | 'fuel_w2' | 'dry_w1' | 'dry_w2';
@@ -262,6 +262,13 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   private pendingAutoSaveSession = '';
   private previewLoadTimer: ReturnType<typeof setTimeout> | null = null;
   private fieldSaveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  private readonly dirtyFields = new Set<string>();
+  private rowSaveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  private weighingWs: WebSocket | null = null;
+  private weighingWsScope = '';
+  private weighingWsGeneration = 0;
+  private weighingWsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private sessionLoadGeneration = 0;
   private previewRequestId = 0;
   private previewOriginalState: EventPreviewState | null = null;
   private readonly autoSaveDelayMs = 800;
@@ -286,6 +293,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.clearAutoSaveTimer();
     this.clearFieldSaveTimers();
+    this.clearRowSaveTimers();
+    this.disconnectWeighingUpdates();
     this.clearPreviewLoadTimer();
     this.stopPolling();
   }
@@ -383,6 +392,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.loginError = '';
     this.clearAutoSaveTimer();
     this.clearFieldSaveTimers();
+    this.clearRowSaveTimers();
+    this.disconnectWeighingUpdates();
     this.stopPolling();
   }
 
@@ -576,20 +587,24 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       this.isConfigModalOpen = false;
       this.isEditingEvent = false;
       this.setSyncStatus('บันทึก event config แล้ว: ' + this.eventName);
-      this.loadRedisCache(false, true);
+       this.loadSelectedSessionAndConnect(false, true);
     } catch (err) {
       this.setSyncStatus(this.errorMessage(err, 'บันทึก event config ไม่สำเร็จ'), true);
     }
   }
 
   onClassChange(): void {
+    this.disconnectWeighingUpdates();
     this.selectedSession = this.sessions[0] ?? '';
     this.ensureSessionData(this.selectedClass, this.selectedSession);
     this.newSub = this.defaultSubForClass(this.selectedClass);
+    this.loadSelectedSessionAndConnect();
   }
 
   onSessionChange(): void {
+    this.disconnectWeighingUpdates();
     this.ensureSessionData(this.selectedClass, this.selectedSession);
+    this.loadSelectedSessionAndConnect();
   }
 
   setWeight(car: CarRow, field: WeightField, value: string | number): void {
@@ -625,7 +640,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
         this.saveWeights();
       }
       this.saveData();
-      this.queueAutoSave();
+      this.queueRowSave(car, oldNum);
       return;
     }
     this.saveData();
@@ -650,23 +665,38 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     }
     const sub = this.normalizeSubForClass(this.selectedClass, this.newSub);
     cars.push({ sub, num, target: this.newTarget === null ? null : Number(this.newTarget), driver1Name: '', driver1Weight: null, driver2Name: '', driver2Weight: null });
+    const addedCar = cars[cars.length - 1];
     this.newNum = '';
     this.newSub = this.defaultSubForClass(this.selectedClass);
     this.newTarget = null;
     this.adminError = '';
     this.saveData();
-    this.queueAutoSave();
+    void this.saveCarRowToRedis(this.selectedClass, this.selectedSession, addedCar);
   }
 
   deleteCar(index: number): void {
     if (!this.canEditMaster) return;
     const car = this.cars[index];
     if (!car || !confirm('ลบรถเบอร์ ' + car.num + ' ?')) return;
-    this.cars.splice(index, 1);
-    delete this.weights[this.key(this.selectedClass, this.selectedSession, car.num)];
-    this.saveData();
-    this.saveWeights();
-    this.queueAutoSave();
+    const className = this.selectedClass;
+    const sessionName = this.selectedSession;
+    const carNumber = car.num;
+    const token = this.getWeighingToken();
+    if (!token) return;
+    this.setSyncStatus(`กำลังลบรถ ${carNumber}...`);
+    this.weighingService.deleteRow(this.eventName, this.currentYear, className, sessionName, carNumber, token).subscribe({
+      next: () => {
+        this.clearDirtyForCar(className, sessionName, carNumber);
+        const currentCars = this.ensureSessionData(className, sessionName);
+        const rowIndex = currentCars.findIndex((item) => item.num === carNumber);
+        if (rowIndex >= 0) currentCars.splice(rowIndex, 1);
+        delete this.weights[this.key(className, sessionName, carNumber)];
+        this.saveData();
+        this.saveWeights();
+        this.setSyncStatus(`ลบรถ ${carNumber} แล้ว`);
+      },
+      error: (err) => this.setSyncStatus(this.errorMessage(err, `ลบรถ ${carNumber} ไม่สำเร็จ`), true),
+    });
   }
 
   saveRedisCache(isAutoSave = false): void {
@@ -675,26 +705,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   loadRedisCache(showStatus = true, force = false): void {
-    const token = this.getWeighingToken(showStatus);
-    if (!token || this.loadInFlight) return;
-    if (this.autoSaveTimer || this.hasPendingFieldSaves() || this.saveInFlight) return;
-    this.loadInFlight = true;
-    if (showStatus) this.setSyncStatus('กำลังโหลด Redis...');
-    this.weighingService.getCache(this.eventName, this.currentYear, token).subscribe({
-      next: (cache) => {
-        const remoteUpdatedAt = cache.updated_at ?? '';
-        if (force || !remoteUpdatedAt || remoteUpdatedAt !== this.lastCacheUpdatedAt) {
-          this.applyCache(cache);
-          this.lastCacheUpdatedAt = remoteUpdatedAt;
-          if (showStatus) this.setSyncStatus('โหลด Redis แล้ว');
-        }
-        this.loadInFlight = false;
-      },
-      error: (err) => {
-        if (showStatus) this.setSyncStatus(this.errorMessage(err, 'โหลด Redis ไม่สำเร็จ'), true);
-        this.loadInFlight = false;
-      },
-    });
+    this.loadSelectedSessionAndConnect(showStatus, force);
   }
 
   private saveActiveEvent(): void {
@@ -705,7 +716,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       next: (activeEvent) => {
         this.applyActiveEvent(activeEvent, true);
         this.setSyncStatus('บันทึก event แล้ว: ' + this.eventName);
-        this.loadRedisCache(false, true);
+         this.loadSelectedSessionAndConnect(false, true);
       },
       error: (err) => this.setSyncStatus(this.errorMessage(err, 'บันทึก event ไม่สำเร็จ'), true),
     });
@@ -740,13 +751,13 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       next: (config) => {
         const changed = this.applyEventConfig(config, forceLoad);
         this.configInFlight = false;
-        if (changed || forceLoad) this.loadRedisCache(showStatus, true);
-        else this.loadRedisCache(false);
+        if (changed || forceLoad) this.loadSelectedSessionAndConnect(showStatus, true);
+        else this.loadSelectedSessionAndConnect(false);
       },
       error: (err) => {
         this.configInFlight = false;
         if (showStatus) this.setSyncStatus(this.errorMessage(err, 'โหลด config ไม่สำเร็จ'), true);
-        if (forceLoad) this.loadRedisCache(showStatus, true);
+        if (forceLoad) this.loadSelectedSessionAndConnect(showStatus, true);
       },
     });
   }
@@ -778,32 +789,66 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return true;
   }
 
-  private saveCurrentSessionToRedis(isAutoSave: boolean): void {
+  private loadSelectedSessionAndConnect(showStatus = false, force = false): void {
+    const token = this.getWeighingToken(showStatus);
+    if (!token || !this.activeUser || !this.selectedClass || !this.selectedSession) return;
+    if (this.loadInFlight) return;
+    if (this.autoSaveTimer || this.hasPendingFieldSaves() || this.saveInFlight) return;
+    const className = this.selectedClass;
+    const sessionName = this.selectedSession;
+    const generation = ++this.sessionLoadGeneration;
+    this.loadInFlight = true;
+    if (showStatus) this.setSyncStatus(`กำลังโหลด ${className} / ${sessionName}...`);
+    this.weighingService.getSessionCache(this.eventName, this.currentYear, className, sessionName, token).subscribe({
+      next: (cache) => {
+        if (generation !== this.sessionLoadGeneration || className !== this.selectedClass || sessionName !== this.selectedSession) {
+          this.loadInFlight = false;
+          this.loadSelectedSessionAndConnect(showStatus, force);
+          return;
+        }
+        this.applySessionCache(cache, className, sessionName, force);
+        this.lastCacheUpdatedAt = cache.updated_at ?? this.lastCacheUpdatedAt;
+        this.loadInFlight = false;
+        this.connectWeighingUpdates();
+        if (showStatus) this.setSyncStatus(`โหลด ${className} / ${sessionName} แล้ว`);
+      },
+      error: (err) => {
+        this.loadInFlight = false;
+        if (showStatus) this.setSyncStatus(this.errorMessage(err, 'โหลด weighing session ไม่สำเร็จ'), true);
+        this.connectWeighingUpdates();
+      },
+    });
+  }
+
+  private async saveCurrentSessionToRedis(isAutoSave: boolean): Promise<void> {
     const token = this.getWeighingToken(!isAutoSave);
     if (!token || this.saveInFlight) return;
     const className = isAutoSave && this.pendingAutoSaveClass ? this.pendingAutoSaveClass : this.selectedClass;
     const sessionName = isAutoSave && this.pendingAutoSaveSession ? this.pendingAutoSaveSession : this.selectedSession;
     this.saveInFlight = true;
     this.setSyncStatus(isAutoSave ? 'กำลัง auto save Redis...' : 'กำลังบันทึก Redis...');
-    this.weighingService.saveSession({
-      event: this.eventName,
-      year: this.currentYear,
-      class_name: className,
-      session_name: sessionName,
-      cars: this.buildSessionCars(className, sessionName),
-    }, token).subscribe({
-      next: (cache) => {
-        this.lastCacheUpdatedAt = cache.updated_at ?? this.lastCacheUpdatedAt;
-        this.pendingAutoSaveClass = '';
-        this.pendingAutoSaveSession = '';
-        this.saveInFlight = false;
-        this.setSyncStatus(`${isAutoSave ? 'Auto saved' : 'บันทึก Redis แล้ว'}: ${className} / ${sessionName}`);
-      },
-      error: (err) => {
-        this.saveInFlight = false;
-        this.setSyncStatus(this.errorMessage(err, 'บันทึก Redis ไม่สำเร็จ'), true);
-      },
-    });
+    try {
+      for (const car of this.data[className]?.[sessionName] ?? []) {
+        const response = await firstValueFrom(this.weighingService.saveRow({
+          event: this.eventName,
+          year: this.currentYear,
+          class_name: className,
+          session_name: sessionName,
+          car_number: car.num,
+          car: this.buildCarMetadata(car),
+          expected_versions: this.metadataExpectedVersions(className, sessionName, car.num),
+          updated_by: this.activeUsername || this.activeUser?.role || 'unknown',
+        }, token));
+        this.applyCarFieldVersions(className, sessionName, car.num, response.car);
+      }
+      this.pendingAutoSaveClass = '';
+      this.pendingAutoSaveSession = '';
+      this.saveInFlight = false;
+      this.setSyncStatus(`${isAutoSave ? 'Auto saved' : 'บันทึก Redis แล้ว'}: ${className} / ${sessionName}`);
+    } catch (err) {
+      this.saveInFlight = false;
+      this.setSyncStatus(this.errorMessage(err, 'บันทึก Redis ไม่สำเร็จ'), true);
+    }
   }
 
   resetCurrentClass(): void {
@@ -826,7 +871,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   async importExcel(event: Event): Promise<void> {
     if (!this.canEditMaster) return;
-    if (this.saveInFlight) {
+    if (this.saveInFlight || this.autoSaveTimer || this.hasPendingFieldSaves() || this.hasPendingRowSaves()) {
       this.setSyncStatus('กรุณารอการบันทึกก่อน import', true);
       return;
     }
@@ -895,7 +940,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   async importExcelForSelectedClass(event: Event): Promise<void> {
     if (!this.canEditMaster) return;
-    if (this.saveInFlight) {
+    if (this.saveInFlight || this.autoSaveTimer || this.hasPendingFieldSaves() || this.hasPendingRowSaves()) {
       this.setSyncStatus('กรุณารอการบันทึกก่อน import', true);
       return;
     }
@@ -1066,6 +1111,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const sessionName = this.selectedSession;
     const carNumber = car.num;
     const timerKey = this.fieldKey(className, sessionName, carNumber, field);
+    this.dirtyFields.add(timerKey);
     if (this.fieldSaveTimers[timerKey]) clearTimeout(this.fieldSaveTimers[timerKey]);
     this.fieldSaveTimers[timerKey] = setTimeout(() => {
       delete this.fieldSaveTimers[timerKey];
@@ -1095,10 +1141,14 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     }, token).subscribe({
       next: (response) => {
         this.lastCacheUpdatedAt = response.cache?.updated_at ?? this.lastCacheUpdatedAt;
+        this.dirtyFields.delete(versionKey);
         this.applyCarFieldVersions(className, sessionName, carNumber, response.car);
         this.setSyncStatus(`Auto saved: ${className} / ${sessionName} / ${carNumber}`);
       },
-      error: (err) => this.handleFieldSaveError(err, className, sessionName, carNumber, field),
+      error: (err) => {
+        this.handleFieldSaveError(err, className, sessionName, carNumber, field);
+        if (err?.status !== 409) this.dirtyFields.delete(versionKey);
+      },
     });
   }
 
@@ -1113,8 +1163,103 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.fieldSaveTimers = {};
   }
 
+  private clearRowSaveTimers(): void {
+    Object.values(this.rowSaveTimers).forEach((timer) => clearTimeout(timer));
+    this.rowSaveTimers = {};
+  }
+
   private hasPendingFieldSaves(): boolean {
     return Object.keys(this.fieldSaveTimers).length > 0;
+  }
+
+  private hasPendingRowSaves(): boolean {
+    return Object.keys(this.rowSaveTimers).length > 0;
+  }
+
+  private hasDirtyField(className: string, sessionName: string, carNumber: string, field: string): boolean {
+    return this.dirtyFields.has(this.fieldKey(className, sessionName, carNumber, field));
+  }
+
+  private carHasDirtyField(className: string, sessionName: string, carNumber: string): boolean {
+    const prefix = `${this.key(className, sessionName, carNumber)}|`;
+    return Array.from(this.dirtyFields).some((fieldKey) => fieldKey.startsWith(prefix));
+  }
+
+  private clearDirtyForCar(className: string, sessionName: string, carNumber: string): void {
+    const prefix = `${this.key(className, sessionName, carNumber)}|`;
+    Array.from(this.dirtyFields).forEach((fieldKey) => {
+      if (fieldKey.startsWith(prefix)) this.dirtyFields.delete(fieldKey);
+    });
+  }
+
+  private queueRowSave(car: CarRow, oldCarNumber = ''): void {
+    const className = this.selectedClass;
+    const sessionName = this.selectedSession;
+    const timerKey = `${className}|${sessionName}|${car.num}`;
+    if (this.rowSaveTimers[timerKey]) clearTimeout(this.rowSaveTimers[timerKey]);
+    this.rowSaveTimers[timerKey] = setTimeout(() => {
+      delete this.rowSaveTimers[timerKey];
+      void this.saveCarRowToRedis(className, sessionName, car, oldCarNumber);
+    }, this.autoSaveDelayMs);
+  }
+
+  private async saveCarRowToRedis(className: string, sessionName: string, car: CarRow, oldCarNumber = ''): Promise<void> {
+    const token = this.getWeighingToken(false);
+    if (!token) {
+      this.setSyncStatus('ไม่พบ token จึงยังไม่ sync รถ', true);
+      return;
+    }
+    try {
+      if (oldCarNumber && oldCarNumber !== car.num) {
+        await firstValueFrom(this.weighingService.moveRow({
+          event: this.eventName,
+          year: this.currentYear,
+          class_name: className,
+          session_name: sessionName,
+          old_car_number: oldCarNumber,
+          new_car_number: car.num,
+          updated_by: this.activeUsername || this.activeUser?.role || 'unknown',
+        }, token));
+        delete this.weights[this.key(className, sessionName, oldCarNumber)];
+        this.saveWeights();
+      }
+      const response = await firstValueFrom(this.weighingService.saveRow({
+        event: this.eventName,
+        year: this.currentYear,
+        class_name: className,
+        session_name: sessionName,
+        car_number: car.num,
+        car: this.buildCarMetadata(car),
+        expected_versions: oldCarNumber && oldCarNumber !== car.num
+          ? undefined
+          : this.metadataExpectedVersions(className, sessionName, car.num),
+        updated_by: this.activeUsername || this.activeUser?.role || 'unknown',
+      }, token));
+      this.applyCarFieldVersions(className, sessionName, car.num, response.car);
+      this.setSyncStatus(`บันทึกรถ ${car.num} แล้ว`);
+    } catch (err) {
+      this.setSyncStatus(this.errorMessage(err, `บันทึกรถ ${car.num} ไม่สำเร็จ`), true);
+    }
+  }
+
+  private buildCarMetadata(car: CarRow): Record<string, unknown> {
+    return {
+      'รุ่น': car.sub,
+      'เบอร์รถ': car.num,
+      'Target Weight (kg)': car.target,
+      'ชื่อนักแข่ง1': car.driver1Name,
+      'น้ำหนักนักแข่ง1': car.driver1Weight,
+      'ชื่อนักแข่ง2': car.driver2Name,
+      'น้ำหนักนักแข่ง2': car.driver2Weight,
+    };
+  }
+
+  private metadataExpectedVersions(className: string, sessionName: string, carNumber: string): Record<string, number> {
+    const fields = ['sub', 'target', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'];
+    return fields.reduce<Record<string, number>>((versions, field) => {
+      versions[field] = this.fieldVersions[this.fieldKey(className, sessionName, carNumber, field)]?.version ?? 0;
+      return versions;
+    }, {});
   }
 
   private clearPreviewLoadTimer(): void {
@@ -1308,46 +1453,25 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       for (let index = 0; index < pairs.length; index++) {
         const [className, sessionName] = pairs[index].split('|');
         this.setSyncStatus(`Import Excel แล้ว ${importedRows} รายการ: เพิ่ม ${addedRows}, อัปเดต ${updatedRows} กำลัง sync Redis ${index + 1}/${pairs.length} sessions...`);
-        const cache = await firstValueFrom(this.weighingService.saveSession({
-          event: this.eventName,
-          year: this.currentYear,
-          class_name: className,
-          session_name: sessionName,
-          cars: this.buildSessionCars(className, sessionName),
-        }, token));
-        this.lastCacheUpdatedAt = cache.updated_at ?? this.lastCacheUpdatedAt;
+        for (const car of this.data[className]?.[sessionName] ?? []) {
+          const response = await firstValueFrom(this.weighingService.saveRow({
+            event: this.eventName,
+            year: this.currentYear,
+            class_name: className,
+            session_name: sessionName,
+            car_number: car.num,
+            car: this.buildCarMetadata(car),
+            expected_versions: this.metadataExpectedVersions(className, sessionName, car.num),
+            updated_by: this.activeUsername || this.activeUser?.role || 'unknown',
+          }, token));
+          this.applyCarFieldVersions(className, sessionName, car.num, response.car);
+        }
       }
       this.saveInFlight = false;
       this.setSyncStatus(`Import Excel แล้ว ${importedRows} รายการ: เพิ่ม ${addedRows}, อัปเดต ${updatedRows}, skipped ${skippedRows}, sync Redis ${pairs.length} sessions`);
     } catch (err) {
       this.saveInFlight = false;
       this.setSyncStatus(this.errorMessage(err, `Import Excel แล้ว ${importedRows} รายการ: เพิ่ม ${addedRows}, อัปเดต ${updatedRows} แต่ sync Redis ไม่สำเร็จ`), true);
-    }
-  }
-
-  private async saveImportedCurrentSessionToRedis(className: string, sessionName: string, matchedRows: number, addedRows: number, updatedRows: number, skippedRows: number): Promise<void> {
-    const token = this.getWeighingToken(false);
-    if (!token) {
-      this.setSyncStatus(`Import with class ${className} / ${sessionName} แล้ว ${matchedRows} รายการ: เพิ่ม ${addedRows}, อัปเดต ${updatedRows}, skipped ${skippedRows} แต่ยังไม่ sync Redis เพราะไม่พบ token`, true);
-      return;
-    }
-
-    this.saveInFlight = true;
-    this.setSyncStatus(`Import with class ${className} / ${sessionName} แล้ว ${matchedRows} รายการ กำลัง sync Redis...`);
-    try {
-      const cache = await firstValueFrom(this.weighingService.saveSession({
-        event: this.eventName,
-        year: this.currentYear,
-        class_name: className,
-        session_name: sessionName,
-        cars: this.buildSessionCars(className, sessionName),
-      }, token));
-      this.lastCacheUpdatedAt = cache.updated_at ?? this.lastCacheUpdatedAt;
-      this.saveInFlight = false;
-      this.setSyncStatus(`Import with class ${className} / ${sessionName} แล้ว ${matchedRows} รายการ: เพิ่ม ${addedRows}, อัปเดต ${updatedRows}, skipped ${skippedRows}, sync Redis แล้ว`);
-    } catch (err) {
-      this.saveInFlight = false;
-      this.setSyncStatus(this.errorMessage(err, `Import with class ${className} / ${sessionName} แล้ว แต่ sync Redis ไม่สำเร็จ`), true);
     }
   }
 
@@ -1546,9 +1670,232 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.saveWeights();
   }
 
-  private extractFieldVersions(item: any, className: string, sessionName: string, carNumber: string, target: Record<string, FieldVersionInfo>): void {
+  private applySessionCache(cache: TssWeighingCacheResponse, className: string, sessionName: string, force = false): void {
+    const session = cache.classes?.[className]?.sessions?.[sessionName];
+    const remoteCars = session?.cars ?? {};
+    const currentCars = this.ensureSessionData(className, sessionName);
+    const currentByNumber = new Map(currentCars.map((car) => [car.num, car]));
+    const nextCars: CarRow[] = [];
+    const nextWeights = { ...this.weights };
+
+    Object.values(remoteCars).forEach((item: any) => {
+      const carNumber = String(item?.['เบอร์รถ'] ?? '').trim();
+      if (!carNumber) return;
+      const current = currentByNumber.get(carNumber);
+      const remoteCar = this.normalizeCarRow(className, {
+        sub: item?.['รุ่น'],
+        num: carNumber,
+        target: item?.['Target Weight (kg)'],
+        driver1Name: item?.['ชื่อนักแข่ง1'],
+        driver1Weight: item?.['น้ำหนักนักแข่ง1'],
+        driver2Name: item?.['ชื่อนักแข่ง2'],
+        driver2Weight: item?.['น้ำหนักนักแข่ง2'],
+      });
+      if (!current) {
+        nextCars.push(remoteCar);
+      } else {
+        const merged = { ...current, ...remoteCar };
+        ['sub', 'target', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'].forEach((field) => {
+          if (this.hasDirtyField(className, sessionName, carNumber, field)) {
+            (merged as any)[field] = (current as any)[field];
+          }
+        });
+        nextCars.push(merged);
+      }
+
+      const fuel = item?.['INCLUDING FUEL'] ?? {};
+      const dry = item?.['DRY WEIGHT'] ?? {};
+      const weightKey = this.key(className, sessionName, carNumber);
+      const remoteWeights: WeightRecord = {
+        fuel_w1: this.numberOrZero(fuel['เครื่องชั่ง 1']),
+        fuel_w2: this.numberOrZero(fuel['เครื่องชั่ง 2']),
+        dry_w1: this.numberOrZero(dry['เครื่องชั่ง 1']),
+        dry_w2: this.numberOrZero(dry['เครื่องชั่ง 2']),
+      };
+      const mergedWeights = { ...(nextWeights[weightKey] ?? {}), ...remoteWeights };
+      (['fuel_w1', 'fuel_w2', 'dry_w1', 'dry_w2'] as WeightField[]).forEach((field) => {
+        if (this.hasDirtyField(className, sessionName, carNumber, field)) {
+          mergedWeights[field] = nextWeights[weightKey]?.[field] ?? 0;
+        }
+      });
+      nextWeights[weightKey] = mergedWeights;
+      this.extractFieldVersions(item, className, sessionName, carNumber, this.fieldVersions, true);
+    });
+
+    currentCars.forEach((car) => {
+      if (!nextCars.some((item) => item.num === car.num) && this.carHasDirtyField(className, sessionName, car.num)) {
+        nextCars.push(car);
+      }
+    });
+    this.data[className][sessionName] = nextCars;
+    this.weights = nextWeights;
+    this.saveData();
+    this.saveWeights();
+    this.ensureSelection();
+  }
+
+  private connectWeighingUpdates(): void {
+    const token = this.getWeighingToken(false);
+    if (!token || !this.activeUser || !this.selectedClass || !this.selectedSession) return;
+    const scope = `${this.eventName}|${this.currentYear}|${this.selectedClass}|${this.selectedSession}`;
+    if (this.weighingWsScope === scope && this.weighingWs && (this.weighingWs.readyState === WebSocket.OPEN || this.weighingWs.readyState === WebSocket.CONNECTING)) return;
+    this.disconnectWeighingUpdates(false);
+    const generation = ++this.weighingWsGeneration;
+    this.weighingWsScope = scope;
+    const url = this.weighingService.weighingUpdatesUrl(this.eventName, this.currentYear, this.selectedClass, this.selectedSession, token);
+    try {
+      const ws = new WebSocket(url);
+      this.weighingWs = ws;
+      ws.onopen = () => {
+        if (generation === this.weighingWsGeneration) this.setSyncStatus(`Realtime connected: ${this.selectedClass} / ${this.selectedSession}`);
+      };
+      ws.onmessage = (event) => {
+        if (generation !== this.weighingWsGeneration) return;
+        try {
+          this.applyRemoteUpdate(JSON.parse(event.data) as TssWeighingUpdateMessage);
+        } catch {
+          // Ignore malformed realtime messages and rely on the next reconciliation load.
+        }
+      };
+      ws.onclose = () => {
+        if (generation !== this.weighingWsGeneration || !this.activeUser) return;
+        this.weighingWs = null;
+        if (this.weighingWsReconnectTimer) clearTimeout(this.weighingWsReconnectTimer);
+        this.weighingWsReconnectTimer = setTimeout(() => {
+          this.weighingWsReconnectTimer = null;
+          this.connectWeighingUpdates();
+        }, 3000);
+      };
+      ws.onerror = () => {
+        if (generation === this.weighingWsGeneration) this.setSyncStatus('Realtime weighing disconnected', true);
+      };
+    } catch {
+      this.setSyncStatus('Realtime weighing connection failed', true);
+    }
+  }
+
+  private disconnectWeighingUpdates(scheduleReconnect = false): void {
+    this.weighingWsGeneration++;
+    if (this.weighingWsReconnectTimer) {
+      clearTimeout(this.weighingWsReconnectTimer);
+      this.weighingWsReconnectTimer = null;
+    }
+    if (this.weighingWs) {
+      this.weighingWs.onopen = null;
+      this.weighingWs.onmessage = null;
+      this.weighingWs.onclose = null;
+      this.weighingWs.onerror = null;
+      this.weighingWs.close();
+      this.weighingWs = null;
+    }
+    this.weighingWsScope = '';
+    if (scheduleReconnect && this.activeUser) this.connectWeighingUpdates();
+  }
+
+  private applyRemoteUpdate(message: TssWeighingUpdateMessage): void {
+    if (!message || message.event !== this.eventName || Number(message.year) !== this.currentYear) return;
+    if (message.class_name !== this.selectedClass || message.session_name !== this.selectedSession) return;
+    const carNumber = String(message.car_number ?? '').trim();
+    if (!carNumber) return;
+    if (message.type === 'weighing_class_reset') {
+      this.loadSelectedSessionAndConnect(true, true);
+      return;
+    }
+    const cars = this.ensureSessionData(this.selectedClass, this.selectedSession);
+    const car = cars.find((item) => item.num === carNumber);
+    if (message.type === 'weighing_row_updated') {
+      if (message.deleted) {
+        const index = cars.findIndex((item) => item.num === carNumber);
+        if (index >= 0 && !this.carHasDirtyField(this.selectedClass, this.selectedSession, carNumber)) {
+          cars.splice(index, 1);
+          delete this.weights[this.key(this.selectedClass, this.selectedSession, carNumber)];
+          this.clearDirtyForCar(this.selectedClass, this.selectedSession, carNumber);
+        }
+      } else if (message.car) {
+        this.applyRemoteCar(carNumber, message.car);
+      }
+      this.saveData();
+      this.saveWeights();
+      return;
+    }
+    if (message.type !== 'weighing_field_updated' || !message.field) return;
+    const field = message.field;
+    const fieldKey = this.fieldKey(this.selectedClass, this.selectedSession, carNumber, field);
+    const incomingVersion = Number(message.version ?? 0);
+    const knownVersion = this.fieldVersions[fieldKey]?.version ?? 0;
+    if (incomingVersion <= knownVersion) return;
+    if (this.hasDirtyField(this.selectedClass, this.selectedSession, carNumber, field)) {
+      this.setSyncStatus(`มีข้อมูลใหม่จาก ${message.updated_by || 'ผู้ใช้อื่น'} ในรถ ${carNumber} ช่อง ${field} กรุณาตรวจสอบ`, true);
+      return;
+    }
+    this.fieldVersions[fieldKey] = {
+      version: incomingVersion,
+      updatedBy: String(message.updated_by ?? ''),
+      updatedAt: String(message.updated_at ?? ''),
+    };
+    if (!car) {
+      this.loadSelectedSessionAndConnect(true, true);
+      return;
+    }
+    this.applyLocalFieldValue(car, field, message.value);
+    this.saveData();
+    this.saveWeights();
+  }
+
+  private applyRemoteCar(carNumber: string, remote: Record<string, unknown>): void {
+    const cars = this.ensureSessionData(this.selectedClass, this.selectedSession);
+    const current = cars.find((item) => item.num === carNumber);
+    const normalized = this.normalizeCarRow(this.selectedClass, {
+      sub: String(remote['รุ่น'] ?? ''), num: carNumber, target: this.numberOrNull(remote['Target Weight (kg)']),
+      driver1Name: String(remote['ชื่อนักแข่ง1'] ?? ''), driver1Weight: this.numberOrNull(remote['น้ำหนักนักแข่ง1']),
+      driver2Name: String(remote['ชื่อนักแข่ง2'] ?? ''), driver2Weight: this.numberOrNull(remote['น้ำหนักนักแข่ง2']),
+    });
+    if (!current) {
+      cars.push(normalized);
+    } else {
+      (['sub', 'target', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'] as const).forEach((field) => {
+        if (!this.hasDirtyField(this.selectedClass, this.selectedSession, carNumber, field)) {
+          (current as any)[field] = (normalized as any)[field];
+        }
+      });
+    }
+    const fuel = remote['INCLUDING FUEL'] as any ?? {};
+    const dry = remote['DRY WEIGHT'] as any ?? {};
+    const weightKey = this.key(this.selectedClass, this.selectedSession, carNumber);
+    const currentWeights = this.weights[weightKey] ?? {};
+    const remoteWeights: WeightRecord = {
+      fuel_w1: this.numberOrZero(fuel['เครื่องชั่ง 1']), fuel_w2: this.numberOrZero(fuel['เครื่องชั่ง 2']),
+      dry_w1: this.numberOrZero(dry['เครื่องชั่ง 1']), dry_w2: this.numberOrZero(dry['เครื่องชั่ง 2']),
+    };
+    this.weights[weightKey] = { ...currentWeights, ...remoteWeights };
+    (['fuel_w1', 'fuel_w2', 'dry_w1', 'dry_w2'] as WeightField[]).forEach((field) => {
+      if (this.hasDirtyField(this.selectedClass, this.selectedSession, carNumber, field)) {
+        this.weights[weightKey][field] = currentWeights[field] ?? 0;
+      }
+    });
+    this.extractFieldVersions(remote, this.selectedClass, this.selectedSession, carNumber, this.fieldVersions, true);
+  }
+
+  private applyLocalFieldValue(car: CarRow, field: string, value: unknown): void {
+    if (field === 'fuel_w1' || field === 'fuel_w2' || field === 'dry_w1' || field === 'dry_w2') {
+      const weightKey = this.key(this.selectedClass, this.selectedSession, car.num);
+      this.weights[weightKey] = this.weights[weightKey] ?? {};
+      this.weights[weightKey][field] = this.numberOrZero(value);
+      return;
+    }
+    if (field === 'target' || field === 'driver1Weight' || field === 'driver2Weight') {
+      (car as any)[field] = this.numberOrNull(value);
+      return;
+    }
+    if (field === 'sub' || field === 'driver1Name' || field === 'driver2Name') {
+      (car as any)[field] = String(value ?? '').trim();
+    }
+  }
+
+  private extractFieldVersions(item: any, className: string, sessionName: string, carNumber: string, target: Record<string, FieldVersionInfo>, preserveDirty = false): void {
     const versions = item?._field_versions ?? {};
     Object.entries(versions).forEach(([field, raw]: [string, any]) => {
+      if (preserveDirty && this.hasDirtyField(className, sessionName, carNumber, field)) return;
       target[this.fieldKey(className, sessionName, carNumber, field)] = {
         version: this.numberOrZero(raw?.version),
         updatedBy: String(raw?.updated_by ?? ''),
@@ -1559,7 +1906,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   private applyCarFieldVersions(className: string, sessionName: string, carNumber: string, car: Record<string, unknown> | undefined): void {
     if (!car) return;
-    this.extractFieldVersions(car, className, sessionName, carNumber, this.fieldVersions);
+    this.extractFieldVersions(car, className, sessionName, carNumber, this.fieldVersions, true);
   }
 
   private handleFieldSaveError(err: any, className: string, sessionName: string, carNumber: string, field: string): void {
