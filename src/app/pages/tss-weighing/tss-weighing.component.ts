@@ -94,6 +94,7 @@ interface ImportClassMapping {
 
 interface ImportHeaderColumns {
   classCol: number;
+  subCol: number;
   carCol: number;
   targetCol: number;
   raceCol: number;
@@ -101,6 +102,13 @@ interface ImportHeaderColumns {
   driver1WeightCol: number;
   driver2NameCol: number;
   driver2WeightCol: number;
+}
+
+interface ImportWorksheetContext {
+  header: ImportHeaderColumns;
+  firstDataRow: number;
+  defaultClassName: string;
+  defaultSessionName: string;
 }
 
 interface ImportDriverValues {
@@ -149,16 +157,6 @@ const STORAGE_KEYS = {
   weights: 'tss.weights.v3',
 };
 
-const CLASS_SESSIONS: Record<string, string[]> = {
-  ECO: ['Qualify'],
-  Touring: ['Qualify'],
-  'PICKUP C': ['Qualify'],
-  'PICKUP AB': ['Qualify'],
-  GR86: ['Qualify'],
-  'GT4 GTC': ['Qualify'],
-  'GT3 GTM': ['Qualify'],
-};
-
 const MASTER_CLASS_SESSIONS: Record<string, string[]> = {
   ECO: ['Qualify'],
   Touring: ['Qualify'],
@@ -180,6 +178,7 @@ const CLASS_SUB_OPTIONS: Record<string, string[]> = {
 const IMPORT_CLASS_MAP: Record<string, ImportClassMapping> = {
   ECO: { className: 'ECO', sub: 'ECO' },
   TOURING: { className: 'Touring', sub: 'Touring' },
+  'PICKUP AB': { className: 'PICKUP AB', sub: 'PICKUP A' },
   'PICKUP A': { className: 'PICKUP AB', sub: 'PICKUP A' },
   PICKUPA: { className: 'PICKUP AB', sub: 'PICKUP A' },
   'PICKUP B': { className: 'PICKUP AB', sub: 'PICKUP B' },
@@ -188,25 +187,15 @@ const IMPORT_CLASS_MAP: Record<string, ImportClassMapping> = {
   PICKUPC: { className: 'PICKUP C', sub: 'PICKUP C' },
   GT3: { className: 'GT3 GTM', sub: 'GT3' },
   GTM: { className: 'GT3 GTM', sub: 'GTM' },
+  'GT3 GTM': { className: 'GT3 GTM', sub: 'GT3' },
   GT4: { className: 'GT4 GTC', sub: 'GT4' },
   GTC: { className: 'GT4 GTC', sub: 'GTC' },
+  'GT4 GTC': { className: 'GT4 GTC', sub: 'GT4' },
   GR86: { className: 'GR86', sub: 'GR86' },
 };
 
-function emptyDefaultData(): Record<string, Record<string, CarRow[]>> {
-  const data: Record<string, Record<string, CarRow[]>> = {};
-  Object.keys(MASTER_CLASS_SESSIONS).forEach((cls) => {
-    data[cls] = {};
-    MASTER_CLASS_SESSIONS[cls]?.forEach((sess) => data[cls][sess] = []);
-  });
-  return data;
-}
-
-function cloneClassSessions(source: Record<string, string[]> = CLASS_SESSIONS): Record<string, string[]> {
-  return Object.entries(source).reduce<Record<string, string[]>>((acc, [className, sessions]) => {
-    acc[className] = [...sessions];
-    return acc;
-  }, {});
+function emptyWeighingData(): Record<string, Record<string, CarRow[]>> {
+  return {};
 }
 
 @Component({
@@ -217,19 +206,18 @@ function cloneClassSessions(source: Record<string, string[]> = CLASS_SESSIONS): 
   styleUrl: './tss-weighing.component.scss',
 })
 export class TssWeighingComponent implements OnInit, OnDestroy {
-  readonly defaultClassSessions = MASTER_CLASS_SESSIONS;
-  classSessions: Record<string, string[]> = cloneClassSessions();
+  classSessions: Record<string, string[]> = {};
   lockedSessions: Record<string, string[]> = {};
   configDraft: Record<string, Record<string, boolean>> = {};
   configLockDraft: Record<string, Record<string, boolean>> = {};
   configRaceDraft: Record<string, ConfigRaceDraftSlot[]> = {};
 
-  data: Record<string, Record<string, CarRow[]>> = emptyDefaultData();
+  data: Record<string, Record<string, CarRow[]>> = emptyWeighingData();
   weights: Record<string, WeightRecord> = {};
   fieldVersions: Record<string, FieldVersionInfo> = {};
 
-  selectedClass = Object.keys(CLASS_SESSIONS)[0] ?? '';
-  selectedSession = CLASS_SESSIONS[this.selectedClass]?.[0] ?? '';
+  selectedClass = '';
+  selectedSession = '';
 
   loginUser = '';
   loginPass = '';
@@ -255,6 +243,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   private loadInFlight = false;
   private activeEventInFlight = false;
   private configInFlight = false;
+  private configRequestGeneration = 0;
   private lastCacheUpdatedAt = '';
   private lastActiveEventUpdatedAt = '';
   private lastConfigUpdatedAt = '';
@@ -415,6 +404,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   openConfigModal(): void {
     if (!this.canEditMaster) return;
+    this.configRequestGeneration++;
     this.previewOriginalState = this.captureEventPreviewState();
     this.eventDraftName = this.eventName;
     this.isEditingEvent = true;
@@ -423,6 +413,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   closeConfigModal(): void {
+    this.configRequestGeneration++;
     this.clearPreviewLoadTimer();
     this.restoreEventPreviewState();
     this.isConfigModalOpen = false;
@@ -564,10 +555,6 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       const uniqueLocks = selectedLocks.filter((sessionName, index, all) => uniqueSessions.includes(sessionName) && all.indexOf(sessionName) === index);
       if (uniqueLocks.length > 0) lockedSessions[className] = uniqueLocks;
     }
-    if (Object.keys(classSessions).length === 0) {
-      this.setSyncStatus('Config ต้องเลือกอย่างน้อย 1 class', true);
-      return;
-    }
     const nextEventName = this.sanitizeEventName(this.eventDraftName);
     if (!nextEventName) {
       this.setSyncStatus('กรุณากรอกชื่อ event', true);
@@ -576,11 +563,14 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
     const token = this.getWeighingToken();
     if (!token) return;
+    this.configRequestGeneration++;
     this.setSyncStatus('กำลังบันทึก event config...');
     try {
+      // Persist the config before switching the active event, so a failed config save
+      // cannot leave the server pointing at an event with default sessions.
+      const config = await firstValueFrom(this.weighingService.setConfig(nextEventName, this.currentYear, classSessions, lockedSessions, token));
       const activeEvent = await firstValueFrom(this.weighingService.setActiveEvent(nextEventName, this.currentYear, token));
       this.applyActiveEvent(activeEvent, true);
-      const config = await firstValueFrom(this.weighingService.setConfig(this.eventName, this.currentYear, classSessions, lockedSessions, token));
       this.applyEventConfig(config, true);
       this.clearPreviewLoadTimer();
       this.previewOriginalState = null;
@@ -730,6 +720,10 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.activeEventInFlight = true;
     this.weighingService.getActiveEvent(token).subscribe({
       next: (activeEvent) => {
+        if (this.isEditingEvent) {
+          this.activeEventInFlight = false;
+          return;
+        }
         const changed = this.applyActiveEvent(activeEvent, forceLoad);
         this.activeEventInFlight = false;
         this.loadEventConfig(showStatus, changed || forceLoad);
@@ -745,10 +739,16 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   private loadEventConfig(showStatus = false, forceLoad = false): void {
     const token = this.getWeighingToken(showStatus);
     if (!token || this.configInFlight) return;
+    if (this.isConfigModalOpen || this.isEditingEvent) return;
     if (this.autoSaveTimer || this.hasPendingFieldSaves() || this.saveInFlight) return;
+    const requestGeneration = ++this.configRequestGeneration;
     this.configInFlight = true;
     this.weighingService.getConfig(this.eventName, this.currentYear, token).subscribe({
       next: (config) => {
+        if (requestGeneration !== this.configRequestGeneration || this.isConfigModalOpen || this.isEditingEvent) {
+          this.configInFlight = false;
+          return;
+        }
         const changed = this.applyEventConfig(config, forceLoad);
         this.configInFlight = false;
         if (changed || forceLoad) this.loadSelectedSessionAndConnect(showStatus, true);
@@ -886,17 +886,18 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       this.setSyncStatus('กำลัง import Excel...');
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(await file.arrayBuffer());
-      const worksheet = workbook.worksheets[0];
-      if (!worksheet) {
-        this.setSyncStatus('ไม่พบ sheet ในไฟล์ Excel', true);
-        return;
-      }
+       if (workbook.worksheets.length === 0) {
+         this.setSyncStatus('ไม่พบ sheet ในไฟล์ Excel', true);
+         return;
+       }
 
-      const header = this.importHeaderColumns(worksheet.getRow(1));
-      if (!header) {
-        this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ, น้ำหนักที่ต้องการ', true);
-        return;
-      }
+       const worksheets = workbook.worksheets
+         .map((worksheet) => ({ worksheet, context: this.importWorksheetContext(worksheet) }))
+         .filter((item): item is { worksheet: ExcelJS.Worksheet; context: ImportWorksheetContext } => !!item.context);
+       if (worksheets.length === 0) {
+         this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ, น้ำหนักที่ต้องการ', true);
+         return;
+       }
 
       let importedRows = 0;
       let addedRows = 0;
@@ -904,28 +905,34 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       let skippedRows = 0;
       const changedPairs = new Set<string>();
 
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
-        const mapping = this.importClassMapping(this.cellText(row.getCell(header.classCol)));
-        const carNumber = this.cellText(row.getCell(header.carCol));
-        const target = this.importTarget(row.getCell(header.targetCol));
-        const sessionName = this.importSessionName(header.raceCol ? this.cellText(row.getCell(header.raceCol)) : '', mapping?.className ?? '');
-        const driverValues = this.importDriverValues(row, header);
-        if (!mapping || !carNumber || target.invalid) {
-          skippedRows++;
-          return;
-        }
-        if (!sessionName) {
-          skippedRows++;
-          return;
-        }
+       worksheets.forEach(({ worksheet, context }) => {
+         worksheet.eachRow((row, rowNumber) => {
+           if (rowNumber < context.firstDataRow) return;
+           const classValue = context.header.classCol
+             ? this.cellText(row.getCell(context.header.classCol))
+             : context.defaultClassName;
+           const mapping = this.importClassMappingForRow(row, context.header, classValue);
+           const carNumber = this.cellText(row.getCell(context.header.carCol));
+           const target = this.importTarget(row.getCell(context.header.targetCol));
+           const raceValue = context.header.raceCol ? this.cellText(row.getCell(context.header.raceCol)) : context.defaultSessionName;
+           const sessionName = this.importSessionName(raceValue, mapping?.className ?? '', context.defaultSessionName);
+           const driverValues = this.importDriverValues(row, context.header);
+           if (!mapping || !carNumber || target.invalid) {
+             skippedRows++;
+             return;
+           }
+           if (!sessionName) {
+             skippedRows++;
+             return;
+           }
 
-        const cars = this.ensureSessionData(mapping.className, sessionName);
-        if (this.mergeImportedCar(cars, mapping.sub, carNumber, target.value, driverValues)) updatedRows++;
-        else addedRows++;
-        changedPairs.add(`${mapping.className}|${sessionName}`);
-        importedRows++;
-      });
+           const cars = this.ensureSessionData(mapping.className, sessionName);
+           if (this.mergeImportedCar(cars, mapping.sub, carNumber, target.value, driverValues)) updatedRows++;
+           else addedRows++;
+           changedPairs.add(`${mapping.className}|${sessionName}`);
+           importedRows++;
+         });
+       });
 
       this.saveData();
       if (changedPairs.size === 0) {
@@ -957,52 +964,59 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       this.setSyncStatus(`กำลัง import Excel เฉพาะ ${className} / ${sessionName}...`);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(await file.arrayBuffer());
-      const worksheet = workbook.worksheets[0];
-      if (!worksheet) {
-        this.setSyncStatus('ไม่พบ sheet ในไฟล์ Excel', true);
-        return;
-      }
+       if (workbook.worksheets.length === 0) {
+         this.setSyncStatus('ไม่พบ sheet ในไฟล์ Excel', true);
+         return;
+       }
 
-      const header = this.importHeaderColumns(worksheet.getRow(1));
-      if (!header) {
-        this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ, น้ำหนักที่ต้องการ', true);
-        return;
-      }
+       const worksheets = workbook.worksheets
+         .map((worksheet) => ({ worksheet, context: this.importWorksheetContext(worksheet) }))
+         .filter((item): item is { worksheet: ExcelJS.Worksheet; context: ImportWorksheetContext } => !!item.context);
+       if (worksheets.length === 0) {
+         this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ, น้ำหนักที่ต้องการ', true);
+         return;
+       }
 
       let matchedRows = 0;
       let addedRows = 0;
       let updatedRows = 0;
       let skippedRows = 0;
       const changedPairs = new Set<string>();
-      const cars = this.ensureSessionData(className, sessionName);
+       const cars = this.ensureSessionData(className, sessionName);
 
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
-        const mapping = this.importClassMapping(this.cellText(row.getCell(header.classCol)));
-        if (!mapping || mapping.className !== className) return;
+       worksheets.forEach(({ worksheet, context }) => {
+         worksheet.eachRow((row, rowNumber) => {
+           if (rowNumber < context.firstDataRow) return;
+           const classValue = context.header.classCol
+             ? this.cellText(row.getCell(context.header.classCol))
+             : context.defaultClassName;
+           const mapping = this.importClassMappingForRow(row, context.header, classValue);
+           if (!mapping || mapping.className !== className) return;
 
-        const carNumber = this.cellText(row.getCell(header.carCol));
-        const target = this.importTarget(row.getCell(header.targetCol));
-        const sessionForRow = this.importSessionName(header.raceCol ? this.cellText(row.getCell(header.raceCol)) : '', className);
-        const driverValues = this.importDriverValues(row, header);
-        if (!carNumber || target.invalid) {
-          skippedRows++;
-          return;
-        }
-        if (!sessionForRow) {
-          skippedRows++;
-          return;
-        }
+           const carNumber = this.cellText(row.getCell(context.header.carCol));
+           const target = this.importTarget(row.getCell(context.header.targetCol));
+           const raceValue = context.header.raceCol ? this.cellText(row.getCell(context.header.raceCol)) : context.defaultSessionName;
+           const sessionForRow = this.importSessionName(raceValue, className, context.defaultSessionName);
+           const driverValues = this.importDriverValues(row, context.header);
+           if (!carNumber || target.invalid) {
+             skippedRows++;
+             return;
+           }
+           if (!sessionForRow) {
+             skippedRows++;
+             return;
+           }
 
-        const targetCars = sessionForRow === sessionName ? cars : this.ensureSessionData(className, sessionForRow);
-        if (this.mergeImportedCar(targetCars, mapping.sub, carNumber, target.value, driverValues)) {
-          updatedRows++;
-        } else {
-          addedRows++;
-        }
-        changedPairs.add(`${className}|${sessionForRow}`);
-        matchedRows++;
-      });
+           const targetCars = sessionForRow === sessionName ? cars : this.ensureSessionData(className, sessionForRow);
+           if (this.mergeImportedCar(targetCars, mapping.sub, carNumber, target.value, driverValues)) {
+             updatedRows++;
+           } else {
+             addedRows++;
+           }
+           changedPairs.add(`${className}|${sessionForRow}`);
+           matchedRows++;
+         });
+       });
 
       this.saveData();
       if (matchedRows === 0) {
@@ -1072,9 +1086,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   private loadData(): Record<string, Record<string, CarRow[]>> {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.data);
-      return this.ensureDataShape(saved ? JSON.parse(saved) as Record<string, Record<string, CarRow[]>> : emptyDefaultData());
+      return this.ensureDataShape(saved ? JSON.parse(saved) as Record<string, Record<string, CarRow[]>> : emptyWeighingData());
     } catch {
-      return emptyDefaultData();
+      return emptyWeighingData();
     }
   }
 
@@ -1355,8 +1369,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.pollTimer = null;
   }
 
-  private importHeaderColumns(row: ExcelJS.Row): ImportHeaderColumns | null {
-    let classCol = 0;
+   private importHeaderColumns(row: ExcelJS.Row): ImportHeaderColumns | null {
+     let classCol = 0;
+     let subCol = 0;
     let carCol = 0;
     let targetCol = 0;
     let raceCol = 0;
@@ -1365,18 +1380,62 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     let driver2NameCol = 0;
     let driver2WeightCol = 0;
     row.eachCell((cell, colNumber) => {
-      const header = this.cellText(cell).replace(/\s+/g, ' ').trim().toUpperCase();
-      if (header === 'CLASS') classCol = colNumber;
-      if (header === 'RACE') raceCol = colNumber;
-      if (header === 'เบอร์รถ') carCol = colNumber;
-      if (header === 'น้ำหนักที่ต้องการ') targetCol = colNumber;
-      if (header === 'ชื่อนักแข่ง1') driver1NameCol = colNumber;
-      if (header === 'น้ำหนักนักแข่ง1') driver1WeightCol = colNumber;
-      if (header === 'ชื่อนักแข่ง2') driver2NameCol = colNumber;
-      if (header === 'น้ำหนักนักแข่ง2') driver2WeightCol = colNumber;
-    });
-    return classCol && carCol && targetCol ? { classCol, carCol, targetCol, raceCol, driver1NameCol, driver1WeightCol, driver2NameCol, driver2WeightCol } : null;
-  }
+       const header = this.cellText(cell).replace(/\s+/g, ' ').trim().toUpperCase();
+       if (header === 'CLASS') classCol = colNumber;
+       if (header === 'RACE') raceCol = colNumber;
+       if (header === 'รุ่น' || header === 'SUB' || header === 'MODEL') subCol = colNumber;
+       if (header === 'เบอร์รถ') carCol = colNumber;
+       if (header === 'CAR NUMBER') carCol = colNumber;
+       if (header === 'น้ำหนักที่ต้องการ') targetCol = colNumber;
+       if (header === 'TARGET WEIGHT (KG)' || header === 'TARGET WEIGHT') targetCol = colNumber;
+       if (header === 'ชื่อนักแข่ง1') driver1NameCol = colNumber;
+       if (header === 'น้ำหนักนักแข่ง1') driver1WeightCol = colNumber;
+       if (header === 'ชื่อนักแข่ง2') driver2NameCol = colNumber;
+       if (header === 'น้ำหนักนักแข่ง2') driver2WeightCol = colNumber;
+     });
+     return carCol && targetCol ? { classCol, subCol, carCol, targetCol, raceCol, driver1NameCol, driver1WeightCol, driver2NameCol, driver2WeightCol } : null;
+   }
+
+   private importWorksheetContext(worksheet: ExcelJS.Worksheet): ImportWorksheetContext | null {
+     const maxHeaderRow = Math.min(worksheet.rowCount, 10);
+     for (let rowNumber = 1; rowNumber <= maxHeaderRow; rowNumber++) {
+       const header = this.importHeaderColumns(worksheet.getRow(rowNumber));
+       if (!header) continue;
+
+       const defaultClassName = this.importClassMapping(this.firstNonEmptyRowValue(worksheet.getRow(1)))?.className ?? '';
+       const defaultSessionName = rowNumber >= 3
+         ? this.firstNonEmptyRowValue(worksheet.getRow(2)) || this.selectedSession
+         : this.selectedSession;
+       return {
+         header,
+         firstDataRow: rowNumber + 1,
+         defaultClassName,
+         defaultSessionName,
+       };
+     }
+     return null;
+   }
+
+   private firstNonEmptyRowValue(row: ExcelJS.Row): string {
+     let result = '';
+     row.eachCell((cell) => {
+       if (!result) result = this.cellText(cell);
+     });
+     return result;
+   }
+
+   private importClassMappingForRow(row: ExcelJS.Row, header: ImportHeaderColumns, classValue: string): ImportClassMapping | null {
+     const mapping = this.importClassMapping(classValue);
+     if (!mapping || !header.subCol) return mapping;
+
+     const subValue = this.cellText(row.getCell(header.subCol)).replace(/\s+/g, ' ').trim().toUpperCase();
+     if (!subValue) return mapping;
+     if (mapping.className === 'PICKUP AB' && (subValue === 'A' || subValue === 'B')) {
+       return { className: mapping.className, sub: `PICKUP ${subValue}` };
+     }
+     const subMapping = this.importClassMapping(subValue);
+     return subMapping?.className === mapping.className ? subMapping : mapping;
+   }
 
   private cellText(cell: ExcelJS.Cell): string {
     const value: any = cell.value;
@@ -1401,12 +1460,12 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return Number.isFinite(parsed) ? { value: parsed, invalid: false } : { value: null, invalid: true };
   }
 
-  private importSessionName(value: string, className: string): string {
-    const raw = String(value ?? '').trim();
-    const sessionName = raw ? this.normalizeImportRaceSession(raw) : this.selectedSession;
-    const sessionKey = sessionName.replace(/\s+/g, '').toLowerCase();
-    return (this.classSessions[className] ?? []).find((item) => item.replace(/\s+/g, '').toLowerCase() === sessionKey) ?? '';
-  }
+   private importSessionName(value: string, className: string, defaultSessionName = this.selectedSession): string {
+     const raw = String(value ?? '').trim();
+     const sessionName = raw ? this.normalizeImportRaceSession(raw) : defaultSessionName;
+     const sessionKey = sessionName.replace(/\s+/g, '').toLowerCase();
+     return (this.classSessions[className] ?? []).find((item) => item.replace(/\s+/g, '').toLowerCase() === sessionKey) ?? '';
+   }
 
   private normalizeImportRaceSession(value: string): string {
     const normalized = String(value ?? '').replace(/\s+/g, '').trim();
@@ -1476,13 +1535,18 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private ensureDataShape(data: Record<string, Record<string, CarRow[]>>): Record<string, Record<string, CarRow[]>> {
-    const shaped = data && typeof data === 'object' ? data : emptyDefaultData();
-    Object.keys(MASTER_CLASS_SESSIONS).forEach((cls) => {
-      shaped[cls] = shaped[cls] && typeof shaped[cls] === 'object' && !Array.isArray(shaped[cls]) ? shaped[cls] : {};
-      const sessions = Array.from(new Set([...(MASTER_CLASS_SESSIONS[cls] ?? []), ...Object.keys(shaped[cls]).filter((sess) => this.isAllowedConfigSession(sess))]));
-      sessions.forEach((sess) => {
-        if (!Array.isArray(shaped[cls][sess])) shaped[cls][sess] = [];
-        shaped[cls][sess] = shaped[cls][sess].map((car) => this.normalizeCarRow(cls, car)).filter((car) => car.num);
+    const shaped = data && typeof data === 'object' ? data : emptyWeighingData();
+    Object.entries(shaped).forEach(([className, rawSessions]) => {
+      if (!MASTER_CLASS_SESSIONS[className] || !rawSessions || typeof rawSessions !== 'object' || Array.isArray(rawSessions)) {
+        delete shaped[className];
+        return;
+      }
+      Object.entries(rawSessions).forEach(([sessionName, cars]) => {
+        if (!this.isAllowedConfigSession(sessionName) || !Array.isArray(cars)) {
+          delete shaped[className][sessionName];
+          return;
+        }
+        shaped[className][sessionName] = cars.map((car) => this.normalizeCarRow(className, car)).filter((car) => car.num);
       });
     });
     return shaped;
@@ -1495,7 +1559,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       const selectedSessions = (sessions ?? []).filter((sessionName, index, all) => this.isAllowedConfigSession(sessionName) && all.indexOf(sessionName) === index);
       if (selectedSessions.length > 0) normalized[className] = selectedSessions;
     });
-    return Object.keys(normalized).length > 0 ? normalized : cloneClassSessions();
+    // Do not silently restore every class when the server returns an empty or
+    // malformed configuration. The backend owns first-time defaults.
+    return normalized;
   }
 
   private normalizeEventLockedSessions(lockedSessions: Record<string, string[]> | undefined, classSessions: Record<string, string[]>): Record<string, string[]> {
@@ -1538,14 +1604,21 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private ensureSessionData(cls: string, sess: string): CarRow[] {
+    if (!cls || !sess) return [];
     if (!this.data[cls]) this.data[cls] = {};
     if (!Array.isArray(this.data[cls][sess])) this.data[cls][sess] = [];
     return this.data[cls][sess];
   }
 
   private ensureSelection(): void {
+    if (this.classOptions.length === 0) {
+      this.selectedClass = '';
+      this.selectedSession = '';
+      return;
+    }
     if (!this.classSessions[this.selectedClass]) this.selectedClass = this.classOptions[0] ?? '';
     if (!this.sessions.includes(this.selectedSession)) this.selectedSession = this.sessions[0] ?? '';
+    if (!this.selectedClass || !this.selectedSession) return;
     this.ensureSessionData(this.selectedClass, this.selectedSession);
     this.newSub = this.normalizeSubForClass(this.selectedClass, this.newSub);
   }
@@ -1627,11 +1700,12 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private applyCache(cache: TssWeighingCacheResponse): void {
-    const nextData = emptyDefaultData();
+    const nextData = emptyWeighingData();
     const nextWeights: Record<string, WeightRecord> = {};
     const nextFieldVersions: Record<string, FieldVersionInfo> = {};
     Object.entries(cache.classes ?? {}).forEach(([cls, classData]) => {
       if (!MASTER_CLASS_SESSIONS[cls]) return;
+      nextData[cls] = nextData[cls] ?? {};
       Object.entries(classData.sessions ?? {}).forEach(([sess, sessionData]) => {
         if (!this.isAllowedConfigSession(sess)) return;
         const cars = Object.values(sessionData.cars ?? {}).map((item: any) => {
