@@ -31,12 +31,13 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
 import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { configAFRModel } from '../config-afr-modal/config-afr-modal.component';
+import { AfrExclusionZoneConfigComponent } from './afr-exclusion-zone-config.component';
 
 @Component({
   selector: 'app-admin-config',
   imports: [MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
     , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule, MatSortModule
-    , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule
+    , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, AfrExclusionZoneConfigComponent
     , MatSlideToggleModule, MatMenuModule],
   templateUrl: './admin-config.component.html',
   styleUrl: './admin-config.component.scss'

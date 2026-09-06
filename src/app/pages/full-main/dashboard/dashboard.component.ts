@@ -703,6 +703,10 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private getValidAfrValue(item: LoggerItem): number | null {
+    if (item.afrExcluded) {
+      return null;
+    }
+
     const status = (item.status ?? item.loggerStatus ?? '').toString().trim().toLowerCase();
     if (status !== 'online') {
       return null;
@@ -916,6 +920,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const loggerId = Number(item.loggerId);
     if (!Number.isFinite(loggerId) || loggerId <= 0) {
+      return;
+    }
+
+    if (item.afrExcluded) {
+      this.loggerAlertState.delete(loggerId);
+      this.clearCountCellAlertTimer(loggerId);
+      this.countCellAlertState.delete(loggerId);
       return;
     }
 
@@ -1609,7 +1620,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // สร้าง map สำหรับเก็บ status updates พร้อม online_time, disconnect_time และ afr_count
-    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string; afrCount?: number; afr?: number }>();
+    const statusMap = new Map<string, { status: string; onlineTime?: string; disconnectTime?: string; afrCount?: number; afr?: number; afrExcluded?: boolean }>();
     statusList.forEach((statusItem: any) => {
       const loggerId = statusItem.logger_key || '';
       const status = (statusItem.status || '').toString().toLowerCase().trim();
@@ -1619,7 +1630,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           onlineTime: statusItem.online_time || undefined,
           disconnectTime: statusItem.disconnect_time || undefined,
           afrCount: statusItem.afr_count !== undefined ? Number(statusItem.afr_count) : undefined,
-          afr: statusItem.afr !== undefined && statusItem.afr !== null ? Number(statusItem.afr) : undefined
+          afr: statusItem.afr !== undefined && statusItem.afr !== null ? Number(statusItem.afr) : undefined,
+          afrExcluded: statusItem.afr_excluded === true
         });
       }
     });
@@ -1641,8 +1653,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
         const disconnectTimeChanged = statusUpdate.disconnectTime && logger.disconnectTime?.toString() !== statusUpdate.disconnectTime;
         const afrCountChanged = statusUpdate.afrCount !== undefined && (logger.currentCountDetect ?? null) !== (statusUpdate.afrCount ?? null);
         const afrChanged = statusUpdate.afr !== undefined && (logger.afr ?? null) !== (statusUpdate.afr ?? null);
+        const afrExcludedChanged = statusUpdate.afrExcluded !== undefined && logger.afrExcluded !== statusUpdate.afrExcluded;
 
-        if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged || afrChanged) {
+        if (statusChanged || onlineTimeChanged || disconnectTimeChanged || afrCountChanged || afrChanged || afrExcludedChanged) {
           hasUpdate = true;
           const nextCountDetect = statusUpdate.afrCount !== undefined
             ? statusUpdate.afrCount
@@ -1654,6 +1667,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
             status: statusUpdate.status,
             currentCountDetect: nextCountDetect,
             afr: statusUpdate.afr !== undefined ? statusUpdate.afr : logger.afr,
+            afrExcluded: statusUpdate.afrExcluded ?? logger.afrExcluded,
             afrAverage: logger.afrAverage
           };
 

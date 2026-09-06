@@ -1,3 +1,5 @@
+import { AfrExclusionZone } from './afr-exclusion-zone.model';
+
 export type RaceConfigMode = 'live' | 'history';
 export type RaceConfigSource = 'snapshot' | 'global' | 'global_fallback';
 
@@ -12,6 +14,7 @@ export interface AfrConfig {
   graphs_afr_min: number;
   graphs_afr_max: number;
   afr_alert_on_off: boolean;
+  afr_exclusion_zones?: AfrExclusionZone[];
 }
 
 export interface RaceConfigSnapshotMeta {

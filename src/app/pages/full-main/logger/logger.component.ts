@@ -131,6 +131,8 @@ const MAX_STORE_POINTS = 10_000; // เก็บสูงสุดต่อไ�
 // ==== ค่ากรอบ AFR สำหรับสเกลสี (แก้ได้ตามต้องการ/หรือปล่อยให้คำนวณจากข้อมูล) ====
 const AFR_DEFAULT_MIN = 10;
 const AFR_DEFAULT_MAX = 20;
+const AFR_COLOR_MIN = 0;
+const AFR_COLOR_MAX = 20;
 const MAP_COLOR_PENALTY_HEX = '#ef4444';
 const MAP_COLOR_WARNING_HEX = '#f59e0b';
 const MAP_COLOR_NORMAL_HEX = '#22c55e';
@@ -156,7 +158,8 @@ function afrToColor(v:number, min:number, max:number, penaltyLow?:number, warnin
   if (penaltyLow !== undefined && warningHigh !== undefined && v >= penaltyLow && v < warningHigh) {
     return MAP_COLOR_WARNING_HEX;
   }
-  const t = clamp01((v - min) / Math.max(1e-9, max - min));
+  const colorValue = Math.min(AFR_COLOR_MAX, Math.max(AFR_COLOR_MIN, v));
+  const t = clamp01((colorValue - AFR_COLOR_MIN) / (AFR_COLOR_MAX - AFR_COLOR_MIN));
   const hue = 120 + (20 * t);
   return hslToHex(hue, 0.7, 0.45);
 }
@@ -4827,8 +4830,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     // คำนวณสัดส่วนของค่า afr ในช่วง lowerBound ถึง limit (หรือค่า default ถ้าไม่มี limit)
-    const upperBound = limit !== undefined && limit !== 0 ? limit : 20; // ใช้ limit หรือค่า default
-    const ratio = (afr - lowerBound) / (upperBound - lowerBound);
+    const colorAfr = Math.min(AFR_COLOR_MAX, Math.max(AFR_COLOR_MIN, Number(afr)));
+    const ratio = (colorAfr - lowerBound) / (AFR_COLOR_MAX - lowerBound);
 
     let red, green;
 
@@ -5923,14 +5926,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Uses same color logic as existing afrToColor function
    */
   private afrToColorUint8(afr: number): [number, number, number] {
-    const severity = this.getAfrMapSeverity(afr);
-    if (severity === 'penalty') {
-      return [255, 0, 0];
-    }
-    if (severity === 'warning') {
-      return [245, 158, 11];
-    }
-    return [34, 197, 94];
+    const hex = this.getAfrColor(afr).replace('#', '');
+    return [
+      Number.parseInt(hex.slice(0, 2), 16),
+      Number.parseInt(hex.slice(2, 4), 16),
+      Number.parseInt(hex.slice(4, 6), 16),
+    ];
   }
 
   /**
@@ -6347,14 +6348,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Convert AFR to hex color (for canvas)
    */
   private afrToColorHex(afr: number): string {
-    const severity = this.getAfrMapSeverity(afr);
-    if (severity === 'penalty') {
-      return MAP_COLOR_PENALTY_HEX;
-    }
-    if (severity === 'warning') {
-      return MAP_COLOR_WARNING_HEX;
-    }
-    return MAP_COLOR_NORMAL_HEX;
+    return this.getAfrColor(afr);
   }
 
   private getAfrMapSeverity(afr: number): 'penalty' | 'warning' | 'normal' {

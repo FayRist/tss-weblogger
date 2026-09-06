@@ -10,6 +10,7 @@ import { ApiConfigResponse, ApiDropDownoptionEventResponse, ApiDropDownResponse,
 import { ApiGetLoggerDateResponse, LoggerByDateItem } from '../model/api-response-Logger-model';
 import { configAFRModel } from '../pages/full-main/config-afr-modal/config-afr-modal.component';
 import { AfrConfig, RaceConfigMode, RaceConfigSnapshotApiResponse, RaceConfigSource } from '../model/api-race-config-snapshot.model';
+import { AfrExclusionZone, AfrExclusionZoneApiResponse, AfrExclusionZoneConfigPayload, AfrExclusionZonePayload } from '../model/afr-exclusion-zone.model';
 
 export interface AlertHistoryItem {
   event_id: number;
@@ -415,6 +416,49 @@ export class EventService {
     );
   }
 
+  getAfrExclusionZones(circuitName?: string): Observable<AfrExclusionZone[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.GET_AFR_EXCLUSION_ZONES);
+    let params = new HttpParams();
+    if (circuitName?.trim()) {
+      params = params.set('circuit', circuitName.trim().toLowerCase());
+    }
+    return this.http.get<AfrExclusionZoneApiResponse>(url, { params }).pipe(
+      map(response => response?.data ?? []),
+      catchError(error => handleHttpError('loading AFR exclusion zones', error))
+    );
+  }
+
+  addAfrExclusionZone(zone: AfrExclusionZonePayload): Observable<AfrExclusionZone> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.ADD_AFR_EXCLUSION_ZONE);
+    return this.http.post<{ data: AfrExclusionZone }>(url, zone).pipe(
+      map(response => response.data),
+      catchError(error => handleHttpError('creating AFR exclusion zone', error))
+    );
+  }
+
+  updateAfrExclusionZone(id: number, zone: AfrExclusionZonePayload): Observable<AfrExclusionZone> {
+    const baseUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.UPDATE_AFR_EXCLUSION_ZONE);
+    return this.http.put<{ data: AfrExclusionZone }>(`${baseUrl}/${id}`, zone).pipe(
+      map(response => response.data),
+      catchError(error => handleHttpError('updating AFR exclusion zone', error))
+    );
+  }
+
+  deleteAfrExclusionZone(id: number): Observable<unknown> {
+    const baseUrl = getApiUrl(APP_CONFIG.API.ENDPOINTS.DELETE_AFR_EXCLUSION_ZONE);
+    return this.http.delete(baseUrl + '/' + id).pipe(
+      catchError(error => handleHttpError('deleting AFR exclusion zone', error))
+    );
+  }
+
+  saveAfrExclusionZoneConfig(payload: AfrExclusionZoneConfigPayload): Observable<AfrExclusionZone[]> {
+    const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.SAVE_AFR_EXCLUSION_CONFIG);
+    return this.http.put<AfrExclusionZoneApiResponse>(url, payload).pipe(
+      map(response => response?.data ?? []),
+      catchError(error => handleHttpError('saving AFR exclusion zone config', error))
+    );
+  }
+
   getRaceConfigSnapshot(raceId: number, mode: RaceConfigMode = 'history'): Observable<RaceConfigSnapshotApiResponse> {
     const url = getApiUrl(APP_CONFIG.API.ENDPOINTS.RACE_CONFIG_SNAPSHOT);
     const race_id = Number(raceId);
@@ -505,6 +549,7 @@ export class EventService {
       graphs_afr_min: toNum(config?.graphs_afr_min, 0),
       graphs_afr_max: toNum(config?.graphs_afr_max, 30),
       afr_alert_on_off: toBool(config?.afr_alert_on_off, true),
+      afr_exclusion_zones: Array.isArray(config?.afr_exclusion_zones) ? config.afr_exclusion_zones : [],
     };
   }
 

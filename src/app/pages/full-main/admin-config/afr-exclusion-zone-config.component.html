@@ -1,0 +1,128 @@
+<section class="zone-config-card">
+  <div class="zone-config-heading">
+    <div>
+      <h4>AFR Exclusion Zones</h4>
+      <p>พื้นที่ที่ไม่ใช้สำหรับ AFR count และ alert โดย config จะถูก freeze เมื่อ race เริ่ม</p>
+    </div>
+    <label class="circuit-picker">
+      <span>Circuit</span>
+      <select [(ngModel)]="selectedCircuit" (ngModelChange)="onCircuitChange()">
+        @for (circuit of circuits; track circuit) {
+          <option [value]="circuit">{{ circuitLabel(circuit) }}</option>
+        }
+      </select>
+    </label>
+  </div>
+
+  <div class="config-save-bar" [class.has-changes]="configDirty">
+    <span>{{ configDirty ? 'มีการแก้ไขที่ยังไม่บันทึกลง DB' : 'Config ตรงกับข้อมูลใน DB' }}</span>
+    <div class="config-save-actions">
+      @if (configDirty) {
+        <button type="button" class="secondary-button" (click)="discardChanges()">ทิ้งการแก้ไข</button>
+      }
+      <button type="button" class="save-config-button" [disabled]="saving || drawingPolygon || !configDirty" (click)="saveConfig()">
+        {{ saving ? 'กำลังบันทึก Config...' : 'บันทึก Config ทั้งหมด (' + zones.length + ' พื้นที่)' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="zone-editor-layout">
+    <div class="zone-editor">
+      <div class="zone-editor-title">
+        <strong>{{ editingZoneId ? 'แก้ไขพื้นที่' : 'เพิ่มพื้นที่ใหม่' }}</strong>
+        @if (editingZoneId) {
+          <button type="button" class="link-button" (click)="resetEditor()">ยกเลิกแก้ไข</button>
+        }
+      </div>
+
+      <label>ชื่อพื้นที่
+        <input type="text" [(ngModel)]="zoneName" placeholder="เช่น Pit lane / Service area">
+      </label>
+
+      <label>รูปแบบพื้นที่
+        <select [(ngModel)]="shapeType" (ngModelChange)="onShapeTypeChange()">
+          <option value="circle">Circle</option>
+          <option value="polygon">Polygon</option>
+        </select>
+      </label>
+
+      @if (shapeType === 'circle') {
+        <div class="field-grid">
+          <label>Center latitude
+            <input type="number" step="0.0000001" [(ngModel)]="centerLat" (ngModelChange)="onCircleValueChange()">
+          </label>
+          <label>Center longitude
+            <input type="number" step="0.0000001" [(ngModel)]="centerLon" (ngModelChange)="onCircleValueChange()">
+          </label>
+        </div>
+        <label>Radius (เมตร)
+          <input type="number" min="1" step="1" [(ngModel)]="radiusM" (ngModelChange)="onCircleValueChange()">
+        </label>
+        <p class="helper">คลิกบนแผนที่เพื่อย้ายจุดศูนย์กลาง</p>
+      } @else {
+        <div class="polygon-toolbar">
+          <button
+            type="button"
+            [class.primary-button]="!drawingPolygon"
+            [class.cancel-button]="drawingPolygon"
+            (click)="drawingPolygon ? cancelPolygon() : startPolygon()"
+            [attr.aria-pressed]="drawingPolygon">
+            {{ drawingPolygon ? 'ยกเลิกการวาด' : (polygonPoints.length >= 3 ? 'วาดใหม่' : 'เริ่มลากวาดพื้นที่') }}
+          </button>
+        </div>
+        <p class="helper">
+          {{ drawingPolygon
+            ? 'กดเมาส์ค้างแล้วลากรอบพื้นที่ จากนั้นปล่อยเมาส์เพื่อจบการวาด'
+            : 'กดปุ่มแล้วกดเมาส์ค้างบนแผนที่เพื่อลากเส้นขอบเขตพื้นที่' }}
+        </p>
+        @if (!drawingPolygon && polygonPoints.length >= 3) {
+          <div class="point-summary">เส้นขอบเขตพร้อมบันทึกแล้ว ({{ polygonPoints.length }} จุด)</div>
+        }
+      }
+
+      <label class="enabled-check">
+        <input type="checkbox" [(ngModel)]="enabled">
+        เปิดใช้งานพื้นที่นี้
+      </label>
+
+      @if (formError) {
+        <div class="form-error" role="alert">{{ formError }}</div>
+      }
+      <button type="button" class="save-button" [disabled]="saving || drawingPolygon" (click)="savePreset()">
+        {{ editingZoneId ? 'บันทึกพรีเซ็ทที่แก้ไข' : 'บันทึกเป็นพรีเซ็ท' }}
+      </button>
+    </div>
+
+    <div class="zone-map-wrap">
+      <div #zoneMap class="zone-map" aria-label="แผนที่กำหนด AFR exclusion zone"></div>
+      <div class="map-caption">สีน้ำเงิน = กำลังวาด · สีส้ม = พรีเซ็ทยังไม่บันทึก · สีแดง = บันทึกใน DB แล้ว · สีเทา = ปิดใช้งาน</div>
+    </div>
+  </div>
+
+  <div class="zone-list-heading">
+    <strong>พื้นที่ของ {{ circuitLabel(selectedCircuit) }}</strong>
+    @if (loading) {
+      <span>กำลังโหลด...</span>
+    }
+  </div>
+  <div class="zone-list">
+    @for (zone of zones; track zone.id) {
+      <div class="zone-list-row" [class.disabled-zone]="!zone.enabled">
+        <div>
+          <strong>{{ zone.zone_name }}</strong>
+          <span>
+            {{ shapeLabel(zone.shape_type) }} · {{ zone.enabled ? 'Enabled' : 'Disabled' }} ·
+            {{ zone.id < 0 ? 'ยังไม่บันทึก DB' : 'บันทึกใน DB แล้ว' }}
+          </span>
+        </div>
+        <div class="zone-actions">
+          <button type="button" class="link-button" (click)="editZone(zone)">แก้ไข</button>
+          <button type="button" class="link-button" (click)="toggleZone(zone)">{{ zone.enabled ? 'ปิด' : 'เปิด' }}</button>
+          <button type="button" class="delete-button" (click)="deleteZone(zone)">ลบ</button>
+        </div>
+      </div>
+    } @empty {
+      <div class="empty-zones">ยังไม่มีพื้นที่ยกเว้นสำหรับ circuit นี้</div>
+    }
+  </div>
+</section>

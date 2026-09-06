@@ -263,6 +263,7 @@ export interface LoggerItem {
   currentCountDetect: number;  // จำนวนนับปัจจุบัน (แสดงในคอลัมน์ Count)
   afr?: number | null;
   afrAverage?: number | null;
+  afrExcluded?: boolean;
   status?: string | null;
 
   // ของเดิมที่คุณมี

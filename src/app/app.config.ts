@@ -57,6 +57,13 @@ export const APP_CONFIG = {
       DELETE_RACE: '/race/deleteRace',
       EXPORT_RACE_DATA_LOGGER: '/race/exportDataLoggerInRace',
 
+      // AFR exclusion zones
+      GET_AFR_EXCLUSION_ZONES: '/afr-exclusion-zones',
+      SAVE_AFR_EXCLUSION_CONFIG: '/afr-exclusion-zones/config',
+      ADD_AFR_EXCLUSION_ZONE: '/afr-exclusion-zones',
+      UPDATE_AFR_EXCLUSION_ZONE: '/afr-exclusion-zones',
+      DELETE_AFR_EXCLUSION_ZONE: '/afr-exclusion-zones',
+
       // Loggers/Racers
       GET_LOGGERS: '/logger/get-logger',
       GET_SETTING_LOGGERS: '/logger/get-setting-logger',
