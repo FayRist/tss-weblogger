@@ -1,29 +1,50 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import * as L from 'leaflet';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { ToastrService } from 'ngx-toastr';
-import { APP_CONFIG, getMapCenterForCircuit } from '../../../app.config';
+import { APP_CONFIG } from '../../../app.config';
 import { AfrExclusionShapeType, AfrExclusionZone, AfrExclusionZoneConfigItemPayload, AfrExclusionZoneConfigPayload, AfrExclusionZonePayload, AfrExclusionZonePoint } from '../../../model/afr-exclusion-zone.model';
+import { MapPointConfig, MapViewConfig } from '../../../model/map-point-config.model';
 import { EventService } from '../../../service/event.service';
+import { MapPointConfigService } from '../../../service/map-point-config.service';
+import { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
+import { MapboxOverlay } from '@deck.gl/mapbox';
+import { LineLayer, PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
+import type { Layer } from '@deck.gl/core';
+import { forkJoin, of } from 'rxjs';
+
+type ZoneLayerDatum = { zone: AfrExclusionZone };
 
 @Component({
   selector: 'app-afr-exclusion-zone-config',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule],
   templateUrl: './afr-exclusion-zone-config.component.html',
   styleUrl: './afr-exclusion-zone-config.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('zoneMap', { static: true }) zoneMap!: ElementRef<HTMLDivElement>;
+  @Input() initialCircuit = '';
+  @Input() initialMapConfig: MapPointConfig | null = null;
+  @Input() initialMapName = '';
 
-  readonly circuits = Object.keys(APP_CONFIG.MAP.CIRCUITS);
+  circuits = Object.keys(APP_CONFIG.MAP.CIRCUITS);
+  private circuitNames: Record<string, string> = {
+    bic: 'Bira International Circuit',
+    bric: 'Buriram International Circuit',
+    sic: 'Petronas Sepang International Circuit',
+    bsc: 'Bangsaen Street Circuit',
+  };
   selectedCircuit = this.circuits[0] ?? '';
   zones: AfrExclusionZone[] = [];
   loading = false;
   saving = false;
   configDirty = false;
+  mapConfigDirty = false;
+  zoneConfigDirty = false;
   drawingPolygon = false;
   editingZoneId: number | null = null;
   formError = '';
@@ -35,14 +56,22 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
   centerLon: number | null = null;
   radiusM = 100;
   polygonPoints: AfrExclusionZonePoint[] = [];
+  mapCode = '';
+  mapName = '';
+  mapLat = 0;
+  mapLon = 0;
+  mapZoom = 13;
+  mapRotation = 0;
+  mapFormError = '';
 
-  private map: L.Map | null = null;
-  private savedLayerGroup: L.LayerGroup = L.layerGroup();
-  private draftLayer: L.Layer | null = null;
+  private map: MapLibreMap | null = null;
+  private deckOverlay: MapboxOverlay | null = null;
+  private mapResizeObserver: ResizeObserver | null = null;
+  private mapViewConfig: MapViewConfig | null = null;
   private loadedCircuit = this.selectedCircuit;
   private nextDraftZoneId = -1;
   private drawingPointerId: number | null = null;
-  private lastFreehandContainerPoint: L.Point | null = null;
+  private lastFreehandContainerPoint: { x: number; y: number } | null = null;
   private pointsBeforeDrawing: AfrExclusionZonePoint[] = [];
   private readonly freehandPointDistancePx = 4;
   private readonly maxFreehandPoints = 500;
@@ -52,15 +81,38 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
   private readonly mapPointerUpHandler = (event: PointerEvent) => this.onMapPointerUp(event);
   private readonly mapPointerCancelHandler = (event: PointerEvent) => this.onMapPointerCancel(event);
 
-  constructor(private eventService: EventService, private toastr: ToastrService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private eventService: EventService,
+    private toastr: ToastrService,
+    private cdr: ChangeDetectorRef,
+    private mapPointConfigService: MapPointConfigService,
+  ) {}
 
   ngOnInit(): void {
+    const requestedCircuit = String(this.initialCircuit ?? '').trim().toLowerCase();
+    if (requestedCircuit) {
+      this.selectedCircuit = requestedCircuit;
+    }
+    this.initializeMapConfig();
     this.setDefaultCenter();
     this.loadZones();
+    this.loadMapCircuits();
+    this.mapPointConfigService.load().subscribe(() => {
+      if (!this.mapConfigDirty) {
+        this.initializeMapConfig();
+        this.setDefaultCenter();
+      }
+      this.updateMapView();
+      this.renderDeckLayers();
+      this.cdr.markForCheck();
+    });
   }
 
   ngAfterViewInit(): void {
     this.initializeMap();
+    this.mapResizeObserver = new ResizeObserver(() => this.map?.resize());
+    this.mapResizeObserver.observe(this.zoneMap.nativeElement);
+    setTimeout(() => this.map?.resize(), 0);
   }
 
   ngOnDestroy(): void {
@@ -70,6 +122,12 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     mapContainer?.removeEventListener('pointermove', this.mapPointerMoveHandler);
     mapContainer?.removeEventListener('pointerup', this.mapPointerUpHandler);
     mapContainer?.removeEventListener('pointercancel', this.mapPointerCancelHandler);
+    if (this.map && this.deckOverlay) {
+      this.map.removeControl(this.deckOverlay);
+    }
+    this.mapResizeObserver?.disconnect();
+    this.mapResizeObserver = null;
+    this.deckOverlay = null;
     this.map?.remove();
   }
 
@@ -80,10 +138,28 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
       return;
     }
     this.resetEditor();
-    this.configDirty = false;
+    this.mapConfigDirty = false;
+    this.zoneConfigDirty = false;
+    this.updateConfigDirty();
+    this.initializeMapConfig();
     this.setDefaultCenter();
     this.loadZones();
-    this.map?.setView(this.mapCenter(), this.mapZoom());
+    this.updateMapView();
+  }
+
+  onMapViewConfigChange(): void {
+    this.mapFormError = '';
+    this.mapViewConfig = {
+      lat: Number(this.mapLat),
+      lng: Number(this.mapLon),
+      zoom: Number(this.mapZoom),
+      rotation: Number(this.mapRotation),
+    };
+    this.mapConfigDirty = true;
+    this.updateConfigDirty();
+    this.updateMapView();
+    this.renderDraft();
+    this.cdr.markForCheck();
   }
 
   onShapeTypeChange(): void {
@@ -102,7 +178,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     this.pointsBeforeDrawing = this.polygonPoints.map(point => ({ ...point }));
     this.polygonPoints = [];
     this.drawingPolygon = true;
-    this.removeDraftLayer();
+    this.renderDeckLayers();
     this.setMapDrawingMode(true);
     this.cdr.markForCheck();
   }
@@ -115,7 +191,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     this.polygonPoints = this.pointsBeforeDrawing.map(point => ({ ...point }));
     this.pointsBeforeDrawing = [];
     this.formError = '';
-    this.removeDraftLayer();
+    this.renderDeckLayers();
     this.setMapDrawingMode(false);
     this.renderDraft();
     this.cdr.markForCheck();
@@ -140,7 +216,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     this.polygonPoints = zone.points.map(point => ({ ...point }));
     this.drawingPolygon = false;
     this.formError = '';
-    this.map?.setView(this.mapCenter(), this.mapZoom());
+    this.updateMapView();
     this.renderDraft();
   }
 
@@ -158,7 +234,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     this.drawingPolygon = false;
     this.formError = '';
     this.setMapDrawingMode(false);
-    this.removeDraftLayer();
+    this.renderDeckLayers();
     if (this.shapeType === 'circle') {
       this.setDefaultCenter();
     }
@@ -181,10 +257,11 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     this.zones = existingZone
       ? this.zones.map(zone => zone.id === existingZone.id ? preset : zone)
       : [...this.zones, preset];
-    this.configDirty = true;
+    this.zoneConfigDirty = true;
+    this.updateConfigDirty();
     this.toastr.success('เพิ่มพื้นที่เข้า Preset แล้ว ยังไม่ได้บันทึกลง DB');
     this.resetEditor(false);
-    this.renderSavedZones();
+    this.renderDeckLayers();
     this.cdr.markForCheck();
   }
 
@@ -192,8 +269,9 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     this.zones = this.zones.map(item => item.id === zone.id
       ? { ...item, enabled: !item.enabled }
       : item);
-    this.configDirty = true;
-    this.renderSavedZones();
+    this.zoneConfigDirty = true;
+    this.updateConfigDirty();
+    this.renderDeckLayers();
     this.cdr.markForCheck();
   }
 
@@ -201,8 +279,9 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     if (!confirm(`ลบพื้นที่ ${zone.zone_name} หรือไม่?`)) return;
     this.zones = this.zones.filter(item => item.id !== zone.id);
     if (this.editingZoneId === zone.id) this.resetEditor();
-    this.configDirty = true;
-    this.renderSavedZones();
+    this.zoneConfigDirty = true;
+    this.updateConfigDirty();
+    this.renderDeckLayers();
     this.toastr.success('ลบพื้นที่ออกจาก Preset แล้ว จะลบจาก DB เมื่อบันทึก Config');
     this.cdr.markForCheck();
   }
@@ -214,25 +293,43 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
       return;
     }
 
-    const payload: AfrExclusionZoneConfigPayload = {
-      circuit_name: this.selectedCircuit,
-      zones: this.zones.map(zone => this.toConfigItem(zone)),
-    };
+    const mapPayload = this.mapConfigDirty ? this.buildMapPayload() : null;
+    if (this.mapConfigDirty && !mapPayload) return;
+
+    const saveMap$ = mapPayload ? this.mapPointConfigService.save(mapPayload) : of(null);
+    const saveZones$ = this.zoneConfigDirty
+      ? this.eventService.saveAfrExclusionZoneConfig({
+        circuit_name: this.selectedCircuit,
+        zones: this.zones.map(zone => this.toConfigItem(zone)),
+      })
+      : of(null);
+    const savingZones = this.zoneConfigDirty;
+
     this.saving = true;
-    this.eventService.saveAfrExclusionZoneConfig(payload).subscribe({
-      next: (zones) => {
-        this.zones = zones;
-        this.configDirty = false;
+    forkJoin({ map: saveMap$, zones: saveZones$ }).subscribe({
+      next: ({ map, zones }) => {
+        if (map) {
+          this.applySavedMapConfig(map);
+          this.mapConfigDirty = false;
+        }
+        if (Array.isArray(zones)) {
+          this.zones = zones;
+          this.zoneConfigDirty = false;
+          this.loadedCircuit = this.selectedCircuit;
+          this.resetEditor();
+        }
+        this.updateConfigDirty();
         this.saving = false;
-        this.loadedCircuit = this.selectedCircuit;
-        this.toastr.success(`บันทึก AFR Config แล้ว ${zones.length} พื้นที่`);
-        this.resetEditor();
-        this.renderSavedZones();
+        this.renderDeckLayers();
+        const savedParts = [map ? 'Map Config' : '', savingZones ? 'AFR Config' : ''].filter(Boolean).join(' และ ');
+        this.toastr.success(`บันทึก ${savedParts} แล้ว`);
         this.cdr.markForCheck();
       },
       error: (error) => {
         this.saving = false;
-        this.formError = this.errorMessage(error, 'บันทึก AFR Config ไม่สำเร็จ');
+        const message = this.errorMessage(error, 'บันทึก Map/AFR Config ไม่สำเร็จ');
+        this.formError = message;
+        this.mapFormError = message;
         this.cdr.markForCheck();
       },
     });
@@ -240,10 +337,15 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
 
   discardChanges(): void {
     if (!this.configDirty) return;
-    if (!confirm('ทิ้งการแก้ไข AFR Config ที่ยังไม่ได้บันทึกหรือไม่?')) return;
+    if (!confirm('ทิ้งการแก้ไข Map และ AFR Config ที่ยังไม่ได้บันทึกหรือไม่?')) return;
 
     this.resetEditor();
-    this.configDirty = false;
+    this.mapConfigDirty = false;
+    this.zoneConfigDirty = false;
+    this.updateConfigDirty();
+    this.initializeMapConfig();
+    this.setDefaultCenter();
+    this.updateMapView();
     this.loadZones();
   }
 
@@ -252,8 +354,109 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
   }
 
   circuitLabel(circuit: string): string {
-    const labels: Record<string, string> = { bic: 'Bira Circuit', bric: 'Chang International Circuit', bsc: 'Bangsaen Street Circuit' };
-    return labels[circuit] ?? circuit.toUpperCase();
+    return this.circuitNames[circuit] ?? circuit.toUpperCase();
+  }
+
+  private initializeMapConfig(): void {
+    const mapCode = this.selectedCircuit.toLowerCase();
+    const saved = this.mapPointConfigService.getConfig(mapCode) ?? this.initialMapConfig;
+    const fallback = this.mapPointConfigService.getForCircuit(mapCode);
+
+    this.mapCode = mapCode;
+    this.mapName = saved?.map_name || this.initialMapName || this.circuitLabel(mapCode);
+    this.mapLat = saved?.lat ?? fallback?.lat ?? 13.7563;
+    this.mapLon = saved?.lon ?? fallback?.lng ?? 100.5018;
+    this.mapZoom = saved?.zoom ?? fallback?.zoom ?? 13;
+    this.mapRotation = saved?.rotation ?? fallback?.rotation ?? 0;
+    this.mapViewConfig = {
+      lat: this.mapLat,
+      lng: this.mapLon,
+      zoom: this.mapZoom,
+      rotation: this.mapRotation,
+    };
+    this.mapFormError = '';
+  }
+
+  private buildMapPayload(): MapPointConfig | null {
+    this.mapFormError = '';
+    const mapCode = this.mapCode.trim().toLowerCase();
+    const mapName = this.mapName.trim();
+    const lat = Number(this.mapLat);
+    const lon = Number(this.mapLon);
+    const zoom = Number(this.mapZoom);
+    const rotation = Number(this.mapRotation);
+    const valid = mapCode && mapName
+      && Number.isFinite(lat) && lat >= -90 && lat <= 90
+      && Number.isFinite(lon) && lon >= -180 && lon <= 180
+      && Number.isFinite(zoom) && zoom >= 0 && zoom <= 24
+      && Number.isFinite(rotation) && rotation >= -360 && rotation <= 360;
+
+    if (!valid) {
+      this.mapFormError = 'กรุณาตรวจสอบค่า Map Config ให้ถูกต้อง';
+      return null;
+    }
+
+    return {
+      map_code: mapCode,
+      map_name: mapName,
+      lat,
+      lon,
+      zoom,
+      rotation,
+    };
+  }
+
+  private applySavedMapConfig(config: MapPointConfig): void {
+    this.initialMapConfig = config;
+    this.mapCode = config.map_code;
+    this.mapName = config.map_name;
+    this.mapLat = config.lat;
+    this.mapLon = config.lon;
+    this.mapZoom = config.zoom;
+    this.mapRotation = config.rotation;
+    this.mapViewConfig = {
+      lat: config.lat,
+      lng: config.lon,
+      zoom: config.zoom,
+      rotation: config.rotation,
+    };
+    this.updateMapView();
+  }
+
+  private updateConfigDirty(): void {
+    this.configDirty = this.mapConfigDirty || this.zoneConfigDirty;
+  }
+
+  private loadMapCircuits(): void {
+    this.eventService.getConfigAdmin('map_list').subscribe({
+      next: (rows: any) => {
+        const configs = Array.isArray(rows) ? rows : [];
+        const nextCircuits = configs
+          .map(row => String(row?.value ?? '').trim().toLowerCase())
+          .filter((code, index, values) => code && values.indexOf(code) === index);
+        if (nextCircuits.length === 0) return;
+
+        this.circuits = nextCircuits;
+        this.circuitNames = configs.reduce((labels: Record<string, string>, row: any) => {
+          const code = String(row?.value ?? '').trim().toLowerCase();
+          const name = String(row?.config_name ?? '').trim();
+          if (code && name) labels[code] = name;
+          return labels;
+        }, {});
+
+        if (!this.circuits.includes(this.selectedCircuit)) {
+          this.selectedCircuit = this.circuits[0];
+          this.initializeMapConfig();
+          this.setDefaultCenter();
+          this.loadZones();
+          this.updateMapView();
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        // Keep the hardcoded circuit list when map_list is unavailable.
+      },
+    });
   }
 
   private loadZones(): void {
@@ -263,10 +466,11 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
       next: (zones) => {
         this.zones = zones;
         this.loading = false;
-        this.configDirty = false;
+        this.zoneConfigDirty = false;
+        this.updateConfigDirty();
         this.loadedCircuit = this.selectedCircuit;
         this.nextDraftZoneId = -1;
-        this.renderSavedZones();
+        this.renderDeckLayers();
         this.cdr.markForCheck();
       },
       error: (error) => {
@@ -292,25 +496,32 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
 
   private initializeMap(): void {
     const center = this.mapCenter();
-    this.map = L.map(this.zoneMap.nativeElement, { doubleClickZoom: false }).setView(center, this.mapZoom());
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 20,
-    }).addTo(this.map);
-    this.savedLayerGroup.addTo(this.map);
-    this.map.on('click', (event: L.LeafletMouseEvent) => this.onMapClick(event.latlng));
+    this.map = new MapLibreMap({
+      container: this.zoneMap.nativeElement,
+      style: `https://api.maptiler.com/maps/satellite/style.json?key=${APP_CONFIG.MAP.API_KEY}`,
+      center: [center.lng, center.lat],
+      zoom: this.getMapZoom(),
+      pitch: 0,
+      bearing: this.getMapRotation(),
+    });
+    this.deckOverlay = new MapboxOverlay({
+      interleaved: true,
+      layers: [],
+    });
+    this.map.addControl(this.deckOverlay);
+    this.map.on('click', (event: MapMouseEvent) => this.onMapClick(event));
     const mapContainer = this.map.getContainer();
     mapContainer.addEventListener('pointerdown', this.mapPointerDownHandler);
     mapContainer.addEventListener('pointermove', this.mapPointerMoveHandler);
     mapContainer.addEventListener('pointerup', this.mapPointerUpHandler);
     mapContainer.addEventListener('pointercancel', this.mapPointerCancelHandler);
-    this.renderSavedZones();
+    this.renderDeckLayers();
   }
 
-  private onMapClick(latlng: L.LatLng): void {
+  private onMapClick(event: MapMouseEvent): void {
     if (this.shapeType === 'circle' && !this.drawingPolygon) {
-      this.centerLat = Number(latlng.lat.toFixed(7));
-      this.centerLon = Number(latlng.lng.toFixed(7));
+      this.centerLat = Number(event.lngLat.lat.toFixed(7));
+      this.centerLon = Number(event.lngLat.lng.toFixed(7));
       this.renderDraft();
     }
   }
@@ -323,7 +534,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     event.stopPropagation();
     this.drawingPointerId = event.pointerId;
     this.map.getContainer().setPointerCapture?.(event.pointerId);
-    this.map.dragging.disable();
+    this.map.dragPan.disable();
     this.lastFreehandContainerPoint = null;
     this.appendFreehandPoint(event);
   }
@@ -355,15 +566,24 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
   private appendFreehandPoint(event: PointerEvent): void {
     if (!this.map) return;
 
-    const containerPoint = this.map.mouseEventToContainerPoint(event);
-    if (this.lastFreehandContainerPoint && this.lastFreehandContainerPoint.distanceTo(containerPoint) < this.freehandPointDistancePx) {
+    const container = this.map.getContainer();
+    const rect = container.getBoundingClientRect();
+    const containerPoint = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+    if (this.lastFreehandContainerPoint
+      && Math.hypot(
+        this.lastFreehandContainerPoint.x - containerPoint.x,
+        this.lastFreehandContainerPoint.y - containerPoint.y,
+      ) < this.freehandPointDistancePx) {
       return;
     }
 
-    const latLng = this.map.containerPointToLatLng(containerPoint);
+    const lngLat = this.map.unproject([containerPoint.x, containerPoint.y]);
     this.polygonPoints = [...this.polygonPoints, {
-      lat: Number(latLng.lat.toFixed(7)),
-      lon: Number(latLng.lng.toFixed(7)),
+      lat: Number(lngLat.lat.toFixed(7)),
+      lon: Number(lngLat.lng.toFixed(7)),
     }];
     this.lastFreehandContainerPoint = containerPoint;
     this.renderFreehandPreview();
@@ -401,22 +621,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
   }
 
   private renderFreehandPreview(): void {
-    if (!this.map) return;
-
-    const latLngs: L.LatLngExpression[] = this.polygonPoints.map(point => [point.lat, point.lon]);
-    const previewLayer = this.draftLayer as L.Polyline | null;
-    if (previewLayer && typeof previewLayer.setLatLngs === 'function') {
-      previewLayer.setLatLngs(latLngs);
-      return;
-    }
-
-    this.removeDraftLayer();
-    this.draftLayer = L.polyline(latLngs, {
-      color: '#2563eb',
-      weight: 3,
-      dashArray: '6 4',
-      interactive: false,
-    }).addTo(this.map);
+    this.renderDeckLayers();
   }
 
   private releaseFreehandPointer(): void {
@@ -426,7 +631,7 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     }
     this.drawingPointerId = null;
     this.lastFreehandContainerPoint = null;
-    this.map?.dragging.enable();
+    this.map?.dragPan.enable();
   }
 
   private setMapDrawingMode(active: boolean): void {
@@ -482,58 +687,168 @@ export class AfrExclusionZoneConfigComponent implements OnInit, AfterViewInit, O
     };
   }
 
-  private renderSavedZones(): void {
-    if (!this.map) return;
-    this.savedLayerGroup.clearLayers();
-    this.zones.forEach(zone => {
-      const color = !zone.enabled ? '#64748b' : zone.id < 0 ? '#f59e0b' : '#dc2626';
-      let layer: L.Layer | null = null;
-      if (zone.shape_type === 'circle' && zone.center_lat != null && zone.center_lon != null && zone.radius_m != null) {
-        layer = L.circle([zone.center_lat, zone.center_lon], { radius: zone.radius_m, color, fillColor: color, fillOpacity: 0.15, weight: 2 });
-      } else if (zone.shape_type === 'polygon' && zone.points.length >= 3) {
-        layer = L.polygon(zone.points.map(point => [point.lat, point.lon] as [number, number]), { color, fillColor: color, fillOpacity: 0.15, weight: 2 });
-      }
-      if (layer) {
-        layer.bindTooltip(`${zone.zone_name} (${this.shapeLabel(zone.shape_type)})`);
-        layer.on('click', () => {
-          if (!this.drawingPolygon) this.editZone(zone);
-        });
-        this.savedLayerGroup.addLayer(layer);
-      }
-    });
-  }
-
   private renderDraft(): void {
-    if (!this.map) return;
-    this.removeDraftLayer();
-    const options = { color: '#2563eb', fillColor: '#60a5fa', fillOpacity: 0.2, weight: 3, dashArray: '6 4' };
-    if (this.shapeType === 'circle' && this.centerLat != null && this.centerLon != null && Number.isFinite(this.radiusM) && this.radiusM > 0) {
-      this.draftLayer = L.circle([this.centerLat, this.centerLon], { ...options, radius: this.radiusM }).addTo(this.map);
-    } else if (this.shapeType === 'polygon' && this.polygonPoints.length >= 2) {
-      this.draftLayer = L.polygon(this.polygonPoints.map(point => [point.lat, point.lon] as [number, number]), options).addTo(this.map);
-    }
-  }
-
-  private removeDraftLayer(): void {
-    if (this.draftLayer && this.map) {
-      this.map.removeLayer(this.draftLayer);
-    }
-    this.draftLayer = null;
+    this.renderDeckLayers();
   }
 
   private setDefaultCenter(): void {
-    const center = getMapCenterForCircuit(this.selectedCircuit);
+    const center = this.currentMapView();
     this.centerLat = center?.lat ?? null;
     this.centerLon = center?.lng ?? null;
   }
 
-  private mapCenter(): L.LatLngExpression {
-    const center = getMapCenterForCircuit(this.selectedCircuit);
-    return [center?.lat ?? 13.7563, center?.lng ?? 100.5018];
+  private mapCenter(): { lat: number; lng: number } {
+    const center = this.currentMapView();
+    return { lat: center?.lat ?? 13.7563, lng: center?.lng ?? 100.5018 };
   }
 
-  private mapZoom(): number {
-    return getMapCenterForCircuit(this.selectedCircuit)?.zoom ?? 13;
+  private getMapZoom(): number {
+    return this.currentMapView()?.zoom ?? 13;
+  }
+
+  private getMapRotation(): number {
+    return this.currentMapView()?.rotation ?? 0;
+  }
+
+  private currentMapView(): MapViewConfig | null {
+    const override = this.mapViewConfig;
+    if (override
+      && Number.isFinite(override.lat) && override.lat >= -90 && override.lat <= 90
+      && Number.isFinite(override.lng) && override.lng >= -180 && override.lng <= 180
+      && Number.isFinite(override.zoom) && override.zoom >= 0 && override.zoom <= 24
+      && Number.isFinite(override.rotation) && override.rotation >= -360 && override.rotation <= 360) {
+      return override;
+    }
+    return this.mapPointConfigService.getForCircuit(this.selectedCircuit);
+  }
+
+  private updateMapView(): void {
+    if (!this.map) return;
+    const center = this.mapCenter();
+    this.map.jumpTo({
+      center: [center.lng, center.lat],
+      zoom: this.getMapZoom(),
+      bearing: this.getMapRotation(),
+      pitch: 0,
+    });
+  }
+
+  private renderDeckLayers(): void {
+    if (!this.deckOverlay) return;
+
+    const layers: Layer[] = [];
+    const circleData: ZoneLayerDatum[] = this.zones
+      .filter(zone => zone.shape_type === 'circle' && zone.center_lat != null && zone.center_lon != null && zone.radius_m != null)
+      .map(zone => ({ zone }));
+    const polygonData: ZoneLayerDatum[] = this.zones
+      .filter(zone => zone.shape_type === 'polygon' && zone.points.length >= 3)
+      .map(zone => ({ zone }));
+
+    if (circleData.length > 0) {
+      layers.push(new ScatterplotLayer({
+        id: 'afr-zone-circles',
+        data: circleData,
+        getPosition: (item: ZoneLayerDatum) => [item.zone.center_lon!, item.zone.center_lat!],
+        getRadius: (item: ZoneLayerDatum) => item.zone.radius_m!,
+        radiusUnits: 'meters',
+        radiusMinPixels: 2,
+        getFillColor: (item: ZoneLayerDatum) => this.zoneColor(item.zone),
+        getLineColor: (item: ZoneLayerDatum) => this.zoneLineColor(item.zone),
+        lineWidthMinPixels: 2,
+        stroked: true,
+        filled: true,
+        pickable: true,
+        onClick: (info: any) => this.onZoneLayerClick(info),
+        parameters: { depthTest: false },
+      }));
+    }
+
+    if (polygonData.length > 0) {
+      layers.push(new PolygonLayer({
+        id: 'afr-zone-polygons',
+        data: polygonData,
+        getPolygon: (item: ZoneLayerDatum) => item.zone.points.map(point => [point.lon, point.lat]),
+        getFillColor: (item: ZoneLayerDatum) => this.zoneColor(item.zone),
+        getLineColor: (item: ZoneLayerDatum) => this.zoneLineColor(item.zone),
+        getLineWidth: 2,
+        lineWidthUnits: 'pixels',
+        stroked: true,
+        filled: true,
+        pickable: true,
+        onClick: (info: any) => this.onZoneLayerClick(info),
+        parameters: { depthTest: false },
+      }));
+    }
+
+    if (this.shapeType === 'circle' && this.centerLat != null && this.centerLon != null
+      && Number.isFinite(this.radiusM) && this.radiusM > 0) {
+      layers.push(new ScatterplotLayer({
+        id: 'afr-zone-draft-circle',
+        data: [{ position: [this.centerLon, this.centerLat], radius: this.radiusM }],
+        getPosition: (item: any) => item.position,
+        getRadius: (item: any) => item.radius,
+        radiusUnits: 'meters',
+        radiusMinPixels: 2,
+        getFillColor: [96, 165, 250, 52],
+        getLineColor: [37, 99, 235, 255],
+        lineWidthMinPixels: 3,
+        stroked: true,
+        filled: true,
+        pickable: false,
+        parameters: { depthTest: false },
+      }));
+    }
+
+    if (this.shapeType === 'polygon' && this.polygonPoints.length >= 2) {
+      const path = this.polygonPoints.map(point => [point.lon, point.lat]);
+      if (!this.drawingPolygon && this.polygonPoints.length >= 3) {
+        layers.push(new PolygonLayer({
+          id: 'afr-zone-draft-polygon',
+          data: [{ path }],
+          getPolygon: (item: any) => item.path,
+          getFillColor: [96, 165, 250, 52],
+          getLineColor: [37, 99, 235, 255],
+          getLineWidth: 3,
+          lineWidthUnits: 'pixels',
+          stroked: true,
+          filled: true,
+          pickable: false,
+          parameters: { depthTest: false },
+        }));
+      } else {
+        layers.push(new LineLayer({
+          id: 'afr-zone-freehand-preview',
+          data: [{ path }],
+          getPath: (item: any) => item.path,
+          getColor: [37, 99, 235, 255],
+          getWidth: 3,
+          widthUnits: 'pixels',
+          pickable: false,
+          parameters: { depthTest: false },
+        }));
+      }
+    }
+
+    this.deckOverlay.setProps({ layers });
+  }
+
+  private onZoneLayerClick(info: any): void {
+    const zone = (info?.object as ZoneLayerDatum | undefined)?.zone;
+    if (zone && !this.drawingPolygon) {
+      this.editZone(zone);
+    }
+  }
+
+  private zoneColor(zone: AfrExclusionZone): [number, number, number, number] {
+    if (!zone.enabled) return [100, 116, 139, 38];
+    if (zone.id < 0) return [245, 158, 11, 52];
+    return [220, 38, 38, 52];
+  }
+
+  private zoneLineColor(zone: AfrExclusionZone): [number, number, number, number] {
+    if (!zone.enabled) return [100, 116, 139, 230];
+    if (zone.id < 0) return [245, 158, 11, 255];
+    return [220, 38, 38, 255];
   }
 
   private errorMessage(error: unknown, fallback: string): string {

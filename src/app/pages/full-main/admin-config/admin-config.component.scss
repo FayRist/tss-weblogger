@@ -30,6 +30,22 @@ td.mat-mdc-cell{
   font-size: 18px;
 }
 
+.map-point-config-dialog-content {
+  max-height: calc(100vh - 150px) !important;
+  overflow-x: hidden !important;
+  padding: 0 8px !important;
+}
+
+.map-point-config-card {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 640px) {
+  .map-point-config-dialog-content .row.g-2 > .col-3 {
+    width: 50%;
+  }
+}
+
 
 
 .mat-column-carNumber {

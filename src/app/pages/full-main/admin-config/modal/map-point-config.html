@@ -1,0 +1,13 @@
+<h1 mat-dialog-title class="text-center">ตั้งค่า Map และ AFR Exclusion Zones</h1>
+
+<mat-dialog-content class="map-point-config-dialog-content">
+  <app-afr-exclusion-zone-config
+    [initialCircuit]="mapCode"
+    [initialMapName]="mapName"
+    [initialMapConfig]="config">
+  </app-afr-exclusion-zone-config>
+</mat-dialog-content>
+
+<mat-dialog-actions class="d-flex justify-content-center mt-2">
+  <button type="button" class="btn btn-danger" matButton mat-dialog-close>ปิด</button>
+</mat-dialog-actions>

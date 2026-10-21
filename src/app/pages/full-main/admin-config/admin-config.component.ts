@@ -32,12 +32,15 @@ import { MatRadioModule } from '@angular/material/radio';
 import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { configAFRModel } from '../config-afr-modal/config-afr-modal.component';
 import { AfrExclusionZoneConfigComponent } from './afr-exclusion-zone-config.component';
+import { MapPointConfig } from '../../../model/map-point-config.model';
+import { MapPointConfigService } from '../../../service/map-point-config.service';
+import { getMapCenterForCircuit } from '../../../app.config';
 
 @Component({
   selector: 'app-admin-config',
   imports: [MatCardModule, MatChipsModule, MatProgressBarModule, MatPaginatorModule, CommonModule
     , MatIconModule ,MatBadgeModule, MatButtonModule, MatToolbarModule, MatTableModule, MatSortModule
-    , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule, AfrExclusionZoneConfigComponent
+    , FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule
     , MatSlideToggleModule, MatMenuModule],
   templateUrl: './admin-config.component.html',
   styleUrl: './admin-config.component.scss'
@@ -56,7 +59,7 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
 
   constructor(private router: Router, private route: ActivatedRoute,
       private eventService: EventService, private toastr: ToastrService, public time: TimeService,
-      private auth: AuthService) {
+      private auth: AuthService, private mapPointConfigService: MapPointConfigService) {
   }
 
   dataSource = new MatTableDataSource<ApiConfigData>([]);
@@ -96,6 +99,7 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
   ngOnInit() {
     this.permissionsListData = this.auth.getPermissionsByPath('pages/admin-config');
     this.loadAndApplyConfig();
+    this.subscriptions.push(this.mapPointConfigService.load().subscribe());
 
   }
 
@@ -128,6 +132,35 @@ export class AdminConfigComponent implements OnInit, AfterViewInit {
     let arrayData: any[] = [];
     if(configId){
       arrayData = this.configAFR.filter((x: any) => x.id == configId);
+    }
+
+    const mapListConfig = arrayData[0];
+    if (mapListConfig?.form_code === 'map_list') {
+      const openMapDialog = () => {
+        const mapCode = String(mapListConfig.value ?? '').trim().toLowerCase();
+        const fallback = getMapCenterForCircuit(mapCode);
+        const saved = this.mapPointConfigService.getConfig(mapCode);
+        const config: MapPointConfig = saved ?? {
+          map_code: mapCode,
+          map_name: String(mapListConfig.config_name ?? mapCode),
+          lat: fallback?.lat ?? 13.7563,
+          lon: fallback?.lng ?? 100.5018,
+          zoom: fallback?.zoom ?? 13,
+          rotation: fallback?.rotation ?? 0,
+        };
+
+        this.dialog.open(MapPointConfigModalComponent, {
+          width: '950px',
+          maxWidth: '95vw',
+          maxHeight: '90vh',
+          enterAnimationDuration,
+          exitAnimationDuration,
+          data: { config },
+        });
+      };
+
+      this.mapPointConfigService.load().subscribe({ next: openMapDialog, error: openMapDialog });
+      return;
     }
 
     const dialogRef = this.dialog.open(ConfigAfrModalUpdateComponent, {
@@ -307,4 +340,39 @@ export class ConfigAfrModalUpdateComponent  implements OnInit {
     );
   }
 
+}
+
+interface MapPointConfigDialogData {
+  config: MapPointConfig;
+}
+
+@Component({
+  selector: 'dialog-map-point-config',
+  templateUrl: './modal/map-point-config.html',
+  styleUrl: './admin-config.component.scss',
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatButtonModule,
+    MatDialogClose,
+    MatDialogContent,
+    MatDialogTitle,
+    MatDialogActions,
+    MatFormFieldModule,
+    MatInputModule,
+    AfrExclusionZoneConfigComponent,
+  ],
+})
+export class MapPointConfigModalComponent implements OnInit {
+  readonly data = inject<MapPointConfigDialogData>(MAT_DIALOG_DATA);
+
+  mapCode = '';
+  mapName = '';
+  config!: MapPointConfig;
+
+  ngOnInit(): void {
+    this.config = this.data.config;
+    this.mapCode = this.config.map_code;
+    this.mapName = this.config.map_name;
+  }
 }

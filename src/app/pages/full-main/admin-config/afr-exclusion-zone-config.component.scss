@@ -33,6 +33,45 @@
   font-size: 13px;
 }
 
+.map-view-config {
+  margin-top: 16px;
+  padding: 14px 0 4px;
+  border-top: 1px solid #dbe3ea;
+}
+
+.map-view-config-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #17212b;
+  font-size: 14px;
+}
+
+.map-view-config-heading span {
+  display: block;
+  margin-top: 3px;
+  color: #718096;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.map-view-config .row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.map-view-config .col-3 {
+  width: auto;
+  padding: 0;
+}
+
+.map-view-config .w-100 {
+  width: 100%;
+}
+
 .config-save-bar {
   display: flex;
   align-items: center;
@@ -70,6 +109,7 @@
 }
 
 .circuit-picker select,
+.circuit-picker-static strong,
 .zone-editor input[type='text'],
 .zone-editor input[type='number'],
 .zone-editor select {
@@ -80,6 +120,11 @@
   color: #17212b;
   padding: 8px 10px;
   font-size: 14px;
+}
+
+.circuit-picker-static strong {
+  display: block;
+  font-weight: 600;
 }
 
 .zone-editor-layout {
@@ -361,5 +406,19 @@ button {
 
   .zone-map {
     height: 330px;
+  }
+
+  .map-view-config .row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .zone-config-card {
+    padding: 14px;
+  }
+
+  .map-view-config .row {
+    grid-template-columns: 1fr;
   }
 }

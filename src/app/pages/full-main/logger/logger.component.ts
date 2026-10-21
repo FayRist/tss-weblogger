@@ -28,13 +28,15 @@ import { AlertHistoryItem, EventService } from '../../../service/event.service';
 import { ResetWarningLoggerComponent } from '../dashboard/reset-warning-logger/reset-warning-logger.component';
 import { MatDialog } from '@angular/material/dialog';
 import { ToastrService } from 'ngx-toastr';
-import { APP_CONFIG, getApiUrl, getApiWebSocket, getMapCenterForCircuit } from '../../../app.config';
+import { APP_CONFIG, getApiUrl, getApiWebSocket } from '../../../app.config';
 import { DataProcessingService } from '../../../service/data-processing.service';
 import { convertTelemetryToSvgPolyline, TelemetryPoint as SvgTelemetryPoint, TelemetryToSvgInput } from '../../../utility/gps-to-svg.util';
 import { NgZone } from '@angular/core';
 import { AuthService, PermissionItem } from '../../../core/auth/auth.service';
 import { NavigationContextService } from '../../../core/navigation/navigation-context.service';
 import { RaceConfigSource } from '../../../model/api-race-config-snapshot.model';
+import type { AfrExclusionZone } from '../../../model/afr-exclusion-zone.model';
+import { MapPointConfigService } from '../../../service/map-point-config.service';
 // deck.gl imports
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -110,7 +112,7 @@ const COLORS = {
   warn: '#F59E0B',      // จุดเตือน (เหลือง)
   live: '#00FFA3'       // ตำแหน่งล่าสุด
 };
-type PointDef = { idMap: string; lat: number; lon: number; zoom?: number };
+type PointDef = { idMap: string; lat: number; lon: number; zoom?: number; rotation?: number };
 //-----MapRace--------------###############################################
 
 
@@ -131,39 +133,12 @@ const MAX_STORE_POINTS = 10_000; // เก็บสูงสุดต่อไ�
 // ==== ค่ากรอบ AFR สำหรับสเกลสี (แก้ได้ตามต้องการ/หรือปล่อยให้คำนวณจากข้อมูล) ====
 const AFR_DEFAULT_MIN = 10;
 const AFR_DEFAULT_MAX = 20;
-const AFR_COLOR_MIN = 0;
-const AFR_COLOR_MAX = 20;
 const MAP_COLOR_PENALTY_HEX = '#ef4444';
-const MAP_COLOR_WARNING_HEX = '#f59e0b';
 const MAP_COLOR_NORMAL_HEX = '#22c55e';
+const MAP_COLOR_EXCLUDED_HEX = '#9ca3af';
+const MAP_COLOR_INVALID_HEX = '#808080';
 
 // เก็บเส้นย่อยต่อ key
-
-// utils
-function clamp01(x:number){ return x < 0 ? 0 : (x > 1 ? 1 : x); }
-function hslToHex(h:number, s:number, l:number){
-  // h[0..360], s/l [0..1]
-  const c = (1 - Math.abs(2*l - 1)) * s;
-  const hp = h/60;
-  const x = c*(1 - Math.abs(hp % 2 - 1));
-  let [r,g,b] = hp<1?[c,x,0]:hp<2?[x,c,0]:hp<3?[0,c,x]:hp<4?[0,x,c]:hp<5?[x,0,c]:[c,0,x];
-  const m = l - c/2; r+=m; g+=m; b+=m;
-  const toHex = (v:number)=>('0'+Math.round(v*255).toString(16)).slice(-2);
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-function afrToColor(v:number, min:number, max:number, penaltyLow?:number, warningHigh?:number){
-  if (penaltyLow !== undefined && v < penaltyLow) {
-    return MAP_COLOR_PENALTY_HEX;
-  }
-  if (penaltyLow !== undefined && warningHigh !== undefined && v >= penaltyLow && v < warningHigh) {
-    return MAP_COLOR_WARNING_HEX;
-  }
-  const colorValue = Math.min(AFR_COLOR_MAX, Math.max(AFR_COLOR_MIN, v));
-  const t = clamp01((colorValue - AFR_COLOR_MIN) / (AFR_COLOR_MAX - AFR_COLOR_MIN));
-  const hue = 120 + (20 * t);
-  return hslToHex(hue, 0.7, 0.45);
-}
-
 
 // incremental laps state (non-breaking)
 interface LapState {
@@ -203,7 +178,6 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private statusTimeout: ReturnType<typeof setTimeout> | null = null; // Timer สำหรับเช็ค status offline หลังจาก 5 วินาที
   private readonly STATUS_TIMEOUT_MS = 5000; // 5 วินาที
   private readonly DB_COUNT_SYNC_COOLDOWN_MS = 8000;
-  private readonly HISTORY_AFR_DEFAULT = 30;
   private readonly HISTORY_DEFAULT_LAT = -48.8766667; // Point Nemo
   private readonly HISTORY_DEFAULT_LON = -123.3933333; // Point Nemo
   private lastDbCountSyncAt = 0;
@@ -333,9 +307,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // }
 
   pointMap: PointDef[] = [
-    { idMap: 'bric', lat: 14.9635357, lon: 103.085812, zoom: 16 },
-    { idMap: 'sic', lat: 2.76101, lon: 101.7343345, zoom: 16 },
-    { idMap: 'bsc', lat: 13.304051, lon: 100.9014779, zoom: 15 },
+    { idMap: 'bic', lat: 12.921067, lon: 101.008893, zoom: 15.3, rotation: 0 },
+    { idMap: 'bric', lat: 14.9635357, lon: 103.085812, zoom: 16, rotation: -78 },
+    { idMap: 'sic', lat: 2.76101, lon: 101.7343345, zoom: 16, rotation: 0 },
+    { idMap: 'bsc', lat: 13.304051, lon: 100.9014779, zoom: 15, rotation: -60 },
   ];
 
   svgPtsByKey: Record<string, Array<{ x:number; y:number; lat:number; long:number; afr?:number }>> = {};
@@ -448,6 +423,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   configAFR: any;
   configSource: RaceConfigSource = 'global';
+  private afrExclusionZones: AfrExclusionZone[] = [];
 
   /** ค่า min ของแกน Y (ลำดับปกติเสมอ — ใช้ร่วมกับ yaxis.reversed เพื่อไม่ให้ ApexCharts แจ้ง min > max) */
   get afrYAxisMin(): number {
@@ -505,6 +481,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     { value: 'bric', label: 'Chang' },
     { value: 'bsc', label: 'Bangsaen' },
     { value: 'bic', label: 'Bira' },
+    { value: 'sic', label: 'Sepang' },
   ];
   /** In-memory cache array; cleared on destroy. Restore uses backend Redis (GET /api/realtime/cache). */
   arrayLoggerCache: TelemetryPoint[] = [];
@@ -528,6 +505,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   // deck.gl map and overlay
   private deckMap: MapLibreMap | null = null;
   private deckOverlay: MapboxOverlay | null = null;
+  private mapConfigLoaded = false;
   @ViewChild('raceMapDeck') raceMapDeckRef!: ElementRef<HTMLDivElement>;
   @ViewChild('raceMapCanvas') raceMapCanvasRef!: ElementRef<HTMLCanvasElement>;
   private raceMapCanvasCtx: CanvasRenderingContext2D | null = null;
@@ -539,7 +517,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private ringBufferCount = 0; // Number of valid points in buffer
   private sourcePositions: Float32Array; // [lng, lat, lng, lat, ...] for segment sources
   private targetPositions: Float32Array; // [lng, lat, lng, lat, ...] for segment targets
-  private segmentColors: Uint8Array; // [r, g, b, a, r, g, b, a, ...] RGBA per segment
+  private segmentColors: Uint8Array;
+  private pointExcluded: Uint8Array;
+  private pointAfrValues: Float64Array;
   private pointTimestamps: Float64Array; // Timestamps for each point (for trimming)
   private latestMarkerLngLat: [number, number] | null = null; // Latest position for marker
 
@@ -1288,7 +1268,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // ใช้การไล่ระดับสีจากค่า AFR
       const afrValue = Number.isFinite(b.afrValue as number) ? (b.afrValue as number) : NaN;
-      const color = Number.isFinite(afrValue) ? this.getAfrColor(afrValue) : '#808080';
+      const color = this.getAfrMapColor(afrValue, lb, la);
 
       segs.push({
         i: segIndex++,
@@ -1455,7 +1435,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     private dataProcessingService: DataProcessingService,
     private ngZone: NgZone,
     private auth: AuthService,
-    private navContext: NavigationContextService
+    private navContext: NavigationContextService,
+    private mapPointConfigService: MapPointConfigService,
   ) {
     // Mock start point for lap counting
     // this.setStartPoint(798.479,-6054.195);
@@ -1466,6 +1447,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.sourcePositions = new Float32Array(this.MAX_SEGS * 2);
     this.targetPositions = new Float32Array(this.MAX_SEGS * 2);
     this.segmentColors = new Uint8Array(this.MAX_SEGS * 4);
+    this.pointExcluded = new Uint8Array(this.MAX_POINTS);
+    this.pointAfrValues = new Float64Array(this.MAX_POINTS);
     this.pointTimestamps = new Float64Array(this.MAX_POINTS);
 
     // Initialize telemetry ring buffer
@@ -1607,6 +1590,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           console.warn('[Logger] history mode config source is not snapshot:', this.configSource, 'raceId=', raceId);
         }
         const cfg = response?.config ?? {};
+        this.setAfrExclusionZones(response?.config?.afr_exclusion_zones);
 
         const toNum = (v: unknown, fallback: number): number => {
           const n = Number(v);
@@ -1645,10 +1629,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
         this.refreshDetail();
         this.refreshBrush();
+        this.refreshMapExclusionRendering();
       },
       error: (error) => {
         console.error('Error loading AFR config:', error);
         this.configSource = mode === 'history' ? 'global_fallback' : 'global';
+        this.setAfrExclusionZones([]);
         this.afrLimit = 14.0;
         this.afrWarningHigh = 16.0;
         this.countMax = 3;
@@ -1678,6 +1664,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         }
         this.refreshDetail();
         this.refreshBrush();
+        this.refreshMapExclusionRendering();
       }
     });
     this.subscriptions.push(sub);
@@ -1701,6 +1688,15 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.parameterLoggerID = ctx.loggerId ?? '';
     this.circuitName = ctx.circuit ?? '';
     this.currentLoggerId = String(this.parameterLoggerID || '').trim();
+
+    const mapConfigSub = this.mapPointConfigService.load().subscribe(() => {
+      this.mapConfigLoaded = true;
+      this.initializeDeckMap();
+      if (this.deckMap) {
+        this.applyCircuitToDeckMap(this.circuitName);
+      }
+    });
+    this.subscriptions.push(mapConfigSub);
 
     this.parameterEventID = Number(ctx.eventId ?? 0);
     this.parameterCarNBR = ctx.carNBR ?? 0;
@@ -2127,10 +2123,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  private normalizeHistoryAfr(rawAfr: unknown): number {
+  private normalizeHistoryAfr(rawAfr: unknown): number | undefined {
     const n = Number(rawAfr);
     if (!Number.isFinite(n) || n <= 0) {
-      return this.HISTORY_AFR_DEFAULT;
+      return undefined;
     }
     return n;
   }
@@ -3018,8 +3014,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       ctx.moveTo(x, y);
     }
 
-    let lastColor = startIndex > 0 && points[startIndex - 1]?.afr != null
-      ? this.getAfrColor(points[startIndex - 1].afr!)
+    const previousRenderedPoint = startIndex > 0 ? points[startIndex - 1] : undefined;
+    let lastColor = previousRenderedPoint
+      ? this.getAfrMapColor(
+        Number.isFinite(previousRenderedPoint.afr as number) ? previousRenderedPoint.afr as number : NaN,
+        { lat: previousRenderedPoint.x, lon: previousRenderedPoint.y },
+      )
       : '#808080';
     let lastX = 0, lastY = 0;
 
@@ -3034,8 +3034,13 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         lastY = y;
       }
 
-      // Get color for this segment
-      const color = p.afr != null ? this.getAfrColor(p.afr) : '#808080';
+      // Get color for this segment, including AFR exclusion-zone state.
+      const previousPoint = i > 0 ? points[i - 1] : undefined;
+      const color = this.getAfrMapColor(
+        Number.isFinite(p.afr as number) ? p.afr as number : NaN,
+        { lat: p.x, lon: p.y },
+        previousPoint ? { lat: previousPoint.x, lon: previousPoint.y } : undefined,
+      );
 
       // If color changed, stroke previous segment and start new
       if (color !== lastColor && i > startIndex) {
@@ -4231,7 +4236,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
         // ใช้การไล่ระดับสีจากค่า AFR แทนการใช้สีแบบเดิม
         const afrValue = Number.isFinite(b.afrValue as number) ? (b.afrValue as number) : NaN;
-        const color = Number.isFinite(afrValue) ? this.getAfrColor(afrValue) : '#808080'; // สีเทาสำหรับค่าที่ไม่มี
+        const color = this.getAfrMapColor(afrValue, lb, la);
 
         segs.push({
           i: segIndex++,
@@ -4810,54 +4815,159 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
 
-  getAfrColor(afr: any ): string {
-    if (!Number.isFinite(afr)) {
-      return '#808080';
+  getAfrColor(afr: unknown): string {
+    const value = afr === null || afr === undefined || afr === '' ? NaN : Number(afr);
+    if (!Number.isFinite(value)) {
+      return MAP_COLOR_INVALID_HEX;
     }
-    if (this.shouldTreatAfrAsNoise(Number(afr))) {
+
+    if (this.shouldTreatAfrAsNoise(value)) {
       return MAP_COLOR_NORMAL_HEX;
     }
 
-    const lowerBound = 11.5; // ค่า AFR ต่ำสุดที่จะให้เป็นสีเขียว
-    const limit = this.afrLimit; // ค่า AFR limit ที่ใช้เช็ค
-
-    // ถ้าน้อยกว่า limit ให้เป็นสีแดง (เหมือนกับจุดในกราฟ)
-    if (limit !== undefined && limit !== 0 && afr < limit) {
-      return '#FF0000'; // สีแดง
+    const { penaltyLow, warningHigh } = this.getAfrThresholds();
+    const severity = this.getAfrMapSeverity(value);
+    if (severity === 'penalty') {
+      return MAP_COLOR_PENALTY_HEX;
     }
-    if (afr <= lowerBound) {
-      return '#00FF00'; // สีเขียว
+    if (severity === 'normal') {
+      return MAP_COLOR_NORMAL_HEX;
     }
 
-    // คำนวณสัดส่วนของค่า afr ในช่วง lowerBound ถึง limit (หรือค่า default ถ้าไม่มี limit)
-    const colorAfr = Math.min(AFR_COLOR_MAX, Math.max(AFR_COLOR_MIN, Number(afr)));
-    const ratio = (colorAfr - lowerBound) / (AFR_COLOR_MAX - lowerBound);
+    // Warning values transition continuously from penalty red to normal green.
+    const ratio = Math.max(0, Math.min(1, (value - penaltyLow) / (warningHigh - penaltyLow)));
+    return this.interpolateHexColor(MAP_COLOR_PENALTY_HEX, MAP_COLOR_NORMAL_HEX, ratio);
+  }
 
-    let red, green;
+  private setAfrExclusionZones(rawZones: unknown): void {
+    this.afrExclusionZones = Array.isArray(rawZones)
+      ? rawZones.filter((zone): zone is AfrExclusionZone => !!zone && typeof zone === 'object')
+      : [];
+  }
 
-    if (ratio < 0.5) {
-      // จากเขียวไปเหลือง (Green -> Yellow)
-      red = Math.round(255 * (ratio * 2));
-      green = 255;
-    } else {
-      // จากเหลืองไปแดง (Yellow -> Red)
-      red = 255;
-      green = Math.round(255 * (1 - (ratio - 0.5) * 2));
+  private refreshMapExclusionRendering(): void {
+    if (this.isRealtimeMode && this.shouldEnableMapPipeline()) {
+      if (this.useCanvasMode) {
+        this.lastRenderedIndex = 0;
+        this.canvasBounds = null;
+        this.scheduleRender();
+      } else {
+        this.recolorDeckPath();
+      }
     }
 
-    const blue = 0;
+    if (this.isHistoryMode && this.raceLab.length > 0) {
+      const points = this.raceLab.flat();
+      if (this.map) {
+        this.createColoredPolyline(points);
+      }
+      if (!this.useCanvasMode && this.deckOverlay) {
+        this.loadHistoryDataToDeckMap(points);
+      } else if (this.useCanvasMode && this.raceMapCanvasCtx) {
+        this.loadHistoryDataToCanvasMap(points);
+      }
+    }
+  }
 
-    // แปลงค่าสี RGB เป็น Hex string
-    const toHex = (c: number) => ('0' + c.toString(16)).slice(-2);
-    return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
+  private isAfrMapPointExcluded(lat: number, lon: number): boolean {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return false;
+    }
+
+    const currentCircuit = String(this.circuitName ?? '').trim().toLowerCase();
+    return this.afrExclusionZones.some(zone => {
+      if (!zone.enabled) return false;
+
+      const zoneCircuit = String(zone.circuit_name ?? '').trim().toLowerCase();
+      if (zoneCircuit && currentCircuit && zoneCircuit !== currentCircuit) return false;
+
+      if (zone.shape_type === 'circle') {
+        const centerLat = Number(zone.center_lat);
+        const centerLon = Number(zone.center_lon);
+        const radiusM = Number(zone.radius_m);
+        return Number.isFinite(centerLat)
+          && Number.isFinite(centerLon)
+          && Number.isFinite(radiusM)
+          && radiusM >= 0
+          && this.haversineMeters({ lat: centerLat, lon: centerLon }, { lat, lon }) <= radiusM;
+      }
+
+      return zone.shape_type === 'polygon' && this.isPointInAfrPolygon(lat, lon, zone.points);
+    });
+  }
+
+  private isPointInAfrPolygon(lat: number, lon: number, points: AfrExclusionZone['points']): boolean {
+    const validPoints = (points ?? []).filter(point =>
+      Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lon))
+    );
+    if (validPoints.length < 3) return false;
+
+    let inside = false;
+    for (let index = 0; index < validPoints.length; index++) {
+      const current = validPoints[index];
+      const previous = validPoints[(index + validPoints.length - 1) % validPoints.length];
+      if (this.isPointOnAfrSegment(lat, lon, previous, current)) return true;
+
+      const intersects = (current.lat > lat) !== (previous.lat > lat)
+        && lon < (previous.lon - current.lon) * (lat - current.lat) / (previous.lat - current.lat) + current.lon;
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  private isPointOnAfrSegment(
+    lat: number,
+    lon: number,
+    start: { lat: number; lon: number },
+    end: { lat: number; lon: number },
+  ): boolean {
+    const epsilon = 1e-9;
+    const cross = (lon - start.lon) * (end.lat - start.lat) - (lat - start.lat) * (end.lon - start.lon);
+    if (Math.abs(cross) > epsilon) return false;
+
+    return lat >= Math.min(start.lat, end.lat) - epsilon
+      && lat <= Math.max(start.lat, end.lat) + epsilon
+      && lon >= Math.min(start.lon, end.lon) - epsilon
+      && lon <= Math.max(start.lon, end.lon) + epsilon;
+  }
+
+  private isAfrMapSegmentExcluded(
+    current: { lat: number; lon: number },
+    previous?: { lat: number; lon: number },
+  ): boolean {
+    return this.isAfrMapPointExcluded(current.lat, current.lon)
+      || (!!previous && this.isAfrMapPointExcluded(previous.lat, previous.lon));
+  }
+
+  private getAfrMapColor(
+    afr: number,
+    current: { lat: number; lon: number },
+    previous?: { lat: number; lon: number },
+  ): string {
+    if (this.isAfrMapSegmentExcluded(current, previous)) {
+      return MAP_COLOR_EXCLUDED_HEX;
+    }
+    return this.getAfrColor(afr);
   }
 
   private shouldTreatAfrAsNoise(afr: number): boolean {
     if (!Number.isFinite(afr)) {
       return true;
     }
-    const penaltyLow = Number.isFinite(this.afrLimit) ? this.afrLimit : 14.0;
+    const { penaltyLow } = this.getAfrThresholds();
     return penaltyLow >= 10 && afr < 10;
+  }
+
+  private getAfrThresholds(): { penaltyLow: number; warningHigh: number } {
+    const configuredPenalty = Number(this.afrLimit);
+    const penaltyLow = Number.isFinite(configuredPenalty) && configuredPenalty > 0
+      ? configuredPenalty
+      : 14.0;
+    const configuredWarning = Number(this.afrWarningHigh);
+    const warningHigh = Number.isFinite(configuredWarning) && configuredWarning > penaltyLow
+      ? configuredWarning
+      : penaltyLow + 0.1;
+    return { penaltyLow, warningHigh };
   }
 
   private updateMapFromSelection(keys: string[]) {
@@ -5194,7 +5304,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           ts: p.ts,
           x: p.x,
           y: p.y,
-          afr: p.afr ?? 0
+           afr: p.afr ?? NaN
         }));
       } else {
         // โหมดจุดเดียว: แสดงเฉพาะจุดล่าสุดให้ลากตาม
@@ -5203,7 +5313,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           ts: lastPt.ts,
           x: lastPt.x,
           y: lastPt.y,
-          afr: lastPt.afr ?? 0
+           afr: lastPt.afr ?? NaN
         }] : [];
       }
 
@@ -5218,14 +5328,18 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         const s: Array<{ i:number;x1:number;y1:number;x2:number;y2:number;c:string , afr:number; }> = [];
         for (let i = 0; i < pts.length - step; i += step) {
           const a = pts[i], b = pts[i + step];
-          const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
-          const afrB = Number.isFinite(b.afr!) ? b.afr! : undefined;
-          const afr  = afrA!=null && afrB!=null ? (afrA + afrB)/2
-                      : afrA!=null ? afrA
-                      : afrB!=null ? afrB
-                      : (afrMin + afrMax)/2;
-          const color = afrToColor(afr, afrMin, afrMax, this.afrLimit, this.afrWarningHigh);
-          s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y, c: color, afr });
+           const afrA = Number.isFinite(a.afr!) ? a.afr! : undefined;
+           const afrB = Number.isFinite(b.afr!) ? b.afr! : undefined;
+           const afr  = afrA != null && afrB != null ? (afrA + afrB) / 2
+                       : afrA != null ? afrA
+                       : afrB != null ? afrB
+                       : undefined;
+           const color = this.getAfrMapColor(
+             afr ?? NaN,
+             { lat: b.lat, lon: b.long },
+             { lat: a.lat, lon: a.long },
+           );
+           s.push({ i, x1:a.x, y1:a.y, x2:b.x, y2:b.y, c: color, afr: afr ?? NaN });
         }
         segs[k] = s;
       } else {
@@ -5849,7 +5963,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const lng = point.y; // Note: y is actually longitude
     const lat = point.x; // Note: x is actually latitude
     const ts = point.ts;
-    const afr = point.afr ?? 14.0; // Default AFR if missing
+    const afr = Number.isFinite(point.afr as number) ? (point.afr as number) : NaN;
 
     // Check if we need to wrap around (ring buffer full)
     if (this.ringBufferCount >= this.MAX_POINTS) {
@@ -5859,6 +5973,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     const writeIdx = this.ringBufferHead;
+    this.pointExcluded[writeIdx] = this.isAfrMapPointExcluded(lat, lng) ? 1 : 0;
+    this.pointAfrValues[writeIdx] = afr;
 
     // Store timestamp for this point
     this.pointTimestamps[writeIdx] = ts;
@@ -5883,8 +5999,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         && Math.abs(lng - prevLng) <= this.mapSegmentMinMoveDeg
         && Math.abs(lat - prevLat) <= this.mapSegmentMinMoveDeg;
 
-      // Set color based on AFR (RGBA)
-      const color = this.afrToColorUint8(afr);
+      // Set color based on AFR and exclusion-zone state (RGBA)
+      const color = this.afrMapColorToUint8(afr, { lat, lon: lng }, { lat: prevLat, lon: prevLng });
       this.segmentColors[segIdx * 4] = color[0];
       this.segmentColors[segIdx * 4 + 1] = color[1];
       this.segmentColors[segIdx * 4 + 2] = color[2];
@@ -5906,6 +6022,43 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.scheduleDeckRender();
   }
 
+  private recolorDeckPath(): void {
+    if (this.ringBufferCount === 0) return;
+
+    for (let offset = 0; offset < this.ringBufferCount; offset++) {
+      const pointIndex = (this.ringBufferTail + offset) % this.MAX_POINTS;
+      const lat = this.targetPositions[pointIndex * 2 + 1];
+      const lon = this.targetPositions[pointIndex * 2];
+      this.pointExcluded[pointIndex] = this.isAfrMapPointExcluded(lat, lon) ? 1 : 0;
+    }
+
+    for (let offset = 1; offset < this.ringBufferCount; offset++) {
+      const previousIndex = (this.ringBufferTail + offset - 1) % this.MAX_POINTS;
+      const currentIndex = (this.ringBufferTail + offset) % this.MAX_POINTS;
+      const color = this.pointExcluded[previousIndex] || this.pointExcluded[currentIndex]
+        ? this.hexColorToUint8(MAP_COLOR_EXCLUDED_HEX)
+        : this.hexColorToUint8(this.getAfrColor(this.pointAfrValues[currentIndex]));
+      const previousLng = this.targetPositions[previousIndex * 2];
+      const previousLat = this.targetPositions[previousIndex * 2 + 1];
+      const currentLng = this.targetPositions[currentIndex * 2];
+      const currentLat = this.targetPositions[currentIndex * 2 + 1];
+      const isTinyMove = this.displayOptimizationEnabled
+        && Math.abs(currentLng - previousLng) <= this.mapSegmentMinMoveDeg
+        && Math.abs(currentLat - previousLat) <= this.mapSegmentMinMoveDeg;
+      this.setDeckSegmentColor(previousIndex, color, isTinyMove ? 0 : 255);
+    }
+
+    this.deckDirty = true;
+    this.scheduleDeckRender();
+  }
+
+  private setDeckSegmentColor(segmentIndex: number, color: [number, number, number], alpha = 255): void {
+    this.segmentColors[segmentIndex * 4] = color[0];
+    this.segmentColors[segmentIndex * 4 + 1] = color[1];
+    this.segmentColors[segmentIndex * 4 + 2] = color[2];
+    this.segmentColors[segmentIndex * 4 + 3] = alpha;
+  }
+
   /**
    * Trim points older than 30 minutes from the rolling window
    */
@@ -5923,15 +6076,35 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   /**
    * Convert AFR value to RGBA color (Uint8Array)
-   * Uses same color logic as existing afrToColor function
+   * Uses the shared configured AFR color logic.
    */
   private afrToColorUint8(afr: number): [number, number, number] {
-    const hex = this.getAfrColor(afr).replace('#', '');
+    return this.hexColorToUint8(this.getAfrColor(afr));
+  }
+
+  private afrMapColorToUint8(
+    afr: number,
+    current: { lat: number; lon: number },
+    previous?: { lat: number; lon: number },
+  ): [number, number, number] {
+    return this.hexColorToUint8(this.getAfrMapColor(afr, current, previous));
+  }
+
+  private hexColorToUint8(hexColor: string): [number, number, number] {
+    const hex = hexColor.replace('#', '');
     return [
       Number.parseInt(hex.slice(0, 2), 16),
       Number.parseInt(hex.slice(2, 4), 16),
       Number.parseInt(hex.slice(4, 6), 16),
     ];
+  }
+
+  private interpolateHexColor(startHex: string, endHex: string, ratio: number): string {
+    const start = this.hexColorToUint8(startHex);
+    const end = this.hexColorToUint8(endHex);
+    const t = Math.max(0, Math.min(1, ratio));
+    const toHex = (value: number) => Math.round(value).toString(16).padStart(2, '0');
+    return `#${toHex(start[0] + (end[0] - start[0]) * t)}${toHex(start[1] + (end[1] - start[1]) * t)}${toHex(start[2] + (end[2] - start[2]) * t)}`;
   }
 
   /**
@@ -6171,12 +6344,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    * Initialize MapLibre map with deck.gl overlay or canvas (if no circuit match)
    */
   private initializeDeckMap(): void {
-    if (!this.shouldEnableMapPipeline()) {
+    if (!this.shouldEnableMapPipeline() || !this.mapConfigLoaded) {
       return;
     }
 
     // Get center for current circuit
-    const center = getMapCenterForCircuit(this.circuitName);
+    const center = this.mapPointConfigService.getForCircuit(this.circuitName);
 
     // If no circuit match, use canvas mode (empty area for drawing lines)
     if (!center) {
@@ -6221,6 +6394,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.deckMap.addControl(this.deckOverlay);
 
       // Start render loop
+      this.deckDirty = this.ringBufferCount > 0;
       this.scheduleDeckRender();
 
       console.log(`[deck.gl] Map initialized successfully for circuit: ${this.circuitName}`);
@@ -6237,7 +6411,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    const center = getMapCenterForCircuit(circuitName);
+    const center = this.mapPointConfigService.getForCircuit(circuitName);
     if (!center) {
       this.useCanvasMode = true;
       this.initializeCanvasMap();
@@ -6298,7 +6472,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   // Canvas drawing state (for non-map mode)
-  private canvasLastPoint: { x: number; y: number; color: string } | null = null;
+  private canvasLastPoint: { x: number; y: number; color: string; lat: number; lon: number } | null = null;
 
   /**
    * Draw point on canvas (for non-map mode)
@@ -6307,7 +6481,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.raceMapCanvasCtx || !this.raceMapCanvasRef?.nativeElement) return;
 
     const canvas = this.raceMapCanvasRef.nativeElement;
-    const afr = point.afr ?? 14.0;
+    const afr = Number.isFinite(point.afr as number) ? (point.afr as number) : NaN;
 
     // Convert lat/lon to canvas coordinates (simple scaling - adjust as needed)
     // Note: This is a simple mapping, you may need to adjust based on your data range
@@ -6321,8 +6495,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const x = offsetX + (point.y * scaleX); // y is longitude
     const y = offsetY - (point.x * scaleY); // x is latitude (inverted)
 
-    // Get color based on AFR
-    const color = this.afrToColorHex(afr);
+    // Get color based on AFR and exclusion-zone state
+    const color = this.getAfrMapColor(
+      afr,
+      { lat: point.x, lon: point.y },
+      this.canvasLastPoint ? { lat: this.canvasLastPoint.lat, lon: this.canvasLastPoint.lon } : undefined,
+    );
 
     // Draw line from last point to current point
     if (this.canvasLastPoint) {
@@ -6341,7 +6519,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.raceMapCanvasCtx.fill();
 
     // Update last point
-    this.canvasLastPoint = { x, y, color };
+    this.canvasLastPoint = { x, y, color, lat: point.x, lon: point.y };
   }
 
   /**
@@ -6355,9 +6533,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!Number.isFinite(afr) || this.shouldTreatAfrAsNoise(afr)) {
       return 'normal';
     }
-    const penaltyLow = Number.isFinite(this.afrLimit) ? this.afrLimit : 14.0;
-    const warningHighRaw = Number.isFinite(this.afrWarningHigh) ? this.afrWarningHigh : 16.0;
-    const warningHigh = warningHighRaw > penaltyLow ? warningHighRaw : penaltyLow + 0.1;
+    const { penaltyLow, warningHigh } = this.getAfrThresholds();
     if (afr < penaltyLow) {
       return 'penalty';
     }
@@ -6415,8 +6591,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (!prevLL || !currLL) continue;
 
       // Get AFR value for color
-      const afrValue = Number.isFinite(curr.afrValue as number) ? (curr.afrValue as number) : 14.0;
-      const color = this.afrToColorUint8(afrValue);
+      const afrValue = Number.isFinite(curr.afrValue as number) ? (curr.afrValue as number) : NaN;
+      const color = this.afrMapColorToUint8(afrValue, currLL, prevLL);
 
       segments.push({
         source: [prevLL.lon, prevLL.lat], // [lng, lat]
@@ -6472,7 +6648,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Set map view to circuit center (same as initialization)
     if (this.deckMap) {
-      const center = getMapCenterForCircuit(this.circuitName);
+      const center = this.mapPointConfigService.getForCircuit(this.circuitName);
       if (center) {
         this.deckMap.setCenter([center.lng, center.lat]); // [lng, lat]
         this.deckMap.setZoom(center.zoom);
@@ -6540,6 +6716,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     let lastX: number | null = null;
     let lastY: number | null = null;
+    let lastLocation: { lat: number; lon: number } | undefined;
 
     for (let i = 0; i < points.length; i++) {
       const point = points[i];
@@ -6550,8 +6727,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       const y = toCanvasY(ll.lat);
 
       // Get AFR value for color
-      const afrValue = Number.isFinite(point.afrValue as number) ? (point.afrValue as number) : 14.0;
-      const color = Number.isFinite(afrValue) ? this.getAfrColor(afrValue) : '#808080';
+      const afrValue = Number.isFinite(point.afrValue as number) ? (point.afrValue as number) : NaN;
+      const color = this.getAfrMapColor(afrValue, ll, lastLocation);
 
       // Draw line from last point to current point
       if (lastX !== null && lastY !== null) {
@@ -6564,6 +6741,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
       lastX = x;
       lastY = y;
+      lastLocation = ll;
     }
 
     // Draw marker for last position
@@ -6938,7 +7116,8 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       if (!ll) continue;
 
       const afrValue = Number.isFinite(point.afrValue as number) ? (point.afrValue as number) : null;
-      const color = afrValue !== null ? this.getAfrColor(afrValue) : '#808080';
+      const previousLocation = i > 0 ? this.getLatLon(points[i - 1]) ?? undefined : undefined;
+      const color = this.getAfrMapColor(afrValue ?? NaN, ll, previousLocation);
 
       // ถ้าเปลี่ยนสี ให้สร้าง segment ใหม่
       if (i > 0 && color !== currentColor && currentSegment.length > 0) {

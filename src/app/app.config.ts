@@ -30,6 +30,8 @@ export const APP_CONFIG = {
       ADD_CONFIG: '/configWeb/addConfig',
       UPDATE_CONFIG: '/configWeb/updateConfig',
       DELETE_CONFIG: '/configWeb/deleteConfig',
+      GET_MAP_POINT_CONFIGS: '/map-points',
+      UPDATE_MAP_POINT_CONFIG: '/map-points',
 
       // Event
       GET_EVENT: '/event/getEvent',
@@ -172,17 +174,25 @@ export const APP_CONFIG = {
       },
       // Chang International Circuit (bric)
       bric: {
-        LAT: 14.963283,
-        LNG: 103.084855,
-        MAP_ZOOM: 14.8,
+        LAT: 14.9635357,
+        LNG: 103.085812,
+        MAP_ZOOM: 16,
         ROTATION: -78
+      },
+
+      // Petronas Sepang International Circuit (sic)
+      sic: {
+        LAT: 2.76101,
+        LNG: 101.7343345,
+        MAP_ZOOM: 16,
+        ROTATION: 0
       },
 
       // Bangsaen Street Circuit (bsc)
       bsc: {
-        LAT: 13.304227,
-        LNG: 100.903282,
-        MAP_ZOOM: 14.7,
+        LAT: 13.304051,
+        LNG: 100.9014779,
+        MAP_ZOOM: 15,
         ROTATION: -60
       }
     }
