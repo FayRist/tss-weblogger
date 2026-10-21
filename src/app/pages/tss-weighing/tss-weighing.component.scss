@@ -97,6 +97,13 @@ input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, .f
 .config-event-name label { display: block; margin-bottom: 6px; color: #777; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .config-event-name input { width: 100%; border: 1px solid #e0e0dc; border-radius: 8px; padding: 12px 13px; font-size: 20px; background: #fafaf8; outline: none; }
 .config-event-name input:focus { border-color: #1a1a18; background: #fff; }
+.config-compensation { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; margin-bottom: 16px; }
+.config-number-field { display: flex; flex-direction: column; gap: 6px; }
+.config-number-field label { color: #777; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.config-number-field input { width: 100%; border: 1px solid #e0e0dc; border-radius: 8px; padding: 12px 13px; font-size: 20px; background: #fafaf8; outline: none; }
+.config-number-field input:focus { border-color: #1a1a18; background: #fff; }
+.config-final-weight-toggle { display: inline-flex; align-items: center; align-self: end; gap: 9px; min-height: 48px; margin: 0; padding: 10px 12px; border: 1px solid #e0e0dc; border-radius: 8px; background: #fafaf8; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.config-final-weight-toggle input { flex: 0 0 auto; }
 .config-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .config-class-card { border: 1px solid #ecece6; border-radius: 10px; padding: 14px; background: #fafaf8; }
 .config-class-title { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
@@ -160,6 +167,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: .4; }
   .admin-panel, .sync-panel { padding: 12px 16px; }
   .modal-dialog { margin: 12px; }
   .modal-dialog-scrollable { height: calc(100% - 24px); }
+  .config-compensation { grid-template-columns: 1fr; }
   .config-list { grid-template-columns: 1fr; }
   .modal-header, .modal-body, .modal-footer { padding-left: 14px; padding-right: 14px; }
   .main { padding: 12px 16px; }

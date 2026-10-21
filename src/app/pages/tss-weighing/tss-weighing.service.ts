@@ -84,6 +84,9 @@ export interface TssWeighingConfigResponse {
   updated_at?: string;
   class_sessions: Record<string, string[]>;
   locked_sessions?: Record<string, string[]>;
+  driver_average?: number;
+  driver_compensation_limit?: number;
+  show_final_weight?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -130,12 +133,24 @@ export class TssWeighingService {
     });
   }
 
-  setConfig(eventName: string, year: number, classSessions: Record<string, string[]>, lockedSessions: Record<string, string[]>, token: string): Observable<TssWeighingConfigResponse> {
+  setConfig(
+    eventName: string,
+    year: number,
+    classSessions: Record<string, string[]>,
+    lockedSessions: Record<string, string[]>,
+    driverAverage: number,
+    driverCompensationLimit: number,
+    showFinalWeight: boolean,
+    token: string,
+  ): Observable<TssWeighingConfigResponse> {
     return this.http.put<TssWeighingConfigResponse>(getApiUrl('/tss-weighing/config'), {
       event: eventName,
       year,
       class_sessions: classSessions,
       locked_sessions: lockedSessions,
+      driver_average: driverAverage,
+      driver_compensation_limit: driverCompensationLimit,
+      show_final_weight: showFinalWeight,
     }, {
       headers: this.headers(token),
     });

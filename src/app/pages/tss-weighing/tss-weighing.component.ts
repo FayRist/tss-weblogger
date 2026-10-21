@@ -17,7 +17,10 @@ interface UserAccount {
 interface CarRow {
   sub: string;
   num: string;
+  /** Target is the default comparison value; FUEL can optionally use Final Weight. */
   target: number | null;
+  bopWeight: number | null;
+  ballastWeight: number | null;
   driver1Name: string;
   driver1Weight: number | null;
   driver2Name: string;
@@ -46,14 +49,26 @@ interface WeightStats {
   pct: number | null;
 }
 
+interface DriverWeightStats {
+  avg: number | null;
+  diffFrom75: number | null;
+  compensation: number;
+}
+
 interface WeighingCarPayload {
   'รุ่น': string;
   'เบอร์รถ': string;
   'Target Weight (kg)': number | null;
+  'BOP Weight (kg)': number | null;
+  'Ballast Weight (kg)': number | null;
   'ชื่อนักแข่ง1': string;
   'น้ำหนักนักแข่ง1': number | null;
   'ชื่อนักแข่ง2': string;
   'น้ำหนักนักแข่ง2': number | null;
+  'Driver Avg (kg)': number | null;
+  'Diff from 75 (kg)': number | null;
+  'Driver Weight Compensation (kg)': number;
+  'Final Weight (kg)': number | null;
   'INCLUDING FUEL': Record<string, number | string | null>;
   'DRY WEIGHT': Record<string, number | string | null>;
 }
@@ -63,10 +78,12 @@ interface WeighingExcelRow {
   sub: string;
   carNumber: string;
   targetWeight: number | null;
+  finalWeight: number | null;
   driver1Name: string;
   driver1Weight: number | null;
   driver2Name: string;
   driver2Weight: number | null;
+  driverCompensation: number;
   fuelW1: number | string | null;
   fuelW2: number | string | null;
   fuelTotal: number | string | null;
@@ -97,11 +114,17 @@ interface ImportHeaderColumns {
   subCol: number;
   carCol: number;
   targetCol: number;
+  bopCol: number;
+  ballastCol: number;
   raceCol: number;
   driver1NameCol: number;
   driver1WeightCol: number;
   driver2NameCol: number;
   driver2WeightCol: number;
+  fuelW1Col: number;
+  fuelW2Col: number;
+  dryW1Col: number;
+  dryW2Col: number;
 }
 
 interface ImportWorksheetContext {
@@ -116,6 +139,32 @@ interface ImportDriverValues {
   driver1Weight: number | null;
   driver2Name: string;
   driver2Weight: number | null;
+  hasDriver1Name: boolean;
+  hasDriver1Weight: boolean;
+  hasDriver2Name: boolean;
+  hasDriver2Weight: boolean;
+}
+
+interface ImportWeightValues {
+  fuelW1: number | null;
+  fuelW2: number | null;
+  dryW1: number | null;
+  dryW2: number | null;
+  invalid: boolean;
+  hasFuelW1: boolean;
+  hasFuelW2: boolean;
+  hasDryW1: boolean;
+  hasDryW2: boolean;
+}
+
+interface ImportBaseValues {
+  target: number | null;
+  bopWeight: number | null;
+  ballastWeight: number | null;
+  invalid: boolean;
+  hasTargetColumn: boolean;
+  hasBopColumn: boolean;
+  hasBallastColumn: boolean;
 }
 
 interface ConfigRaceDraftSlot {
@@ -136,6 +185,9 @@ interface EventPreviewState {
   selectedSession: string;
   lastCacheUpdatedAt: string;
   lastConfigUpdatedAt: string;
+  driverAverage: number;
+  driverCompensationLimit: number;
+  showFinalWeight: boolean;
 }
 
 declare global {
@@ -168,11 +220,15 @@ const MASTER_CLASS_SESSIONS: Record<string, string[]> = {
 };
 
 const CONFIG_RACE_SLOT_COUNT = 3;
+const DEFAULT_DRIVER_AVERAGE = 75;
+const DEFAULT_DRIVER_COMPENSATION_LIMIT = 15;
+const DEFAULT_SHOW_FINAL_WEIGHT = false;
 
 const CLASS_SUB_OPTIONS: Record<string, string[]> = {
   'GT4 GTC': ['GT4', 'GTC'],
   'GT3 GTM': ['GT3', 'GTM'],
   'PICKUP AB': ['PICKUP A', 'PICKUP B'],
+  GR86: ['GR86', 'GR86 M'],
 };
 
 const IMPORT_CLASS_MAP: Record<string, ImportClassMapping> = {
@@ -181,8 +237,10 @@ const IMPORT_CLASS_MAP: Record<string, ImportClassMapping> = {
   'PICKUP AB': { className: 'PICKUP AB', sub: 'PICKUP A' },
   'PICKUP A': { className: 'PICKUP AB', sub: 'PICKUP A' },
   PICKUPA: { className: 'PICKUP AB', sub: 'PICKUP A' },
+  A: { className: 'PICKUP AB', sub: 'PICKUP A' },
   'PICKUP B': { className: 'PICKUP AB', sub: 'PICKUP B' },
   PICKUPB: { className: 'PICKUP AB', sub: 'PICKUP B' },
+  B: { className: 'PICKUP AB', sub: 'PICKUP B' },
   'PICKUP C': { className: 'PICKUP C', sub: 'PICKUP C' },
   PICKUPC: { className: 'PICKUP C', sub: 'PICKUP C' },
   GT3: { className: 'GT3 GTM', sub: 'GT3' },
@@ -192,6 +250,7 @@ const IMPORT_CLASS_MAP: Record<string, ImportClassMapping> = {
   GTC: { className: 'GT4 GTC', sub: 'GTC' },
   'GT4 GTC': { className: 'GT4 GTC', sub: 'GT4' },
   GR86: { className: 'GR86', sub: 'GR86' },
+  'GR86 M': { className: 'GR86', sub: 'GR86 M' },
 };
 
 function emptyWeighingData(): Record<string, Record<string, CarRow[]>> {
@@ -227,6 +286,12 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   eventName = 'BRIC1';
   eventDraftName = 'BRIC1';
+  driverAverage = DEFAULT_DRIVER_AVERAGE;
+  driverCompensationLimit = DEFAULT_DRIVER_COMPENSATION_LIMIT;
+  showFinalWeight = DEFAULT_SHOW_FINAL_WEIGHT;
+  eventDraftDriverAverage = DEFAULT_DRIVER_AVERAGE;
+  eventDraftCompensationLimit = DEFAULT_DRIVER_COMPENSATION_LIMIT;
+  eventDraftShowFinalWeight = DEFAULT_SHOW_FINAL_WEIGHT;
   isEditingEvent = false;
   isConfigModalOpen = false;
 
@@ -337,7 +402,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   get tableColspan(): number {
-    return (this.hasSubOptions ? 16 : 15) + (this.canEditMaster ? 1 : 0);
+    const baseColumns = this.hasSubOptions ? 17 : 16;
+    return baseColumns + (this.showFinalWeight ? 1 : 0) + (this.canEditMaster ? 1 : 0);
   }
 
   get summary(): { total: number; counted: number; pass: number; fail: number } {
@@ -407,6 +473,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.configRequestGeneration++;
     this.previewOriginalState = this.captureEventPreviewState();
     this.eventDraftName = this.eventName;
+    this.eventDraftDriverAverage = this.driverAverage;
+    this.eventDraftCompensationLimit = this.driverCompensationLimit;
+    this.eventDraftShowFinalWeight = this.showFinalWeight;
     this.isEditingEvent = true;
     this.rebuildConfigDraftFromCurrent();
     this.isConfigModalOpen = true;
@@ -561,6 +630,19 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const driverAverage = this.positiveConfigNumber(this.eventDraftDriverAverage);
+    if (driverAverage === null) {
+      this.setSyncStatus('Driver Average ต้องเป็นตัวเลขมากกว่า 0', true);
+      return;
+    }
+    const compensationLimit = this.positiveConfigNumber(this.eventDraftCompensationLimit);
+    if (compensationLimit === null) {
+      this.setSyncStatus('Compensation limit ต้องเป็นตัวเลขมากกว่า 0', true);
+      return;
+    }
+    this.eventDraftDriverAverage = driverAverage;
+    this.eventDraftCompensationLimit = compensationLimit;
+
     const token = this.getWeighingToken();
     if (!token) return;
     this.configRequestGeneration++;
@@ -568,7 +650,16 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     try {
       // Persist the config before switching the active event, so a failed config save
       // cannot leave the server pointing at an event with default sessions.
-      const config = await firstValueFrom(this.weighingService.setConfig(nextEventName, this.currentYear, classSessions, lockedSessions, token));
+      const config = await firstValueFrom(this.weighingService.setConfig(
+        nextEventName,
+        this.currentYear,
+        classSessions,
+        lockedSessions,
+        driverAverage,
+        compensationLimit,
+        this.eventDraftShowFinalWeight,
+        token,
+      ));
       const activeEvent = await firstValueFrom(this.weighingService.setActiveEvent(nextEventName, this.currentYear, token));
       this.applyActiveEvent(activeEvent, true);
       this.applyEventConfig(config, true);
@@ -577,7 +668,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       this.isConfigModalOpen = false;
       this.isEditingEvent = false;
       this.setSyncStatus('บันทึก event config แล้ว: ' + this.eventName);
-       this.loadSelectedSessionAndConnect(false, true);
+      this.loadSelectedSessionAndConnect(false, true);
     } catch (err) {
       this.setSyncStatus(this.errorMessage(err, 'บันทึก event config ไม่สำเร็จ'), true);
     }
@@ -607,10 +698,10 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.queueFieldAutoSave(car, field, this.weights[k][field] ?? 0);
   }
 
-  setCarField(car: CarRow, field: 'num' | 'sub' | 'target' | 'driver1Name' | 'driver1Weight' | 'driver2Name' | 'driver2Weight', value: string | number | null): void {
+  setCarField(car: CarRow, field: 'num' | 'sub' | 'target' | 'bopWeight' | 'ballastWeight' | 'driver1Name' | 'driver1Weight' | 'driver2Name' | 'driver2Weight', value: string | number | null): void {
     if (!this.canEditMaster) return;
     const oldNum = car.num;
-    if (field === 'target' || field === 'driver1Weight' || field === 'driver2Weight') {
+    if (field === 'target' || field === 'bopWeight' || field === 'ballastWeight' || field === 'driver1Weight' || field === 'driver2Weight') {
       const raw = String(value ?? '').trim();
       const parsed = Number(raw);
       car[field] = raw === '' || !Number.isFinite(parsed) ? null : parsed;
@@ -654,7 +745,17 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       return;
     }
     const sub = this.normalizeSubForClass(this.selectedClass, this.newSub);
-    cars.push({ sub, num, target: this.newTarget === null ? null : Number(this.newTarget), driver1Name: '', driver1Weight: null, driver2Name: '', driver2Weight: null });
+    cars.push({
+      sub,
+      num,
+      target: this.newTarget === null ? null : Number(this.newTarget),
+      bopWeight: null,
+      ballastWeight: null,
+      driver1Name: '',
+      driver1Weight: null,
+      driver2Name: '',
+      driver2Weight: null,
+    });
     const addedCar = cars[cars.length - 1];
     this.newNum = '';
     this.newSub = this.defaultSubForClass(this.selectedClass);
@@ -780,10 +881,22 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const nextUpdatedAt = config.updated_at ?? '';
     const nextClassSessions = this.normalizeEventClassSessions(config.class_sessions);
     const nextLockedSessions = this.normalizeEventLockedSessions(config.locked_sessions, nextClassSessions);
-    const changed = force || (!!nextUpdatedAt && nextUpdatedAt !== this.lastConfigUpdatedAt) || JSON.stringify(nextClassSessions) !== JSON.stringify(this.classSessions) || JSON.stringify(nextLockedSessions) !== JSON.stringify(this.lockedSessions);
+    const nextDriverAverage = this.configNumberOrDefault(config.driver_average, DEFAULT_DRIVER_AVERAGE);
+    const nextCompensationLimit = this.configNumberOrDefault(config.driver_compensation_limit, DEFAULT_DRIVER_COMPENSATION_LIMIT);
+    const nextShowFinalWeight = config.show_final_weight === true;
+    const changed = force
+      || (!!nextUpdatedAt && nextUpdatedAt !== this.lastConfigUpdatedAt)
+      || JSON.stringify(nextClassSessions) !== JSON.stringify(this.classSessions)
+      || JSON.stringify(nextLockedSessions) !== JSON.stringify(this.lockedSessions)
+      || nextDriverAverage !== this.driverAverage
+      || nextCompensationLimit !== this.driverCompensationLimit
+      || nextShowFinalWeight !== this.showFinalWeight;
     if (!changed) return false;
     this.classSessions = nextClassSessions;
     this.lockedSessions = nextLockedSessions;
+    this.driverAverage = nextDriverAverage;
+    this.driverCompensationLimit = nextCompensationLimit;
+    this.showFinalWeight = nextShowFinalWeight;
     this.lastConfigUpdatedAt = nextUpdatedAt;
     this.ensureSelection();
     return true;
@@ -895,7 +1008,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
          .map((worksheet) => ({ worksheet, context: this.importWorksheetContext(worksheet) }))
          .filter((item): item is { worksheet: ExcelJS.Worksheet; context: ImportWorksheetContext } => !!item.context);
        if (worksheets.length === 0) {
-         this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ, น้ำหนักที่ต้องการ', true);
+          this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ และ Target หรือ BOP Weight', true);
          return;
        }
 
@@ -908,33 +1021,37 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
        worksheets.forEach(({ worksheet, context }) => {
          worksheet.eachRow((row, rowNumber) => {
            if (rowNumber < context.firstDataRow) return;
-           const classValue = context.header.classCol
-             ? this.cellText(row.getCell(context.header.classCol))
-             : context.defaultClassName;
+            const classValue = context.header.classCol
+              ? this.cellText(row.getCell(context.header.classCol))
+              : context.defaultClassName || (context.header.subCol ? this.cellText(row.getCell(context.header.subCol)) : '');
            const mapping = this.importClassMappingForRow(row, context.header, classValue);
            const carNumber = this.cellText(row.getCell(context.header.carCol));
-           const target = this.importTarget(row.getCell(context.header.targetCol));
+            const baseValues = this.importBaseValues(row, context.header);
            const raceValue = context.header.raceCol ? this.cellText(row.getCell(context.header.raceCol)) : context.defaultSessionName;
-           const sessionName = this.importSessionName(raceValue, mapping?.className ?? '', context.defaultSessionName);
-           const driverValues = this.importDriverValues(row, context.header);
-           if (!mapping || !carNumber || target.invalid) {
+            const sessionName = this.importSessionName(raceValue, mapping?.className ?? '', context.defaultSessionName);
+            const driverValues = this.importDriverValues(row, context.header);
+            const weightValues = this.importWeightValues(row, context.header);
+             if (!mapping || !carNumber || baseValues.invalid || weightValues.invalid) {
              skippedRows++;
              return;
            }
            if (!sessionName) {
              skippedRows++;
              return;
-           }
+            }
 
-           const cars = this.ensureSessionData(mapping.className, sessionName);
-           if (this.mergeImportedCar(cars, mapping.sub, carNumber, target.value, driverValues)) updatedRows++;
-           else addedRows++;
+            const cars = this.ensureSessionData(mapping.className, sessionName);
+            const updated = this.mergeImportedCar(cars, mapping.sub, carNumber, baseValues, driverValues);
+            if (updated) updatedRows++;
+            else addedRows++;
+            this.mergeImportedWeights(mapping.className, sessionName, carNumber, weightValues);
            changedPairs.add(`${mapping.className}|${sessionName}`);
            importedRows++;
          });
        });
 
       this.saveData();
+      this.saveWeights();
       if (changedPairs.size === 0) {
         this.setSyncStatus(`Import Excel ไม่พบข้อมูลที่ใช้ได้, skipped ${skippedRows}`, true);
         return;
@@ -973,7 +1090,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
          .map((worksheet) => ({ worksheet, context: this.importWorksheetContext(worksheet) }))
          .filter((item): item is { worksheet: ExcelJS.Worksheet; context: ImportWorksheetContext } => !!item.context);
        if (worksheets.length === 0) {
-         this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ, น้ำหนักที่ต้องการ', true);
+          this.setSyncStatus('Excel ต้องมี column CLASS, เบอร์รถ และ Target หรือ BOP Weight', true);
          return;
        }
 
@@ -987,39 +1104,42 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
        worksheets.forEach(({ worksheet, context }) => {
          worksheet.eachRow((row, rowNumber) => {
            if (rowNumber < context.firstDataRow) return;
-           const classValue = context.header.classCol
-             ? this.cellText(row.getCell(context.header.classCol))
-             : context.defaultClassName;
+            const classValue = context.header.classCol
+              ? this.cellText(row.getCell(context.header.classCol))
+              : context.defaultClassName || (context.header.subCol ? this.cellText(row.getCell(context.header.subCol)) : '');
            const mapping = this.importClassMappingForRow(row, context.header, classValue);
            if (!mapping || mapping.className !== className) return;
 
            const carNumber = this.cellText(row.getCell(context.header.carCol));
-           const target = this.importTarget(row.getCell(context.header.targetCol));
+            const baseValues = this.importBaseValues(row, context.header);
            const raceValue = context.header.raceCol ? this.cellText(row.getCell(context.header.raceCol)) : context.defaultSessionName;
-           const sessionForRow = this.importSessionName(raceValue, className, context.defaultSessionName);
-           const driverValues = this.importDriverValues(row, context.header);
-           if (!carNumber || target.invalid) {
+            const sessionForRow = this.importSessionName(raceValue, className, context.defaultSessionName);
+            const driverValues = this.importDriverValues(row, context.header);
+            const weightValues = this.importWeightValues(row, context.header);
+             if (!carNumber || baseValues.invalid || weightValues.invalid) {
              skippedRows++;
              return;
            }
            if (!sessionForRow) {
              skippedRows++;
              return;
-           }
+            }
 
-           const targetCars = sessionForRow === sessionName ? cars : this.ensureSessionData(className, sessionForRow);
-           if (this.mergeImportedCar(targetCars, mapping.sub, carNumber, target.value, driverValues)) {
-             updatedRows++;
-           } else {
-             addedRows++;
-           }
+            const targetCars = sessionForRow === sessionName ? cars : this.ensureSessionData(className, sessionForRow);
+            if (this.mergeImportedCar(targetCars, mapping.sub, carNumber, baseValues, driverValues)) {
+              updatedRows++;
+            } else {
+              addedRows++;
+            }
+            this.mergeImportedWeights(className, sessionForRow, carNumber, weightValues);
            changedPairs.add(`${className}|${sessionForRow}`);
            matchedRows++;
          });
        });
 
-      this.saveData();
-      if (matchedRows === 0) {
+       this.saveData();
+       this.saveWeights();
+       if (matchedRows === 0) {
         this.setSyncStatus(`ไม่พบข้อมูลสำหรับ ${className} ในไฟล์ Excel, skipped ${skippedRows}`, true);
         return;
       }
@@ -1048,9 +1168,43 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const w2 = Number(record[`${prefix}_w2` as WeightField] ?? 0);
     const has = w1 > 0 || w2 > 0;
     const total = has ? w1 + w2 : null;
-    const diff = total !== null && car.target !== null ? total - car.target : null;
-    const pct = diff !== null && car.target ? diff / car.target : null;
+    const comparisonWeight = this.comparisonWeight(car, prefix);
+    const diff = total !== null && comparisonWeight !== null ? total - comparisonWeight : null;
+    const pct = diff !== null && comparisonWeight ? diff / comparisonWeight : null;
     return { w1, w2, has, total, diff, pct };
+  }
+
+  driverWeightStats(car: CarRow): DriverWeightStats {
+    const weights = [car.driver1Weight, car.driver2Weight]
+      .filter((weight): weight is number => weight !== null && Number.isFinite(weight) && weight > 0);
+    if (weights.length === 0) {
+      return { avg: null, diffFrom75: null, compensation: 0 };
+    }
+    const avg = weights.reduce((sum, weight) => sum + weight, 0) / weights.length;
+    const diffFrom75 = this.driverAverage - avg;
+    return {
+      avg,
+      diffFrom75,
+      compensation: this.clampDriverCompensation(diffFrom75),
+    };
+  }
+
+  finalWeight(car: CarRow): number | null {
+    if (car.target === null || !Number.isFinite(car.target)) return null;
+    return car.target + this.driverWeightStats(car).compensation;
+  }
+
+  hasBaseWeights(car: CarRow): boolean {
+    return car.bopWeight !== null || car.ballastWeight !== null;
+  }
+
+  weightText(value: number | null): string {
+    return value === null || !Number.isFinite(value) ? '—' : value.toFixed(2);
+  }
+
+  signedWeightText(value: number | null): string {
+    if (value === null || !Number.isFinite(value)) return '—';
+    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
   }
 
   pillClass(stats: WeightStats): string {
@@ -1065,6 +1219,16 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return `${stats.diff >= 0 ? '+' : ''}${stats.diff.toFixed(1)} kg`;
   }
 
+  compensationText(value: number | null): string {
+    if (value === null || !Number.isFinite(value)) return '—';
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)} kg`;
+  }
+
+  compensationPillClass(value: number | null): string {
+    if (value === null || !Number.isFinite(value)) return 'empty';
+    return value === 0 ? 'ok' : 'warn';
+  }
+
   pctText(stats: WeightStats): string {
     return stats.pct === null ? '—' : `${(stats.pct * 100).toFixed(2)}%`;
   }
@@ -1075,6 +1239,24 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   targetText(value: number | null): string {
     return value !== null ? Number(value).toFixed(2) : '—';
+  }
+
+  private clampDriverCompensation(value: number): number {
+    return Math.max(-this.driverCompensationLimit, Math.min(this.driverCompensationLimit, value));
+  }
+
+  private positiveConfigNumber(value: unknown): number | null {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+  }
+
+  private configNumberOrDefault(value: unknown, fallback: number): number {
+    return this.positiveConfigNumber(value) ?? fallback;
+  }
+
+  private finiteOrZero(value: number | null): number {
+    return value !== null && Number.isFinite(value) ? value : 0;
   }
 
   private restoreUser(): void {
@@ -1119,7 +1301,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     }, this.autoSaveDelayMs);
   }
 
-  private queueFieldAutoSave(car: CarRow, field: WeightField | 'sub' | 'target' | 'driver1Name' | 'driver1Weight' | 'driver2Name' | 'driver2Weight', value: unknown): void {
+  private queueFieldAutoSave(car: CarRow, field: WeightField | 'sub' | 'target' | 'bopWeight' | 'ballastWeight' | 'driver1Name' | 'driver1Weight' | 'driver2Name' | 'driver2Weight', value: unknown): void {
     if (!this.canKeyInCurrentSession) return;
     const className = this.selectedClass;
     const sessionName = this.selectedSession;
@@ -1257,19 +1439,27 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private buildCarMetadata(car: CarRow): Record<string, unknown> {
+    const driver = this.driverWeightStats(car);
+    const finalWeight = this.finalWeight(car);
     return {
       'รุ่น': car.sub,
       'เบอร์รถ': car.num,
       'Target Weight (kg)': car.target,
+      'BOP Weight (kg)': car.bopWeight,
+      'Ballast Weight (kg)': car.ballastWeight,
       'ชื่อนักแข่ง1': car.driver1Name,
       'น้ำหนักนักแข่ง1': car.driver1Weight,
       'ชื่อนักแข่ง2': car.driver2Name,
       'น้ำหนักนักแข่ง2': car.driver2Weight,
+      'Driver Avg (kg)': driver.avg,
+      'Diff from 75 (kg)': driver.diffFrom75,
+      'Driver Weight Compensation (kg)': driver.compensation,
+      'Final Weight (kg)': finalWeight,
     };
   }
 
   private metadataExpectedVersions(className: string, sessionName: string, carNumber: string): Record<string, number> {
-    const fields = ['sub', 'target', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'];
+    const fields = ['sub', 'target', 'bopWeight', 'ballastWeight', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'];
     return fields.reduce<Record<string, number>>((versions, field) => {
       versions[field] = this.fieldVersions[this.fieldKey(className, sessionName, carNumber, field)]?.version ?? 0;
       return versions;
@@ -1295,6 +1485,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       selectedSession: this.selectedSession,
       lastCacheUpdatedAt: this.lastCacheUpdatedAt,
       lastConfigUpdatedAt: this.lastConfigUpdatedAt,
+      driverAverage: this.driverAverage,
+      driverCompensationLimit: this.driverCompensationLimit,
+      showFinalWeight: this.showFinalWeight,
     };
   }
 
@@ -1312,6 +1505,12 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.selectedSession = state.selectedSession;
     this.lastCacheUpdatedAt = state.lastCacheUpdatedAt;
     this.lastConfigUpdatedAt = state.lastConfigUpdatedAt;
+    this.driverAverage = state.driverAverage;
+    this.driverCompensationLimit = state.driverCompensationLimit;
+    this.showFinalWeight = state.showFinalWeight;
+    this.eventDraftDriverAverage = this.driverAverage;
+    this.eventDraftCompensationLimit = this.driverCompensationLimit;
+    this.eventDraftShowFinalWeight = this.showFinalWeight;
     this.previewOriginalState = null;
     this.ensureSelection();
     this.rebuildConfigDraftFromCurrent();
@@ -1338,6 +1537,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       if (requestId !== this.previewRequestId) return;
       const previewClassSessions = this.normalizeEventClassSessions(config.class_sessions);
       const previewLockedSessions = this.normalizeEventLockedSessions(config.locked_sessions, previewClassSessions);
+      this.eventDraftDriverAverage = this.configNumberOrDefault(config.driver_average, DEFAULT_DRIVER_AVERAGE);
+      this.eventDraftCompensationLimit = this.configNumberOrDefault(config.driver_compensation_limit, DEFAULT_DRIVER_COMPENSATION_LIMIT);
+      this.eventDraftShowFinalWeight = config.show_final_weight === true;
       this.rebuildConfigDraft(previewClassSessions, previewLockedSessions);
       this.setSyncStatus('โหลด config event แล้ว: ' + previewEventName);
     } catch (err) {
@@ -1350,6 +1552,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     if (!state) return;
     const draftName = this.eventDraftName;
     this.eventDraftName = draftName;
+    this.eventDraftDriverAverage = state.driverAverage;
+    this.eventDraftCompensationLimit = state.driverCompensationLimit;
+    this.eventDraftShowFinalWeight = state.showFinalWeight;
     this.rebuildConfigDraft(state.classSessions, state.lockedSessions);
   }
 
@@ -1369,32 +1574,59 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     this.pollTimer = null;
   }
 
-   private importHeaderColumns(row: ExcelJS.Row): ImportHeaderColumns | null {
-     let classCol = 0;
-     let subCol = 0;
+  private importHeaderColumns(row: ExcelJS.Row): ImportHeaderColumns | null {
+    let classCol = 0;
+    let subCol = 0;
     let carCol = 0;
     let targetCol = 0;
+    let bopCol = 0;
+    let ballastCol = 0;
     let raceCol = 0;
     let driver1NameCol = 0;
     let driver1WeightCol = 0;
     let driver2NameCol = 0;
     let driver2WeightCol = 0;
+    let fuelW1Col = 0;
+    let fuelW2Col = 0;
+    let dryW1Col = 0;
+    let dryW2Col = 0;
+
     row.eachCell((cell, colNumber) => {
-       const header = this.cellText(cell).replace(/\s+/g, ' ').trim().toUpperCase();
-       if (header === 'CLASS') classCol = colNumber;
-       if (header === 'RACE') raceCol = colNumber;
-       if (header === 'รุ่น' || header === 'SUB' || header === 'MODEL') subCol = colNumber;
-       if (header === 'เบอร์รถ') carCol = colNumber;
-       if (header === 'CAR NUMBER') carCol = colNumber;
-       if (header === 'น้ำหนักที่ต้องการ') targetCol = colNumber;
-       if (header === 'TARGET WEIGHT (KG)' || header === 'TARGET WEIGHT') targetCol = colNumber;
-       if (header === 'ชื่อนักแข่ง1') driver1NameCol = colNumber;
-       if (header === 'น้ำหนักนักแข่ง1') driver1WeightCol = colNumber;
-       if (header === 'ชื่อนักแข่ง2') driver2NameCol = colNumber;
-       if (header === 'น้ำหนักนักแข่ง2') driver2WeightCol = colNumber;
-     });
-     return carCol && targetCol ? { classCol, subCol, carCol, targetCol, raceCol, driver1NameCol, driver1WeightCol, driver2NameCol, driver2WeightCol } : null;
-   }
+      const header = this.cellText(cell).replace(/\s+/g, ' ').trim().toUpperCase();
+      if (header === 'CLASS') classCol = colNumber;
+      if (header === 'RACE') raceCol = colNumber;
+      if (header === 'รุ่น' || header === 'SUB' || header === 'MODEL') subCol = colNumber;
+      if (header === 'เบอร์รถ' || header === 'เบอร์') carCol = colNumber;
+      if (header === 'CAR NUMBER' || header === 'CAR NO' || header === 'CAR NO.') carCol = colNumber;
+      if (header === 'น้ำหนักที่ต้องการ') targetCol = colNumber;
+      if (header === 'TARGET (KG)' || header === 'TARGET' || header === 'TARGET WEIGHT (KG)' || header === 'TARGET WEIGHT') targetCol = colNumber;
+      if (header === 'BOP WEIGHT (KG)' || header === 'BOP WEIGHT') bopCol = colNumber;
+      if (header === 'BALLAST WEIGHT (KG)' || header === 'BALLAST WEIGHT') ballastCol = colNumber;
+      if (header === 'ชื่อนักแข่ง1' || header === 'DRIVER 1 NAME') driver1NameCol = colNumber;
+      if (header === 'น้ำหนักนักแข่ง1' || header === 'DRIVER 1 WEIGHT') driver1WeightCol = colNumber;
+      if (header === 'ชื่อนักแข่ง2' || header === 'DRIVER 2 NAME') driver2NameCol = colNumber;
+      if (header === 'น้ำหนักนักแข่ง2' || header === 'DRIVER 2 WEIGHT') driver2WeightCol = colNumber;
+
+      const isScaleOne = header === 'เครื่องชั่ง 1' || header === 'ชั่ง 1' || header === 'REAR' || header === 'REAR WEIGHT';
+      const isScaleTwo = header === 'เครื่องชั่ง 2' || header === 'ชั่ง 2' || header === 'FRONT' || header === 'FRONT WEIGHT';
+      if (isScaleOne) {
+        if (!fuelW1Col) fuelW1Col = colNumber;
+        else if (!dryW1Col) dryW1Col = colNumber;
+      }
+      if (isScaleTwo) {
+        if (!fuelW2Col) fuelW2Col = colNumber;
+        else if (!dryW2Col) dryW2Col = colNumber;
+      }
+    });
+
+    return carCol && (targetCol || bopCol || ballastCol)
+      ? {
+        classCol, subCol, carCol, targetCol, bopCol, ballastCol, raceCol,
+        driver1NameCol, driver1WeightCol, driver2NameCol, driver2WeightCol,
+        fuelW1Col, fuelW2Col, dryW1Col, dryW2Col,
+      }
+      : null;
+  }
 
    private importWorksheetContext(worksheet: ExcelJS.Worksheet): ImportWorksheetContext | null {
      const maxHeaderRow = Math.min(worksheet.rowCount, 10);
@@ -1403,9 +1635,10 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
        if (!header) continue;
 
        const defaultClassName = this.importClassMapping(this.firstNonEmptyRowValue(worksheet.getRow(1)))?.className ?? '';
-       const defaultSessionName = rowNumber >= 3
-         ? this.firstNonEmptyRowValue(worksheet.getRow(2)) || this.selectedSession
-         : this.selectedSession;
+        const sheetSessionName = this.normalizeImportRaceSession(worksheet.name);
+        const defaultSessionName = rowNumber >= 3
+          ? this.firstNonEmptyRowValue(worksheet.getRow(2)) || sheetSessionName || this.selectedSession
+          : sheetSessionName || this.selectedSession;
        return {
          header,
          firstDataRow: rowNumber + 1,
@@ -1455,9 +1688,24 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
   private importTarget(cell: ExcelJS.Cell): { value: number | null; invalid: boolean } {
     const value = this.cellText(cell);
-    if (!value) return { value: null, invalid: false };
+    if (!value || value === '-' || value === '—') return { value: null, invalid: false };
     const parsed = Number(value.replace(/,/g, ''));
     return Number.isFinite(parsed) ? { value: parsed, invalid: false } : { value: null, invalid: true };
+  }
+
+  private importBaseValues(row: ExcelJS.Row, header: ImportHeaderColumns): ImportBaseValues {
+    const target = header.targetCol ? this.importTarget(row.getCell(header.targetCol)) : { value: null, invalid: false };
+    const bop = header.bopCol ? this.importTarget(row.getCell(header.bopCol)) : { value: null, invalid: false };
+    const ballast = header.ballastCol ? this.importTarget(row.getCell(header.ballastCol)) : { value: null, invalid: false };
+    return {
+      target: target.value,
+      bopWeight: bop.value,
+      ballastWeight: ballast.value,
+      invalid: target.invalid || bop.invalid || ballast.invalid,
+      hasTargetColumn: !!header.targetCol,
+      hasBopColumn: !!header.bopCol,
+      hasBallastColumn: !!header.ballastCol,
+    };
   }
 
    private importSessionName(value: string, className: string, defaultSessionName = this.selectedSession): string {
@@ -1467,13 +1715,14 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
      return (this.classSessions[className] ?? []).find((item) => item.replace(/\s+/g, '').toLowerCase() === sessionKey) ?? '';
    }
 
-  private normalizeImportRaceSession(value: string): string {
-    const normalized = String(value ?? '').replace(/\s+/g, '').trim();
-    if (/^\d+$/.test(normalized)) return `Race${Number(normalized)}`;
-    const raceMatch = normalized.match(/^race(\d+)$/i);
-    if (raceMatch) return `Race${Number(raceMatch[1])}`;
-    return String(value ?? '').trim();
-  }
+   private normalizeImportRaceSession(value: string): string {
+     const raw = String(value ?? '').trim();
+     const normalized = raw.replace(/\s+/g, '');
+     if (/^\d+$/.test(normalized)) return `Race${Number(normalized)}`;
+     const raceMatch = normalized.match(/^race(\d+)/i);
+     if (raceMatch) return `Race${Number(raceMatch[1])}`;
+     return raw;
+   }
 
   private importDriverValues(row: ExcelJS.Row, header: ImportHeaderColumns): ImportDriverValues {
     return {
@@ -1481,22 +1730,70 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       driver1Weight: header.driver1WeightCol ? this.numberOrNull(this.cellText(row.getCell(header.driver1WeightCol)).replace(/,/g, '')) : null,
       driver2Name: header.driver2NameCol ? this.cellText(row.getCell(header.driver2NameCol)) : '',
       driver2Weight: header.driver2WeightCol ? this.numberOrNull(this.cellText(row.getCell(header.driver2WeightCol)).replace(/,/g, '')) : null,
+      hasDriver1Name: !!header.driver1NameCol,
+      hasDriver1Weight: !!header.driver1WeightCol,
+      hasDriver2Name: !!header.driver2NameCol,
+      hasDriver2Weight: !!header.driver2WeightCol,
     };
   }
 
-  private mergeImportedCar(cars: CarRow[], sub: string, carNumber: string, target: number | null, drivers: ImportDriverValues): boolean {
+  private importWeightValues(row: ExcelJS.Row, header: ImportHeaderColumns): ImportWeightValues {
+    const read = (column: number): { value: number | null; invalid: boolean } => (
+      column ? this.importTarget(row.getCell(column)) : { value: null, invalid: false }
+    );
+    const fuelW1 = read(header.fuelW1Col);
+    const fuelW2 = read(header.fuelW2Col);
+    const dryW1 = read(header.dryW1Col);
+    const dryW2 = read(header.dryW2Col);
+    return {
+      fuelW1: fuelW1.value,
+      fuelW2: fuelW2.value,
+      dryW1: dryW1.value,
+      dryW2: dryW2.value,
+      invalid: fuelW1.invalid || fuelW2.invalid || dryW1.invalid || dryW2.invalid,
+      hasFuelW1: !!header.fuelW1Col,
+      hasFuelW2: !!header.fuelW2Col,
+      hasDryW1: !!header.dryW1Col,
+      hasDryW2: !!header.dryW2Col,
+    };
+  }
+
+  private mergeImportedCar(cars: CarRow[], sub: string, carNumber: string, base: ImportBaseValues, drivers: ImportDriverValues): boolean {
     const existing = cars.find((car) => car.num.trim().toLowerCase() === carNumber.toLowerCase());
     if (existing) {
       existing.sub = sub;
-      existing.target = target;
-      existing.driver1Name = drivers.driver1Name;
-      existing.driver1Weight = drivers.driver1Weight;
-      existing.driver2Name = drivers.driver2Name;
-      existing.driver2Weight = drivers.driver2Weight;
+      if (base.hasTargetColumn) existing.target = base.target;
+      if (base.hasBopColumn) existing.bopWeight = base.bopWeight;
+      if (base.hasBallastColumn) existing.ballastWeight = base.ballastWeight;
+      if (drivers.hasDriver1Name) existing.driver1Name = drivers.driver1Name;
+      if (drivers.hasDriver1Weight) existing.driver1Weight = drivers.driver1Weight;
+      if (drivers.hasDriver2Name) existing.driver2Name = drivers.driver2Name;
+      if (drivers.hasDriver2Weight) existing.driver2Weight = drivers.driver2Weight;
       return true;
     }
-    cars.push({ sub, num: carNumber, target, ...drivers });
+    cars.push({
+      sub,
+      num: carNumber,
+      target: base.hasTargetColumn ? base.target : null,
+      bopWeight: base.hasBopColumn ? base.bopWeight : null,
+      ballastWeight: base.hasBallastColumn ? base.ballastWeight : null,
+      driver1Name: drivers.driver1Name,
+      driver1Weight: drivers.driver1Weight,
+      driver2Name: drivers.driver2Name,
+      driver2Weight: drivers.driver2Weight,
+    });
     return false;
+  }
+
+  private mergeImportedWeights(className: string, sessionName: string, carNumber: string, values: ImportWeightValues): void {
+    if (!values.hasFuelW1 && !values.hasFuelW2 && !values.hasDryW1 && !values.hasDryW2) return;
+    const weightKey = this.key(className, sessionName, carNumber);
+    const record = this.weights[weightKey] ?? {};
+    if (values.hasFuelW1) record.fuel_w1 = values.fuelW1 ?? 0;
+    if (values.hasFuelW2) record.fuel_w2 = values.fuelW2 ?? 0;
+    if (values.hasDryW1) record.dry_w1 = values.dryW1 ?? 0;
+    if (values.hasDryW2) record.dry_w2 = values.dryW2 ?? 0;
+    this.weights[weightKey] = record;
   }
 
   private async saveImportedSessionsToRedis(changedPairs: Set<string>, importedRows: number, addedRows: number, updatedRows: number, skippedRows: number): Promise<void> {
@@ -1596,6 +1893,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       sub: this.normalizeSubForClass(className, String(car?.sub ?? '')),
       num: String(car?.num ?? '').trim(),
       target: this.numberOrNull(car?.target),
+      bopWeight: this.numberOrNull(car?.bopWeight),
+      ballastWeight: this.numberOrNull(car?.ballastWeight),
       driver1Name: String(car?.driver1Name ?? '').trim(),
       driver1Weight: this.numberOrNull(car?.driver1Weight),
       driver2Name: String(car?.driver2Name ?? '').trim(),
@@ -1665,28 +1964,44 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private buildCarReport(car: CarRow): WeighingCarPayload {
+    const driver = this.driverWeightStats(car);
+    const finalWeight = this.finalWeight(car);
     return {
       รุ่น: this.normalizeSubForClass(this.selectedClass, car.sub),
       เบอร์รถ: String(car.num),
       'Target Weight (kg)': car.target,
+      'BOP Weight (kg)': car.bopWeight,
+      'Ballast Weight (kg)': car.ballastWeight,
       ชื่อนักแข่ง1: car.driver1Name,
       น้ำหนักนักแข่ง1: car.driver1Weight,
       ชื่อนักแข่ง2: car.driver2Name,
       น้ำหนักนักแข่ง2: car.driver2Weight,
+      'Driver Avg (kg)': driver.avg,
+      'Diff from 75 (kg)': driver.diffFrom75,
+      'Driver Weight Compensation (kg)': driver.compensation,
+      'Final Weight (kg)': finalWeight,
       'INCLUDING FUEL': this.weightBlock(car, 'fuel'),
       'DRY WEIGHT': this.weightBlock(car, 'dry'),
     };
   }
 
   private buildCarReportFor(className: string, sessionName: string, car: CarRow): WeighingCarPayload {
+    const driver = this.driverWeightStats(car);
+    const finalWeight = this.finalWeight(car);
     return {
       รุ่น: this.normalizeSubForClass(className, car.sub),
       เบอร์รถ: String(car.num),
       'Target Weight (kg)': car.target,
+      'BOP Weight (kg)': car.bopWeight,
+      'Ballast Weight (kg)': car.ballastWeight,
       ชื่อนักแข่ง1: car.driver1Name,
       น้ำหนักนักแข่ง1: car.driver1Weight,
       ชื่อนักแข่ง2: car.driver2Name,
       น้ำหนักนักแข่ง2: car.driver2Weight,
+      'Driver Avg (kg)': driver.avg,
+      'Diff from 75 (kg)': driver.diffFrom75,
+      'Driver Weight Compensation (kg)': driver.compensation,
+      'Final Weight (kg)': finalWeight,
       'INCLUDING FUEL': this.weightBlockFor(className, sessionName, car, 'fuel'),
       'DRY WEIGHT': this.weightBlockFor(className, sessionName, car, 'dry'),
     };
@@ -1714,6 +2029,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
             sub: this.normalizeSubForClass(cls, String(item?.['รุ่น'] ?? '')),
             num: carNumber,
             target: this.numberOrNull(item?.['Target Weight (kg)']),
+            bopWeight: this.numberOrNull(item?.['BOP Weight (kg)']),
+            ballastWeight: this.numberOrNull(item?.['Ballast Weight (kg)']),
             driver1Name: String(item?.['ชื่อนักแข่ง1'] ?? '').trim(),
             driver1Weight: this.numberOrNull(item?.['น้ำหนักนักแข่ง1']),
             driver2Name: String(item?.['ชื่อนักแข่ง2'] ?? '').trim(),
@@ -1759,7 +2076,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       const remoteCar = this.normalizeCarRow(className, {
         sub: item?.['รุ่น'],
         num: carNumber,
-        target: item?.['Target Weight (kg)'],
+        target: this.numberOrNull(item?.['Target Weight (kg)']),
+        bopWeight: item?.['BOP Weight (kg)'],
+        ballastWeight: item?.['Ballast Weight (kg)'],
         driver1Name: item?.['ชื่อนักแข่ง1'],
         driver1Weight: item?.['น้ำหนักนักแข่ง1'],
         driver2Name: item?.['ชื่อนักแข่ง2'],
@@ -1769,7 +2088,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
         nextCars.push(remoteCar);
       } else {
         const merged = { ...current, ...remoteCar };
-        ['sub', 'target', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'].forEach((field) => {
+        ['sub', 'target', 'bopWeight', 'ballastWeight', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'].forEach((field) => {
           if (this.hasDirtyField(className, sessionName, carNumber, field)) {
             (merged as any)[field] = (current as any)[field];
           }
@@ -1920,14 +2239,17 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const cars = this.ensureSessionData(this.selectedClass, this.selectedSession);
     const current = cars.find((item) => item.num === carNumber);
     const normalized = this.normalizeCarRow(this.selectedClass, {
-      sub: String(remote['รุ่น'] ?? ''), num: carNumber, target: this.numberOrNull(remote['Target Weight (kg)']),
+      sub: String(remote['รุ่น'] ?? ''), num: carNumber,
+      target: this.numberOrNull(remote['Target Weight (kg)']),
+      bopWeight: this.numberOrNull(remote['BOP Weight (kg)']),
+      ballastWeight: this.numberOrNull(remote['Ballast Weight (kg)']),
       driver1Name: String(remote['ชื่อนักแข่ง1'] ?? ''), driver1Weight: this.numberOrNull(remote['น้ำหนักนักแข่ง1']),
       driver2Name: String(remote['ชื่อนักแข่ง2'] ?? ''), driver2Weight: this.numberOrNull(remote['น้ำหนักนักแข่ง2']),
     });
     if (!current) {
       cars.push(normalized);
     } else {
-      (['sub', 'target', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'] as const).forEach((field) => {
+      (['sub', 'target', 'bopWeight', 'ballastWeight', 'driver1Name', 'driver1Weight', 'driver2Name', 'driver2Weight'] as const).forEach((field) => {
         if (!this.hasDirtyField(this.selectedClass, this.selectedSession, carNumber, field)) {
           (current as any)[field] = (normalized as any)[field];
         }
@@ -1957,7 +2279,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       this.weights[weightKey][field] = this.numberOrZero(value);
       return;
     }
-    if (field === 'target' || field === 'driver1Weight' || field === 'driver2Weight') {
+    if (field === 'target' || field === 'bopWeight' || field === 'ballastWeight' || field === 'driver1Weight' || field === 'driver2Weight') {
       (car as any)[field] = this.numberOrNull(value);
       return;
     }
@@ -2035,25 +2357,43 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private configureSheetColumns(sheet: ExcelJS.Worksheet): void {
-    const widths = [6, 12, 16, 18, 18, 16, 18, 16, 12, 12, 12, 14, 10, 3, 12, 12, 12, 14, 10];
+    const widths = this.showFinalWeight
+      ? [6, 12, 16, 16, 18, 16, 18, 24, 18, 18, 12, 12, 12, 14, 10, 3, 12, 12, 12, 14, 10]
+      : [6, 12, 16, 16, 18, 16, 18, 24, 18, 12, 12, 12, 14, 10, 3, 12, 12, 12, 14, 10];
     widths.forEach((width, index) => sheet.getColumn(index + 1).width = width);
   }
 
   private applyHeader(sheet: ExcelJS.Worksheet, className: string, sessionName: string): void {
     sheet.mergeCells('A1:C1');
     sheet.mergeCells('A2:C2');
-    sheet.mergeCells('I2:M2');
-    sheet.mergeCells('O2:S2');
+    if (this.showFinalWeight) {
+      sheet.mergeCells('K2:O2');
+      sheet.mergeCells('Q2:U2');
+    } else {
+      sheet.mergeCells('J2:N2');
+      sheet.mergeCells('P2:T2');
+    }
 
     sheet.getCell('A1').value = className;
     sheet.getCell('A2').value = sessionName.toUpperCase();
-    sheet.getCell('I2').value = 'ชั่งปรกติรวมน้ำมัน\n(INCLUDING FUEL)';
-    sheet.getCell('O2').value = 'ชั่งปรกติไม่รวมน้ำมัน\n( DRY WEIGHT)';
-    sheet.getRow(3).values = [
-      '#', 'รุ่น', 'เบอร์รถ', 'Target Weight\n(kg)', 'ชื่อนักแข่ง1', 'น้ำหนักนักแข่ง1', 'ชื่อนักแข่ง2', 'น้ำหนักนักแข่ง2',
+    const fuelHeaderColumn = this.showFinalWeight ? 'K' : 'J';
+    const dryHeaderColumn = this.showFinalWeight ? 'Q' : 'P';
+    sheet.getCell(`${fuelHeaderColumn}2`).value = 'ชั่งปรกติรวมน้ำมัน\n(INCLUDING FUEL)';
+    sheet.getCell(`${dryHeaderColumn}2`).value = 'ชั่งปรกติไม่รวมน้ำมัน\n( DRY WEIGHT)';
+    const headers: string[] = [
+      '#', 'รุ่น', 'เบอร์รถ', 'ชื่อนักแข่ง1', 'น้ำหนักนักแข่ง1', 'ชื่อนักแข่ง2', 'น้ำหนักนักแข่ง2',
+      'Driver Weight\nCompensation\n(kg)', 'Target Weight\n(kg)',
+    ];
+    if (this.showFinalWeight) headers.push('Final Weight\n(kg)');
+    headers.push(
       'เครื่องชั่ง 1', 'เครื่องชั่ง 2', 'รวม', 'Diff Cal\n(KG)', '%', '',
       'เครื่องชั่ง 1', 'เครื่องชั่ง 2', 'รวม', 'Diff Cal\n(KG)', '%',
-    ];
+    );
+    sheet.getRow(3).values = headers;
+
+    const fuelStartColumn = this.showFinalWeight ? 11 : 10;
+    const dryStartColumn = this.showFinalWeight ? 17 : 16;
+    const lastColumn = this.showFinalWeight ? 21 : 20;
 
     sheet.getRow(1).height = 34;
     sheet.getRow(2).height = 58;
@@ -2061,9 +2401,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
 
     this.styleRange(sheet, 1, 1, 1, 3, { fill: 'F4B183', fontColor: '000000', bold: true, size: 22 });
     this.styleRange(sheet, 2, 1, 2, 3, { fill: 'FFF2CC', fontColor: '000000', bold: true, size: 22 });
-    this.styleRange(sheet, 2, 9, 2, 13, { fill: '4472C4', fontColor: 'FFFFFF', bold: true, size: 12 });
-    this.styleRange(sheet, 2, 15, 2, 19, { fill: '4472C4', fontColor: 'FFFFFF', bold: true, size: 12 });
-    this.styleRange(sheet, 3, 1, 3, 19, { fill: 'B4C6E7', fontColor: '000000', bold: true, size: 12 });
+    this.styleRange(sheet, 2, fuelStartColumn, 2, fuelStartColumn + 4, { fill: '4472C4', fontColor: 'FFFFFF', bold: true, size: 12 });
+    this.styleRange(sheet, 2, dryStartColumn, 2, dryStartColumn + 4, { fill: '4472C4', fontColor: 'FFFFFF', bold: true, size: 12 });
+    this.styleRange(sheet, 3, 1, 3, lastColumn, { fill: 'B4C6E7', fontColor: '000000', bold: true, size: 12 });
   }
 
   private styleRange(
@@ -2088,28 +2428,42 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   private addExcelDataRow(sheet: ExcelJS.Worksheet, row: WeighingExcelRow, rowNumber: number): void {
     const excelRow = sheet.getRow(rowNumber);
     excelRow.height = 28;
-    excelRow.values = [
-      row.index, row.sub, row.carNumber, row.targetWeight, row.driver1Name, row.driver1Weight, row.driver2Name, row.driver2Weight,
+    const values: Array<number | string | null> = [
+      row.index, row.sub, row.carNumber, row.driver1Name, row.driver1Weight, row.driver2Name, row.driver2Weight,
+      row.driverCompensation, row.targetWeight,
+    ];
+    if (this.showFinalWeight) values.push(row.finalWeight);
+    values.push(
       row.fuelW1, row.fuelW2, row.fuelTotal, row.fuelDiff, row.fuelPct, '',
       row.dryW1, row.dryW2, row.dryTotal, row.dryDiff, row.dryPct,
-    ];
+    );
+    excelRow.values = values;
 
-    for (let col = 1; col <= 19; col++) {
+    const fuelStartColumn = this.showFinalWeight ? 11 : 10;
+    const dryStartColumn = this.showFinalWeight ? 17 : 16;
+    const lastColumn = this.showFinalWeight ? 21 : 20;
+
+    for (let col = 1; col <= lastColumn; col++) {
       const cell = sheet.getCell(rowNumber, col);
       cell.border = this.thinBorder();
-      cell.alignment = { vertical: 'middle', horizontal: [2, 5, 7].includes(col) ? 'center' : 'right' };
+      cell.alignment = { vertical: 'middle', horizontal: [2, 4, 6].includes(col) ? 'center' : 'right' };
       cell.font = { name: 'Prompt', size: 12 };
     }
 
     [1, 2, 3].forEach((col) => sheet.getCell(rowNumber, col).alignment = { vertical: 'middle', horizontal: 'center' });
-    [9, 10, 15, 16].forEach((col) => sheet.getCell(rowNumber, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2CC' } });
-    [11, 17].forEach((col) => {
+    [fuelStartColumn, fuelStartColumn + 1, dryStartColumn, dryStartColumn + 1].forEach((col) => sheet.getCell(rowNumber, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2CC' } });
+    [fuelStartColumn + 2, dryStartColumn + 2].forEach((col) => {
       sheet.getCell(rowNumber, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'EDEDED' } };
       sheet.getCell(rowNumber, col).font = { name: 'Prompt', size: 12, bold: true };
     });
-    [4, 6, 8, 9, 10, 11, 12, 15, 16, 17, 18].forEach((col) => sheet.getCell(rowNumber, col).numFmt = '#,##0.00;[Red](#,##0.00);-');
-    [13, 19].forEach((col) => sheet.getCell(rowNumber, col).numFmt = '0%;[Red]-0%;-');
-    [12, 18].forEach((col) => {
+    const numberColumns = [5, 7, 9];
+    if (this.showFinalWeight) numberColumns.push(10);
+    [fuelStartColumn, fuelStartColumn + 1, fuelStartColumn + 2, fuelStartColumn + 3,
+      dryStartColumn, dryStartColumn + 1, dryStartColumn + 2, dryStartColumn + 3].forEach((col) => numberColumns.push(col));
+    numberColumns.forEach((col) => sheet.getCell(rowNumber, col).numFmt = '#,##0.00;[Red](#,##0.00);-');
+    sheet.getCell(rowNumber, 8).numFmt = '+#,##0.0" kg";-#,##0.0" kg";+0.0" kg"';
+    [fuelStartColumn + 4, dryStartColumn + 4].forEach((col) => sheet.getCell(rowNumber, col).numFmt = '0%;[Red]-0%;-');
+    [fuelStartColumn + 3, dryStartColumn + 3].forEach((col) => {
       const cell = sheet.getCell(rowNumber, col);
       if (typeof cell.value === 'number' && cell.value < 0) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC7CE' } };
@@ -2122,17 +2476,19 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return (this.data[className]?.[sessionName] ?? []).map((car, index) => {
       const fuel = this.calcGroupFor(className, sessionName, car, 'fuel');
       const dry = this.calcGroupFor(className, sessionName, car, 'dry');
-      const fuelValues = this.excelGroupValues(fuel, car.target);
-      const dryValues = this.excelGroupValues(dry, car.target);
+      const fuelValues = this.excelGroupValues(fuel, this.comparisonWeight(car, 'fuel'));
+      const dryValues = this.excelGroupValues(dry, this.comparisonWeight(car, 'dry'));
       return {
         index: index + 1,
-        sub: this.excelSubText(className, car.sub),
-        carNumber: String(car.num),
-        targetWeight: car.target,
-        driver1Name: car.driver1Name,
+         sub: this.excelSubText(className, car.sub),
+         carNumber: String(car.num),
+         targetWeight: car.target,
+         finalWeight: this.finalWeight(car),
+         driver1Name: car.driver1Name,
         driver1Weight: car.driver1Weight,
         driver2Name: car.driver2Name,
         driver2Weight: car.driver2Weight,
+        driverCompensation: this.driverWeightStats(car).compensation,
         fuelW1: fuelValues.w1,
         fuelW2: fuelValues.w2,
         fuelTotal: fuelValues.total,
@@ -2177,7 +2533,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     };
   }
 
-  private uniqueSheetName(workbook: ExcelJS.Workbook, sessionName: string, className: string): string {
+  private uniqueSheetName(workbook: ExcelJS.Workbook, sessionName: string, className = ''): string {
     const base = this.sheetName(sessionName, className);
     let name = base;
     let index = 2;
@@ -2205,9 +2561,15 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const w2 = Number(record[`${prefix}_w2` as WeightField] ?? 0);
     const has = w1 > 0 || w2 > 0;
     const total = has ? w1 + w2 : null;
-    const diff = total !== null && car.target !== null ? total - car.target : null;
-    const pct = diff !== null && car.target ? diff / car.target : null;
+    const comparisonWeight = this.comparisonWeight(car, prefix);
+    const diff = total !== null && comparisonWeight !== null ? total - comparisonWeight : null;
+    const pct = diff !== null && comparisonWeight ? diff / comparisonWeight : null;
     return { w1, w2, has, total, diff, pct };
+  }
+
+  private comparisonWeight(car: CarRow, prefix: 'fuel' | 'dry'): number | null {
+    if (prefix === 'fuel' && this.showFinalWeight) return this.finalWeight(car);
+    return car.target !== null && Number.isFinite(car.target) ? car.target : null;
   }
 
   private getWeighingToken(showStatus = true): string {
@@ -2237,8 +2599,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return this.sanitizeEventName(value).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'BRIC1';
   }
 
-  private sheetName(sessionName: string, className: string): string {
-    const name = `${sessionName}_${className}`.replace(/[\\/?*\[\]:]/g, ' ').trim() || 'Sheet';
+  private sheetName(sessionName: string, className = ''): string {
+    const suffix = className ? `_${className}` : '';
+    const name = `${sessionName}${suffix}`.replace(/[\\/?*\[\]:]/g, ' ').trim() || 'Sheet';
     return name.slice(0, 31);
   }
 
