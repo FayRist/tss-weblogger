@@ -201,6 +201,12 @@
                 class="race-map-canvas"
                 [style.display]="useCanvasMode ? 'block' : 'none'">
               </canvas>
+              @if (useCanvasMode && historyCanvasHover) {
+                <div class="history-chart-location"
+                  aria-label="Chart location"
+                  [style.left]="historyCanvasHover.left"
+                  [style.top]="historyCanvasHover.top"></div>
+              }
             </div>
 
             <!-- Legacy SVG+Canvas (hidden when using deck.gl) -->

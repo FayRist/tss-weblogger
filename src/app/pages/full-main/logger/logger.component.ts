@@ -38,7 +38,7 @@ import { RaceConfigSource } from '../../../model/api-race-config-snapshot.model'
 import type { AfrExclusionZone } from '../../../model/afr-exclusion-zone.model';
 import { MapPointConfigService } from '../../../service/map-point-config.service';
 // deck.gl imports
-import { Map as MapLibreMap } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { LineLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
@@ -589,6 +589,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
               return;
             }
             this.tooltipStyle.visibility = 'hidden';
+            this.clearHistoryHover();
             this.cdr.detectChanges();
           },
           dataPointSelection: (event: any, chartContext: any, config: any) => {
@@ -612,6 +613,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
                   // คลิก/tap ซ้ำ -> ยกเลิกการเลือก
                   this.clickedPointState = null;
                   this.tooltipStyle.visibility = 'hidden';
+                  this.clearHistoryHover();
                 } else {
                   // คลิก/tap ที่จุดใหม่ -> แสดง hover และเก็บ state
                   this.clickedPointState = {
@@ -705,6 +707,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
           const timestamp = pointOnChart.x ?? pointOnChart.t ?? pointOnChart.time;
           if (!timestamp) {
             return '';
+          }
+
+          // ApexCharts can resolve a tooltip even when mouseMove has index -1
+          // (line series with markers.size = 0).
+          if (this.isHistoryMode && !this.clickedPointState && !this.isTouchDevice) {
+            this.showHistoryHover(seriesIndex, dataPointIndex, w);
           }
 
           // หาจุดที่ใกล้ที่สุดจากแผนที่
@@ -1038,6 +1046,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   onRaceChange(key: string) {
+    this.clearHistoryHover();
+    this.historyHoverPointsBySeries = [];
+    this.clickedPointState = null;
     this.selectedRaceKey = key;
     // this.ensureStartPointForKey(key);
 
@@ -1218,6 +1229,81 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private currentLapDataForChart: MapPoint[] | null = null;
   private currentLapsDataForChart: MapPoint[][] | null = null;
+  private historyHoverPointsBySeries: MapPoint[][] = [];
+  private historyHoverMarker: MapLibreMarker | null = null;
+  private historyCanvasBounds: { minLng: number; minLat: number; lngSpan: number; latSpan: number } | null = null;
+  historyCanvasHover: { left: string; top: string } | null = null;
+
+  private prepareHistoryHover(laps: MapPoint[][]): void {
+    this.clearHistoryHover();
+    this.clickedPointState = null;
+    // Keep the raw samples: chart downsampling changes dataPointIndex, not time.
+    this.historyHoverPointsBySeries = laps.map(lap => lap
+      .filter(point => Number.isFinite(this.toMillis(point.ts)))
+      .slice().sort((a, b) => this.toMillis(a.ts) - this.toMillis(b.ts)));
+  }
+
+  private findHistoryHoverPoint(seriesIndex: number, timestamp: number): MapPoint | null {
+    const points = this.historyHoverPointsBySeries[seriesIndex];
+    if (!points?.length || !Number.isFinite(timestamp)) return null;
+    let low = 0;
+    let high = points.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (this.toMillis(points[mid].ts) < timestamp) low = mid + 1;
+      else high = mid;
+    }
+    const before = points[low - 1];
+    const after = points[low];
+    const point = !before ? after : !after ? before
+      : timestamp - this.toMillis(before.ts) <= this.toMillis(after.ts) - timestamp ? before : after;
+    // Do not jump across missing GPS samples or large gaps in telemetry.
+    if (!point || Math.abs(this.toMillis(point.ts) - timestamp) > 1000 || point.isDefaultGps) return null;
+    const ll = this.getLatLon(point);
+    return ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lon)
+      && Math.abs(ll.lat) <= 90 && Math.abs(ll.lon) <= 180
+      && (ll.lat !== 0 || ll.lon !== 0) ? point : null;
+  }
+
+  private showHistoryHover(seriesIndex: number, dataPointIndex: number, w: any): void {
+    const chartPoint = w?.config?.series?.[seriesIndex]?.data?.[dataPointIndex];
+    const timestamp = Number(chartPoint?.x ?? chartPoint?.t ?? chartPoint?.time);
+    const point = this.findHistoryHoverPoint(seriesIndex, timestamp);
+    const ll = point ? this.getLatLon(point) : null;
+    if (!ll) {
+      this.clearHistoryHover();
+      return;
+    }
+    if (this.useCanvasMode) {
+      const bounds = this.historyCanvasBounds;
+      this.historyCanvasHover = bounds ? {
+        left: `${(ll.lon - bounds.minLng) / bounds.lngSpan * 100}%`,
+        top: `${(1 - (ll.lat - bounds.minLat) / bounds.latSpan) * 100}%`
+      } : null;
+      return;
+    }
+    if (!this.deckMap) return;
+    if (!this.historyHoverMarker) {
+      const element = document.createElement('div');
+      element.setAttribute('aria-label', 'Chart location');
+      Object.assign(element.style, {
+        width: '16px', height: '16px', borderRadius: '50%',
+        background: '#38bdf8', border: '3px solid #fff',
+        boxShadow: '0 0 0 5px rgba(56,189,248,0.3)',
+        boxSizing: 'border-box', pointerEvents: 'none'
+      });
+      this.historyHoverMarker = new MapLibreMarker({ element });
+      this.historyHoverMarker.setLngLat([ll.lon, ll.lat]).addTo(this.deckMap);
+    } else {
+      this.historyHoverMarker.setLngLat([ll.lon, ll.lat]);
+    }
+  }
+
+  private clearHistoryHover(): void {
+    this.historyHoverMarker?.remove();
+    this.historyHoverMarker = null;
+    this.historyCanvasHover = null;
+  }
 
   private buildMapFromSingleLap(lap: MapPoint[], key: string) {
     this.currentLapDataForChart = lap;
@@ -4267,6 +4353,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ฟังก์ชันสำหรับสร้างกราฟจาก lap เดียว
   private buildChartFromSingleLap(lap: MapPoint[]) {
+    this.prepareHistoryHover([lap]);
     const lapIndex = this.selectedLapIndex;
     const MAX_POINTS_PER_SERIES = 5000;
 
@@ -4373,6 +4460,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private buildChartsFromLaps(laps: MapPoint[][]) {
+    this.prepareHistoryHover(laps);
     // จำกัดจำนวน points ต่อ series เพื่อป้องกัน stack overflow
     const MAX_POINTS_PER_SERIES = 5000;
     const MAX_POINTS_FOR_BRUSH = 10000;
@@ -5562,6 +5650,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   private showHoverForDataPoint(seriesIndex: number, dataPointIndex: number, chartContext: any) {
     const w: any = (chartContext as any)?.w;
+    if (this.isHistoryMode) {
+      this.showHistoryHover(seriesIndex, dataPointIndex, w);
+      return;
+    }
     const seriesCfg = w?.config?.series?.[seriesIndex];
     const seriesData = Array.isArray(seriesCfg?.data) ? seriesCfg.data : undefined;
     const pointOnChart: any = seriesData ? seriesData[dataPointIndex] : undefined;
@@ -6705,6 +6797,11 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     const paddedLngSpan = paddedMaxLng - paddedMinLng;
     const paddedLatSpan = paddedMaxLat - paddedMinLat;
 
+    this.historyCanvasBounds = {
+      minLng: paddedMinLng, minLat: paddedMinLat,
+      lngSpan: paddedLngSpan, latSpan: paddedLatSpan
+    };
+
     // Convert lat/lon to canvas coordinates
     const toCanvasX = (lon: number) => ((lon - paddedMinLng) / paddedLngSpan) * canvas.width;
     const toCanvasY = (lat: number) => canvas.height - ((lat - paddedMinLat) / paddedLatSpan) * canvas.height;
@@ -6950,6 +7047,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.ro?.disconnect();
     this.map?.remove();
 
+    this.clearHistoryHover();
+    this.historyHoverPointsBySeries = [];
+    this.historyCanvasBounds = null;
     // Cleanup deck.gl
     if (this.deckRafId !== null) {
       cancelAnimationFrame(this.deckRafId);
