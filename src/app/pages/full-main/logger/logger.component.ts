@@ -1231,8 +1231,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private currentLapsDataForChart: MapPoint[][] | null = null;
   private historyHoverPointsBySeries: MapPoint[][] = [];
   private historyHoverMarker: MapLibreMarker | null = null;
+  private historyHoverLabel: HTMLSpanElement | null = null;
   private historyCanvasBounds: { minLng: number; minLat: number; lngSpan: number; latSpan: number } | null = null;
-  historyCanvasHover: { left: string; top: string } | null = null;
+  historyCanvasHover: { left: string; top: string; afrLabel: string } | null = null;
 
   private prepareHistoryHover(laps: MapPoint[][]): void {
     this.clearHistoryHover();
@@ -1274,11 +1275,14 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       this.clearHistoryHover();
       return;
     }
+    const afrLabel = `AFR: ${typeof chartPoint?.y === 'number' && Number.isFinite(chartPoint.y)
+      ? chartPoint.y.toFixed(2) : 'N/A'}`;
     if (this.useCanvasMode) {
       const bounds = this.historyCanvasBounds;
       this.historyCanvasHover = bounds ? {
         left: `${(ll.lon - bounds.minLng) / bounds.lngSpan * 100}%`,
-        top: `${(1 - (ll.lat - bounds.minLat) / bounds.latSpan) * 100}%`
+        top: `${(1 - (ll.lat - bounds.minLat) / bounds.latSpan) * 100}%`,
+        afrLabel
       } : null;
       return;
     }
@@ -1292,16 +1296,26 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
         boxShadow: '0 0 0 5px rgba(56,189,248,0.3)',
         boxSizing: 'border-box', pointerEvents: 'none'
       });
+      this.historyHoverLabel = document.createElement('span');
+      Object.assign(this.historyHoverLabel.style, {
+        position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)',
+        padding: '4px 8px', borderRadius: '4px', background: 'rgba(14,17,19,0.95)',
+        color: '#fff', border: '1px solid #38bdf8', whiteSpace: 'nowrap',
+        fontSize: '12px', fontWeight: '600', lineHeight: '18px'
+      });
+      element.appendChild(this.historyHoverLabel);
       this.historyHoverMarker = new MapLibreMarker({ element });
       this.historyHoverMarker.setLngLat([ll.lon, ll.lat]).addTo(this.deckMap);
     } else {
       this.historyHoverMarker.setLngLat([ll.lon, ll.lat]);
     }
+    if (this.historyHoverLabel) this.historyHoverLabel.textContent = afrLabel;
   }
 
   private clearHistoryHover(): void {
     this.historyHoverMarker?.remove();
     this.historyHoverMarker = null;
+    this.historyHoverLabel = null;
     this.historyCanvasHover = null;
   }
 

@@ -808,3 +808,19 @@ button[mat-raised-button] {
   pointer-events: none;
   z-index: 2;
 }
+
+.history-chart-afr {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(14, 17, 19, 0.95);
+  color: #fff;
+  border: 1px solid #38bdf8;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}

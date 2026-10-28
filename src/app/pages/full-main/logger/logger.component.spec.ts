@@ -71,6 +71,38 @@ describe('LoggerComponent history chart location', () => {
     expect(component.findHistoryHoverPoint(2, start)).toBeNull();
   });
 
+  it('shows the hovered chart AFR rather than the raw GPS sample AFR', () => {
+    const w = chart(start);
+    w.config.series[0].data[0].y = 13.3;
+    component.showHistoryHover(0, 0, w);
+    expect(component.historyCanvasHover.afrLabel).toBe('AFR: 13.30');
+  });
+
+  it('updates the map label when the hovered AFR changes', () => {
+    component.useCanvasMode = false;
+    component.deckMap = {};
+    component.historyHoverMarker = { setLngLat: jasmine.createSpy(), remove: jasmine.createSpy() };
+    const label = document.createElement('span');
+    component.historyHoverLabel = label;
+    const w = chart(start);
+    component.showHistoryHover(0, 0, w);
+    expect(label.textContent).toBe('AFR: 14.00');
+    w.config.series[0].data[0].y = 13.3;
+    component.showHistoryHover(0, 0, w);
+    expect(label.textContent).toBe('AFR: 13.30');
+    component.clearHistoryHover();
+    expect(component.historyHoverLabel).toBeNull();
+  });
+
+  it('shows N/A for missing AFR without substituting the GPS sample AFR', () => {
+    for (const value of [null, undefined, NaN, Infinity]) {
+      const w: any = chart(start);
+      w.config.series[0].data[0].y = value;
+      component.showHistoryHover(0, 0, w);
+      expect(component.historyCanvasHover.afrLabel).toBe('AFR: N/A');
+    }
+  });
+
   it('sorts samples and finds the nearest timestamp', () => {
     component.prepareHistoryHover([[sample(200), sample(0), sample(100)]]);
     expect(component.findHistoryHoverPoint(0, start + 180).ts).toBe(start + 200);
