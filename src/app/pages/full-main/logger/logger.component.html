@@ -185,7 +185,8 @@
           <div class="card-body card-body--flush">
             <div class="logger-map-stage">
               <!-- deck.gl Map Container (WebGL) - shown when circuit has map center -->
-              <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"></div>
+              <div #raceMapDeck class="race-map-deck" [style.display]="useCanvasMode ? 'none' : 'block'"
+                (mousemove)="onHistoryMapMove($event)" (mouseleave)="onHistoryMapLeave()"></div>
               @if (isDefaultPreLogMode()) {
                 <mat-form-field class="prelog-circuit-select prelog-circuit-select--overlay" appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Circuit</mat-label>
@@ -199,6 +200,7 @@
               <!-- Canvas for drawing lines (shown when no circuit match) -->
               <canvas #raceMapCanvas
                 class="race-map-canvas"
+                (mousemove)="onHistoryMapMove($event)" (mouseleave)="onHistoryMapLeave()"
                 [style.display]="useCanvasMode ? 'block' : 'none'">
               </canvas>
               @if (useCanvasMode && historyCanvasHover) {

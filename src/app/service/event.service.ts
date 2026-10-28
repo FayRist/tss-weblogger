@@ -1,4 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { compareSessionNames } from '../utility/session-name.util';
 import { Injectable } from '@angular/core';
 import { catchError, map, Observable, of } from 'rxjs';
 import { APP_CONFIG, getApiUrl } from '../app.config';
@@ -261,7 +262,7 @@ export class EventService {
           this.option = response.data.map((apiData) => ({
               name: apiData.name,
               value: apiData.value,
-          }));
+          })).sort((a, b) => compareSessionNames(a.name, b.name));
           return this.option;
         })
       );

@@ -24,6 +24,7 @@ import { EventService } from '../../../service/event.service';
 import { optionModel, RaceModel } from '../../../model/season-model';
 import { CLASS_LIST, MAPS_LIST, RACE_SEGMENT } from '../../../constants/race-data';
 import { Subscription } from 'rxjs';
+import { SESSION_NAME_OPTIONS, normalizeSessionName, isValidSessionName, getSessionNameSuggestions, compareSessionNames } from '../../../utility/session-name.util';
 
 interface SessionRow {
   key: string;
@@ -105,20 +106,7 @@ export class AddRaceComponent implements OnInit {
 
   private nextSessionIndex = 1;
 
-  sessionNameOptions: string[] = [
-    'Practice 1',
-    'Practice 2',
-    'Practice 3',
-    'Practice 4',
-    'Practice 5',
-    'Race 1',
-    'Race 2',
-    'Race 3',
-    'Race 4',
-    'Race 5',
-    'Test Session',
-    'Qualifying',
-  ];
+  sessionNameOptions = [...SESSION_NAME_OPTIONS];
 
   // แถวที่ใช้แสดงใน <tbody>
   selectedSessions: SessionRow[] = [];
@@ -172,7 +160,7 @@ export class AddRaceComponent implements OnInit {
       return aEnd - bEnd;
     }
 
-    return String(a.label ?? '').localeCompare(String(b.label ?? ''));
+    return compareSessionNames(a.label, b.label);
   }
 
 
@@ -302,7 +290,7 @@ export class AddRaceComponent implements OnInit {
   }
 
   onSessionLabelChange(row: SessionRow, value: string): void {
-    row.label = String(value ?? '').trim();
+    row.label = normalizeSessionName(value);
     this.validateSessionTimeline(false, false);
   }
 
@@ -317,26 +305,19 @@ export class AddRaceComponent implements OnInit {
       return;
     }
 
-    if (!this.isSessionNameOption(trimmed)) {
+    if (!this.isValidSessionName(trimmed)) {
       row.label = '';
     } else {
-      row.label = trimmed;
+      row.label = normalizeSessionName(trimmed);
     }
   }
 
   getFilteredSessionOptions(currentRow: SessionRow): string[] {
-    const keyword = String(currentRow.label ?? '').trim().toLowerCase();
-    return this.sessionNameOptions.filter(name => {
-      if (!keyword) {
-        return true;
-      }
-      return name.toLowerCase().includes(keyword);
-    });
+    return getSessionNameSuggestions(currentRow.label, this.sessionNameOptions);
   }
 
-  private isSessionNameOption(label: string): boolean {
-    const target = String(label ?? '').trim().toLowerCase();
-    return this.sessionNameOptions.some(name => name.toLowerCase() === target);
+  private isValidSessionName(label: string): boolean {
+    return isValidSessionName(label);
   }
 
   private toBangkokDateKey(value: Date): string {
@@ -359,7 +340,7 @@ export class AddRaceComponent implements OnInit {
       const label = String(row.label ?? '').trim();
       if (!label || !row.start) continue;
 
-      const normalized = label.toLowerCase();
+      const normalized = normalizeSessionName(label).toLowerCase();
       const dateKey = this.toBangkokDateKey(new Date(row.start));
       const compositeKey = `${normalized}|${dateKey}`;
       const exists = seen.get(compositeKey);
@@ -386,12 +367,12 @@ export class AddRaceComponent implements OnInit {
       const label = String(row.label ?? '').trim();
       if (!label) {
         if (showToast) {
-          this.toastr.error('กรุณาเลือกชื่อ Session ให้ครบทุกแถว');
+          this.toastr.error('กรุณาเลือกหรือพิมพ์ชื่อ Session ให้ครบทุกแถว');
         }
         return false;
       }
 
-      if (!this.isSessionNameOption(label)) {
+      if (!this.isValidSessionName(label)) {
         if (showToast) {
           this.toastr.error(`ชื่อ Session ไม่ถูกต้อง: ${label}`);
         }
@@ -471,7 +452,7 @@ export class AddRaceComponent implements OnInit {
         category_name: "",
         class_value: classJoin.join(''),
         segment_value: this.segmentValue,
-        session_value: String(element.label ?? '').trim(),
+        session_value: normalizeSessionName(element.label),
         session_start: start,
         session_end: end,
         active: 0,

@@ -79,6 +79,8 @@ type MapPoint = {
   time?: string | number; // ถ้าพี่มีเวลาใน CSV
 };
 
+type HistoryMapHit = { point: MapPoint; seriesIndex: number; x: number; y: number };
+
 // เติม field เสริมให้ CarLogger เดิม (optional)
 type CarLoggerWithPath = CarLogger & {
   path?: MapPoint[];
@@ -1048,6 +1050,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   onRaceChange(key: string) {
     this.clearHistoryHover();
     this.historyHoverPointsBySeries = [];
+    this.historyMapHitGrid = null;
     this.clickedPointState = null;
     this.selectedRaceKey = key;
     // this.ensureStartPointForKey(key);
@@ -1234,9 +1237,113 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   private historyHoverLabel: HTMLSpanElement | null = null;
   private historyCanvasBounds: { minLng: number; minLat: number; lngSpan: number; latSpan: number } | null = null;
   historyCanvasHover: { left: string; top: string; afrLabel: string } | null = null;
+  private historyMapHitGrid: Map<string, HistoryMapHit[]> | null = null;
+  private historyMapGridKey = '';
+  private historyMapHoverFrame: number | null = null;
+  private historyMapHoverKey = '';
+
+  onHistoryMapMove(event: MouseEvent): void {
+    if (!this.isHistoryMode || this.clickedPointState) return;
+    if (!this.useCanvasMode && this.deckMap?.isMoving()) return;
+    if (this.historyMapHoverFrame != null) cancelAnimationFrame(this.historyMapHoverFrame);
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    this.historyMapHoverFrame = requestAnimationFrame(() => {
+      this.historyMapHoverFrame = null;
+      if (this.clickedPointState) return;
+      this.updateHistoryMapHover(x, y, rect.width, rect.height);
+      this.cdr.detectChanges();
+    });
+  }
+
+  onHistoryMapLeave(): void {
+    if (this.historyMapHoverFrame != null) cancelAnimationFrame(this.historyMapHoverFrame);
+    this.historyMapHoverFrame = null;
+    if (!this.clickedPointState && this.historyMapHoverKey) this.clearHistoryHover();
+  }
+
+  private findHistoryMapHit(x: number, y: number, width: number, height: number): HistoryMapHit | null {
+    const seriesIndex = this.historyHoverPointsBySeries.length === 1 ? 0 : this.selectedLapIndex;
+    const points = this.historyHoverPointsBySeries[seriesIndex] ?? [];
+    const key = `${seriesIndex}:${width}:${height}:${this.useCanvasMode}`;
+    const cellSize = 24;
+    if (!this.historyMapHitGrid || this.historyMapGridKey !== key) {
+      this.historyMapHitGrid = new Map();
+      this.historyMapGridKey = key;
+      for (const point of points) {
+        const ll = this.getLatLon(point);
+        if (!ll || point.isDefaultGps || !Number.isFinite(ll.lat) || !Number.isFinite(ll.lon)
+          || Math.abs(ll.lat) > 90 || Math.abs(ll.lon) > 180 || (ll.lat === 0 && ll.lon === 0)) continue;
+        const bounds = this.historyCanvasBounds;
+        const screen = this.useCanvasMode
+          ? bounds ? { x: (ll.lon - bounds.minLng) / bounds.lngSpan * width,
+            y: (1 - (ll.lat - bounds.minLat) / bounds.latSpan) * height } : null
+          : this.deckMap?.project([ll.lon, ll.lat]);
+        if (!screen || !Number.isFinite(screen.x) || !Number.isFinite(screen.y)) continue;
+        const cell = `${Math.floor(screen.x / cellSize)}:${Math.floor(screen.y / cellSize)}`;
+        const hits = this.historyMapHitGrid.get(cell) ?? [];
+        hits.push({ point, seriesIndex, x: screen.x, y: screen.y });
+        this.historyMapHitGrid.set(cell, hits);
+      }
+    }
+    let closest: HistoryMapHit | null = null;
+    let distanceSquared = 12 * 12;
+    const column = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const hit of this.historyMapHitGrid.get(`${column + dx}:${row + dy}`) ?? []) {
+          const distance = (hit.x - x) ** 2 + (hit.y - y) ** 2;
+          if (distance < distanceSquared) {
+            distanceSquared = distance;
+            closest = hit;
+          }
+        }
+      }
+    }
+    return closest;
+  }
+
+  private updateHistoryMapHover(x: number, y: number, width: number, height: number): void {
+    const hit = this.findHistoryMapHit(x, y, width, height);
+    if (!hit) {
+      if (this.historyMapHoverKey) this.clearHistoryHover();
+      return;
+    }
+    const timestamp = this.toMillis(hit.point.ts);
+    const key = `${hit.seriesIndex}:${timestamp}`;
+    if (key === this.historyMapHoverKey) return;
+    this.clearHistoryChartHighlight();
+    this.showHistoryLocation(hit.point, hit.point.afrValue);
+    this.historyMapHoverKey = key;
+    const seriesName = this.showOnlySelectedLap ? `Lap ${this.selectedLapIndex + 1}` : `Lap ${hit.seriesIndex + 1}`;
+    const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour12: false });
+    this.chart?.addXaxisAnnotation({
+      id: 'history-map-hover-time', x: timestamp, borderColor: '#38bdf8',
+      label: { text: `${seriesName} · ${time}`, style: { background: '#38bdf8', color: '#0e1113' } }
+    }, false);
+    if (typeof hit.point.afrValue === 'number' && Number.isFinite(hit.point.afrValue)) {
+      this.chart?.addPointAnnotation({
+        id: 'history-map-hover-point', x: timestamp, y: hit.point.afrValue,
+        seriesIndex: hit.seriesIndex,
+        marker: { size: 6, fillColor: '#38bdf8', strokeColor: '#fff', strokeWidth: 2 },
+        label: { text: `AFR: ${hit.point.afrValue.toFixed(2)}`,
+          style: { background: '#0e1113', color: '#fff' } }
+      }, false);
+    }
+  }
+
+  private clearHistoryChartHighlight(): void {
+    if (!this.historyMapHoverKey) return;
+    this.historyMapHoverKey = '';
+    this.chart?.removeAnnotation('history-map-hover-time');
+    this.chart?.removeAnnotation('history-map-hover-point');
+  }
 
   private prepareHistoryHover(laps: MapPoint[][]): void {
     this.clearHistoryHover();
+    this.historyMapHitGrid = null;
     this.clickedPointState = null;
     // Keep the raw samples: chart downsampling changes dataPointIndex, not time.
     this.historyHoverPointsBySeries = laps.map(lap => lap
@@ -1267,16 +1374,20 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private showHistoryHover(seriesIndex: number, dataPointIndex: number, w: any): void {
+    this.clearHistoryChartHighlight();
     const chartPoint = w?.config?.series?.[seriesIndex]?.data?.[dataPointIndex];
     const timestamp = Number(chartPoint?.x ?? chartPoint?.t ?? chartPoint?.time);
     const point = this.findHistoryHoverPoint(seriesIndex, timestamp);
+    this.showHistoryLocation(point, chartPoint?.y);
+  }
+
+  private showHistoryLocation(point: MapPoint | null, afr: unknown): void {
     const ll = point ? this.getLatLon(point) : null;
     if (!ll) {
       this.clearHistoryHover();
       return;
     }
-    const afrLabel = `AFR: ${typeof chartPoint?.y === 'number' && Number.isFinite(chartPoint.y)
-      ? chartPoint.y.toFixed(2) : 'N/A'}`;
+    const afrLabel = `AFR: ${typeof afr === 'number' && Number.isFinite(afr) ? afr.toFixed(2) : 'N/A'}`;
     if (this.useCanvasMode) {
       const bounds = this.historyCanvasBounds;
       this.historyCanvasHover = bounds ? {
@@ -1313,6 +1424,9 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private clearHistoryHover(): void {
+    if (this.historyMapHoverFrame != null) cancelAnimationFrame(this.historyMapHoverFrame);
+    this.historyMapHoverFrame = null;
+    this.clearHistoryChartHighlight();
     this.historyHoverMarker?.remove();
     this.historyHoverMarker = null;
     this.historyHoverLabel = null;
@@ -6498,6 +6612,10 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       });
 
       this.deckMap.addControl(this.deckOverlay);
+      this.deckMap.on('move', () => {
+        this.historyMapHitGrid = null;
+        this.onHistoryMapLeave();
+      });
 
       // Start render loop
       this.deckDirty = this.ringBufferCount > 0;
@@ -6815,6 +6933,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
       minLng: paddedMinLng, minLat: paddedMinLat,
       lngSpan: paddedLngSpan, latSpan: paddedLatSpan
     };
+    this.historyMapHitGrid = null;
 
     // Convert lat/lon to canvas coordinates
     const toCanvasX = (lon: number) => ((lon - paddedMinLng) / paddedLngSpan) * canvas.width;
@@ -7064,6 +7183,7 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
     this.clearHistoryHover();
     this.historyHoverPointsBySeries = [];
     this.historyCanvasBounds = null;
+    this.historyMapHitGrid = null;
     // Cleanup deck.gl
     if (this.deckRafId !== null) {
       cancelAnimationFrame(this.deckRafId);

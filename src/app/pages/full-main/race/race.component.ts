@@ -5,6 +5,8 @@ import {MatInputModule} from '@angular/material/input';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatSelectModule } from '@angular/material/select';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { SESSION_NAME_OPTIONS, normalizeSessionName, isValidSessionName, getSessionNameSuggestions, compareSessionNames } from '../../../utility/session-name.util';
 import { DateAdapter, MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogActions, MatDialogClose, MatDialogContent, MatDialogRef, MatDialogTitle } from '@angular/material/dialog';
@@ -249,7 +251,7 @@ export class RaceComponent implements OnInit, OnDestroy {
         this.allRace = [...race].sort((a, b) =>
           (toStartTime(a) - toStartTime(b)) ||
           (toEndTime(a) - toEndTime(b)) ||
-          String(a?.session_value ?? '').localeCompare(String(b?.session_value ?? ''))
+          compareSessionNames(a?.session_value, b?.session_value)
         );
       },
       error => {
@@ -385,27 +387,22 @@ export class RaceComponent implements OnInit, OnDestroy {
   styleUrl: './race.component.scss',
   imports: [MatButtonModule, MatDialogActions, MatDialogClose,
     MatDialogTitle, MatDialogContent, MatTabsModule,
-    FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, ReactiveFormsModule,
+    FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatAutocompleteModule, ReactiveFormsModule,
     MatDatepickerModule, MatCheckboxModule, MatRadioModule, FlatpickrDirective],
   providers: [provideNativeDateAdapter()],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DialogAnimationsModalEdit implements OnInit {
 
-  sessionNameOptions: string[] = [
-    'Practice 1',
-    'Practice 2',
-    'Practice 3',
-    'Practice 4',
-    'Practice 5',
-    'Race 1',
-    'Race 2',
-    'Race 3',
-    'Race 4',
-    'Race 5',
-    'Test Session',
-    'Qualifying',
-  ];
+  sessionNameOptions = [...SESSION_NAME_OPTIONS];
+
+  get filteredSessionOptions(): string[] {
+    return getSessionNameSuggestions(this.sessionValue, this.sessionNameOptions);
+  }
+
+  onSessionBlur(): void {
+    this.sessionValue = normalizeSessionName(this.sessionValue);
+  }
   raceSegment = RACE_SEGMENT;
   classList = CLASS_LIST;
 
@@ -515,28 +512,11 @@ export class DialogAnimationsModalEdit implements OnInit {
   }
 
   private normalizeSessionValue(raw: unknown): string {
-    const v = String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!v) return '';
-    if (v === 'practice') return 'Practice 1';
-    if (v === 'testsession' || v === 'test session') return 'Test Session';
-    if (v === 'qualifying' || v === 'qualification' || v === 'qualify') return 'Qualifying';
-    if (v === 'race1' || v === 'race 1' || v === 'r1') return 'Race 1';
-    if (v === 'race2' || v === 'race 2' || v === 'r2') return 'Race 2';
-    if (v === 'race3' || v === 'race 3' || v === 'r3') return 'Race 3';
-    if (v === 'race4' || v === 'race 4' || v === 'r4') return 'Race 4';
-    if (v === 'race5' || v === 'race 5' || v === 'r5') return 'Race 5';
-    if (v.startsWith('practice ')) {
-      const num = Number(v.replace('practice ', ''));
-      if (Number.isFinite(num) && num >= 1 && num <= 5) {
-        return `Practice ${num}`;
-      }
-    }
-    return this.sessionNameOptions.find(name => name.toLowerCase() === v) ?? String(raw ?? '').trim();
+    return normalizeSessionName(raw);
   }
 
   private isSessionOptionAllowed(value: unknown): boolean {
-    const normalized = this.normalizeSessionValue(value);
-    return this.sessionNameOptions.includes(normalized);
+    return isValidSessionName(value);
   }
 
   private fromInput(value: string): Date | null {
@@ -615,7 +595,7 @@ export class DialogAnimationsModalEdit implements OnInit {
 
   onSubmit(): void {
     if (!this.isSessionOptionAllowed(this.sessionValue)) {
-      this.toastr.error('กรุณาเลือก Session จากรายการที่กำหนด');
+      this.toastr.error('กรุณาเลือก Session หรือพิมพ์ Race ตามด้วยเลขจำนวนเต็มบวก');
       return;
     }
 

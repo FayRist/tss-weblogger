@@ -74,11 +74,14 @@
                 <form class="mat-input-form">
                   <mat-form-field class="w-100">
                   <mat-label>Session</mat-label>
-                      <mat-select [ngModelOptions]="{standalone: true}" [(ngModel)]="sessionValue">
-                        @for (sessions of sessionNameOptions; track sessions) {
+                      <input matInput [ngModelOptions]="{standalone: true}" [(ngModel)]="sessionValue"
+                        [matAutocomplete]="sessionAuto" (blur)="onSessionBlur()"
+                        placeholder="เลือกหรือพิมพ์ Race 7" />
+                      <mat-autocomplete #sessionAuto="matAutocomplete" autoActiveFirstOption>
+                        @for (sessions of filteredSessionOptions; track sessions) {
                           <mat-option [value]="sessions">{{sessions}}</mat-option>
                         }
-                      </mat-select>
+                      </mat-autocomplete>
                   </mat-form-field>
                 </form>
               </div>

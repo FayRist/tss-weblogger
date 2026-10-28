@@ -146,4 +146,69 @@ describe('LoggerComponent history chart location', () => {
     expect(component.clickedPointState).toBeNull();
     expect(component.findHistoryHoverPoint(0, start)).toBeNull();
   });
+
+  it('picks nearby map samples but ignores the background', () => {
+    expect(component.findHistoryMapHit(250, 600, 1000, 1000)?.point.ts).toBe(start);
+    expect(component.findHistoryMapHit(280, 600, 1000, 1000)).toBeNull();
+  });
+
+  it('prefers the selected lap where paths overlap and invalidates the lap cache', () => {
+    component.prepareHistoryHover([[sample(0)], [sample(1000)]]);
+    component.selectedLapIndex = 0;
+    expect(component.findHistoryMapHit(250, 600, 1000, 1000)?.seriesIndex).toBe(0);
+    component.selectedLapIndex = 1;
+    expect(component.findHistoryMapHit(250, 600, 1000, 1000)?.seriesIndex).toBe(1);
+  });
+
+  it('uses the map projection for hit testing after camera changes', () => {
+    component.useCanvasMode = false;
+    component.deckMap = { project: jasmine.createSpy().and.returnValue({ x: 50, y: 70 }) };
+    expect(component.findHistoryMapHit(50, 70, 1000, 1000)).not.toBeNull();
+    component.deckMap.project.and.returnValue({ x: 100, y: 150 });
+    component.historyMapHitGrid = null;
+    expect(component.findHistoryMapHit(50, 70, 1000, 1000)).toBeNull();
+    expect(component.findHistoryMapHit(100, 150, 1000, 1000)).not.toBeNull();
+  });
+
+  it('highlights the raw timestamp and AFR on the graph without replacing its series', () => {
+    component.chart = {
+      addXaxisAnnotation: jasmine.createSpy(), addPointAnnotation: jasmine.createSpy(),
+      removeAnnotation: jasmine.createSpy(), updateSeries: jasmine.createSpy()
+    };
+    component.updateHistoryMapHover(250, 600, 1000, 1000);
+    expect(component.chart.addXaxisAnnotation).toHaveBeenCalledWith(jasmine.objectContaining({ x: start }), false);
+    expect(component.chart.addPointAnnotation).toHaveBeenCalledWith(jasmine.objectContaining({ x: start, y: 14, seriesIndex: 0 }), false);
+    expect(component.historyCanvasHover.afrLabel).toBe('AFR: 14.00');
+    component.updateHistoryMapHover(250, 600, 1000, 1000);
+    expect(component.chart.addPointAnnotation).toHaveBeenCalledTimes(1);
+    expect(component.chart.updateSeries).not.toHaveBeenCalled();
+    component.updateHistoryMapHover(0, 0, 1000, 1000);
+    expect(component.historyCanvasHover).toBeNull();
+    expect(component.chart.removeAnnotation).toHaveBeenCalledWith('history-map-hover-point');
+    expect(component.chart.removeAnnotation).toHaveBeenCalledWith('history-map-hover-time');
+  });
+
+  it('does not let map hover override a pinned chart point or realtime mode', () => {
+    spyOn(window, 'requestAnimationFrame');
+    component.clickedPointState = { seriesIndex: 0, dataPointIndex: 0, timestamp: start };
+    component.onHistoryMapMove({} as MouseEvent);
+    component.clickedPointState = null;
+    component.isHistoryMode = false;
+    component.onHistoryMapMove({} as MouseEvent);
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it('clears only map-driven highlights when leaving the map', () => {
+    component.showHistoryHover(0, 0, chart(start));
+    component.onHistoryMapLeave();
+    expect(component.historyCanvasHover).not.toBeNull();
+    component.updateHistoryMapHover(250, 600, 1000, 1000);
+    component.onHistoryMapLeave();
+    expect(component.historyCanvasHover).toBeNull();
+  });
+
+  it('ignores invalid GPS in map hit testing', () => {
+    component.prepareHistoryHover([[{ ...sample(0), isDefaultGps: true }, sample(100, 91)]]);
+    expect(component.findHistoryMapHit(250, 600, 1000, 1000)).toBeNull();
+  });
 });

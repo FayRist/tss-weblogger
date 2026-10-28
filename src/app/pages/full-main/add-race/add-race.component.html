@@ -101,7 +101,8 @@
                                   (ngModelChange)="onSessionLabelInput(row, $event)"
                                   (blur)="onSessionLabelBlur(row)"
                                   [matAutocomplete]="sessionAuto"
-                                  placeholder="เลือก Session" />
+                                  placeholder="เลือกหรือพิมพ์ Race 7"
+                                  aria-label="ชื่อ Session เลือกจากรายการหรือพิมพ์ Race ตามด้วยเลขจำนวนเต็มบวก" />
                                 <mat-autocomplete
                                   #sessionAuto="matAutocomplete"
                                   autoActiveFirstOption
