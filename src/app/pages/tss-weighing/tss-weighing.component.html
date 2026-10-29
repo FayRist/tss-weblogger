@@ -84,11 +84,11 @@
               </div>
               <div class="config-compensation">
                 <div class="config-number-field">
-                  <label for="config-driver-average">Driver Average (kg)</label>
+                  <label for="config-driver-average">Driver Average — รุ่นอื่น (kg)</label>
                   <input id="config-driver-average" type="number" min="0.01" step="0.01" [(ngModel)]="eventDraftDriverAverage">
                 </div>
                 <div class="config-number-field">
-                  <label for="config-driver-compensation-limit">Compensation limit (±kg)</label>
+                  <label for="config-driver-compensation-limit">Compensation limit — รุ่นอื่น (±kg)</label>
                   <input id="config-driver-compensation-limit" type="number" min="0.01" step="0.01" [(ngModel)]="eventDraftCompensationLimit">
                 </div>
                 <label class="config-final-weight-toggle" for="config-show-final-weight">
@@ -96,6 +96,7 @@
                   <span>แสดง Final Weight (kg) </span>
                 </label>
               </div>
+              <p>GR86 / GR86 M ใช้ฐานนักแข่ง 80 kg, Touring ใช้ 75 kg: เพิ่มเฉพาะส่วนที่ขาดเต็มจำนวน ไม่จำกัดน้ำหนักชดเชย และไม่หักเมื่อเกินฐาน</p>
               <div class="config-list">
                 @for (cls of masterClassOptions; track cls) {
                   <div class="config-class-card">
@@ -265,7 +266,8 @@
 
 
                  <td class="target-val text-center">
-                   <span class="pill" [ngClass]="compensationPillClass(driver.compensation)">
+                    <span class="pill" [ngClass]="compensationPillClass(driver.compensation)"
+                      [title]="'ฐานนักแข่ง ' + driverWeightBase(car) + ' kg | เฉลี่ย ' + weightText(driver.avg) + ' kg'">
                      {{ compensationText(driver.compensation) }}
                    </span>
                  </td>

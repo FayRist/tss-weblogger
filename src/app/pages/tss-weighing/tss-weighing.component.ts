@@ -66,6 +66,8 @@ interface WeighingCarPayload {
   'ชื่อนักแข่ง2': string;
   'น้ำหนักนักแข่ง2': number | null;
   'Driver Avg (kg)': number | null;
+  'Driver Base (kg)': number;
+  'Diff from Driver Base (kg)': number | null;
   'Diff from 75 (kg)': number | null;
   'Driver Weight Compensation (kg)': number;
   'Final Weight (kg)': number | null;
@@ -948,7 +950,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
           class_name: className,
           session_name: sessionName,
           car_number: car.num,
-          car: this.buildCarMetadata(car),
+          car: this.buildCarMetadata(car, className),
           expected_versions: this.metadataExpectedVersions(className, sessionName, car.num),
           updated_by: this.activeUsername || this.activeUser?.role || 'unknown',
         }, token));
@@ -1174,24 +1176,38 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return { w1, w2, has, total, diff, pct };
   }
 
-  driverWeightStats(car: CarRow): DriverWeightStats {
+  private fixedDriverBase(car: CarRow, className: string): number | null {
+    const category = className.trim().toUpperCase();
+    const sub = car.sub.trim().replace(/\s+/g, ' ').toUpperCase();
+    if (category === 'GR86' || sub === 'GR86' || sub === 'GR86 M') return 80;
+    if (category === 'TOURING' || sub === 'TOURING') return 75;
+    return null;
+  }
+
+  driverWeightBase(car: CarRow, className = this.selectedClass): number {
+    return this.fixedDriverBase(car, className) ?? this.driverAverage;
+  }
+
+  driverWeightStats(car: CarRow, className = this.selectedClass): DriverWeightStats {
     const weights = [car.driver1Weight, car.driver2Weight]
       .filter((weight): weight is number => weight !== null && Number.isFinite(weight) && weight > 0);
     if (weights.length === 0) {
       return { avg: null, diffFrom75: null, compensation: 0 };
     }
     const avg = weights.reduce((sum, weight) => sum + weight, 0) / weights.length;
-    const diffFrom75 = this.driverAverage - avg;
+    const fixedBase = this.fixedDriverBase(car, className);
+    // Keep the legacy property name for compatibility; the base is class-specific.
+    const diffFrom75 = (fixedBase ?? this.driverAverage) - avg;
     return {
       avg,
       diffFrom75,
-      compensation: this.clampDriverCompensation(diffFrom75),
+      compensation: fixedBase === null ? this.clampDriverCompensation(diffFrom75) : Math.max(0, diffFrom75),
     };
   }
 
-  finalWeight(car: CarRow): number | null {
+  finalWeight(car: CarRow, className = this.selectedClass): number | null {
     if (car.target === null || !Number.isFinite(car.target)) return null;
-    return car.target + this.driverWeightStats(car).compensation;
+    return car.target + this.driverWeightStats(car, className).compensation;
   }
 
   hasBaseWeights(car: CarRow): boolean {
@@ -1425,7 +1441,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
         class_name: className,
         session_name: sessionName,
         car_number: car.num,
-        car: this.buildCarMetadata(car),
+        car: this.buildCarMetadata(car, className),
         expected_versions: oldCarNumber && oldCarNumber !== car.num
           ? undefined
           : this.metadataExpectedVersions(className, sessionName, car.num),
@@ -1438,9 +1454,9 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     }
   }
 
-  private buildCarMetadata(car: CarRow): Record<string, unknown> {
-    const driver = this.driverWeightStats(car);
-    const finalWeight = this.finalWeight(car);
+  private buildCarMetadata(car: CarRow, className = this.selectedClass): Record<string, unknown> {
+    const driver = this.driverWeightStats(car, className);
+    const finalWeight = this.finalWeight(car, className);
     return {
       'รุ่น': car.sub,
       'เบอร์รถ': car.num,
@@ -1452,6 +1468,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       'ชื่อนักแข่ง2': car.driver2Name,
       'น้ำหนักนักแข่ง2': car.driver2Weight,
       'Driver Avg (kg)': driver.avg,
+      'Driver Base (kg)': this.driverWeightBase(car, className),
+      'Diff from Driver Base (kg)': driver.diffFrom75,
       'Diff from 75 (kg)': driver.diffFrom75,
       'Driver Weight Compensation (kg)': driver.compensation,
       'Final Weight (kg)': finalWeight,
@@ -1816,7 +1834,7 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
             class_name: className,
             session_name: sessionName,
             car_number: car.num,
-            car: this.buildCarMetadata(car),
+            car: this.buildCarMetadata(car, className),
             expected_versions: this.metadataExpectedVersions(className, sessionName, car.num),
             updated_by: this.activeUsername || this.activeUser?.role || 'unknown',
           }, token));
@@ -1977,6 +1995,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       ชื่อนักแข่ง2: car.driver2Name,
       น้ำหนักนักแข่ง2: car.driver2Weight,
       'Driver Avg (kg)': driver.avg,
+      'Driver Base (kg)': this.driverWeightBase(car),
+      'Diff from Driver Base (kg)': driver.diffFrom75,
       'Diff from 75 (kg)': driver.diffFrom75,
       'Driver Weight Compensation (kg)': driver.compensation,
       'Final Weight (kg)': finalWeight,
@@ -1986,8 +2006,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
   }
 
   private buildCarReportFor(className: string, sessionName: string, car: CarRow): WeighingCarPayload {
-    const driver = this.driverWeightStats(car);
-    const finalWeight = this.finalWeight(car);
+    const driver = this.driverWeightStats(car, className);
+    const finalWeight = this.finalWeight(car, className);
     return {
       รุ่น: this.normalizeSubForClass(className, car.sub),
       เบอร์รถ: String(car.num),
@@ -1999,6 +2019,8 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
       ชื่อนักแข่ง2: car.driver2Name,
       น้ำหนักนักแข่ง2: car.driver2Weight,
       'Driver Avg (kg)': driver.avg,
+      'Driver Base (kg)': this.driverWeightBase(car, className),
+      'Diff from Driver Base (kg)': driver.diffFrom75,
       'Diff from 75 (kg)': driver.diffFrom75,
       'Driver Weight Compensation (kg)': driver.compensation,
       'Final Weight (kg)': finalWeight,
@@ -2476,19 +2498,19 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     return (this.data[className]?.[sessionName] ?? []).map((car, index) => {
       const fuel = this.calcGroupFor(className, sessionName, car, 'fuel');
       const dry = this.calcGroupFor(className, sessionName, car, 'dry');
-      const fuelValues = this.excelGroupValues(fuel, this.comparisonWeight(car, 'fuel'));
-      const dryValues = this.excelGroupValues(dry, this.comparisonWeight(car, 'dry'));
+      const fuelValues = this.excelGroupValues(fuel, this.comparisonWeight(car, 'fuel', className));
+      const dryValues = this.excelGroupValues(dry, this.comparisonWeight(car, 'dry', className));
       return {
         index: index + 1,
          sub: this.excelSubText(className, car.sub),
          carNumber: String(car.num),
          targetWeight: car.target,
-         finalWeight: this.finalWeight(car),
+         finalWeight: this.finalWeight(car, className),
          driver1Name: car.driver1Name,
         driver1Weight: car.driver1Weight,
         driver2Name: car.driver2Name,
         driver2Weight: car.driver2Weight,
-        driverCompensation: this.driverWeightStats(car).compensation,
+        driverCompensation: this.driverWeightStats(car, className).compensation,
         fuelW1: fuelValues.w1,
         fuelW2: fuelValues.w2,
         fuelTotal: fuelValues.total,
@@ -2561,14 +2583,14 @@ export class TssWeighingComponent implements OnInit, OnDestroy {
     const w2 = Number(record[`${prefix}_w2` as WeightField] ?? 0);
     const has = w1 > 0 || w2 > 0;
     const total = has ? w1 + w2 : null;
-    const comparisonWeight = this.comparisonWeight(car, prefix);
+    const comparisonWeight = this.comparisonWeight(car, prefix, cls);
     const diff = total !== null && comparisonWeight !== null ? total - comparisonWeight : null;
     const pct = diff !== null && comparisonWeight ? diff / comparisonWeight : null;
     return { w1, w2, has, total, diff, pct };
   }
 
-  private comparisonWeight(car: CarRow, prefix: 'fuel' | 'dry'): number | null {
-    if (prefix === 'fuel' && this.showFinalWeight) return this.finalWeight(car);
+  private comparisonWeight(car: CarRow, prefix: 'fuel' | 'dry', className = this.selectedClass): number | null {
+    if (prefix === 'fuel' && this.showFinalWeight) return this.finalWeight(car, className);
     return car.target !== null && Number.isFinite(car.target) ? car.target : null;
   }
 

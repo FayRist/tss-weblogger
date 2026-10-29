@@ -1968,6 +1968,12 @@ export class LoggerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   permissionsListData: PermissionItem[] = [];
 
+  get canViewCount(): boolean {
+    // Count is scoped to Logger, independently of the legacy EDIT/EXPORT checks.
+    return this.auth.getPermissionsByPath('pages/logger')
+      .some(permission => this.auth.normalizePermissionType(permission.type) === 'COUNT');
+  }
+
   permissionsCheck(type: string): boolean {
     return this.permissionsListData.some(p => this.auth.normalizePermissionType(p.type) === this.auth.normalizePermissionType(type));
   }

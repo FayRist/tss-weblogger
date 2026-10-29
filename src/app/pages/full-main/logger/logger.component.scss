@@ -663,6 +663,17 @@ button[mat-raised-button] {
     flex: 0 0 33.333333%;
     max-width: 33.333333%;
   }
+
+  .logger-side-metrics-row--no-count > .logger-metric-col {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+}
+
+@media (min-width: 1025px) {
+  .logger-meta-grid--no-count:not(.logger-meta-grid--race-team) {
+    grid-template-columns: minmax(120px, 1.1fr) minmax(120px, 1.1fr) minmax(180px, 1.5fr) minmax(140px, 1fr) minmax(150px, 1fr);
+  }
 }
 
 @media (max-width: 1024px) {

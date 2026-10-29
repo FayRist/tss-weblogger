@@ -44,7 +44,8 @@
 
 
     @if (!(isReadOnlyRaceTeamUser() && raceTeamMetaCollapsed)) {
-    <div class="logger-meta-grid" [ngClass]="isReadOnlyRaceTeamUser() ? 'logger-meta-grid--race-team' : ''">
+    <div class="logger-meta-grid" [ngClass]="isReadOnlyRaceTeamUser() ? 'logger-meta-grid--race-team' : ''"
+      [class.logger-meta-grid--no-count]="!canViewCount">
       <div class="logger-meta-item logger-meta-item--car">
         <form class="mat-input-form">
           <mat-form-field class="w-100">
@@ -71,7 +72,7 @@
           </mat-form-field>
         </form>
       </div>
-      @if (!isReadOnlyRaceTeamUser()) {
+      @if (canViewCount) {
 
       <div class="logger-meta-item logger-meta-item--count">
         <form class="mat-input-form">
@@ -345,7 +346,7 @@
 
       @if (isReadOnlyRaceTeamUser()) {
         <div class="col-12 logger-side-col">
-          <div class="row g-3 logger-side-metrics-row">
+          <div class="row g-3 logger-side-metrics-row" [class.logger-side-metrics-row--no-count]="!canViewCount">
             <div class="col-12 logger-metric-col">
               <div class="card logger-metric-card h-100">
                 <div class="card-body">
@@ -364,6 +365,7 @@
               </div>
             </div>
 
+            @if (canViewCount) {
             <div class="col-12 logger-metric-col">
               <div class="card logger-metric-card h-100">
                 <div class="card-body">
@@ -372,6 +374,7 @@
                 </div>
               </div>
             </div>
+            }
           </div>
         </div>
       }

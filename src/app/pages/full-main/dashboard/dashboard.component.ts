@@ -145,7 +145,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   lockedLoggersSnapshot: LoggerItem[] | null = null; // เก็บ snapshot ของตำแหน่งที่ล็อค
   isMatSortActive: boolean = false;
 
-  displayedColumns: string[] = [
+  private readonly allDisplayedColumns: string[] = [
     'carNumber',
     'loggerStatus',
     'loggerId',
@@ -155,6 +155,17 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     'countDetect',
     'resetLimit'
   ];
+
+  get canViewCount(): boolean {
+    return this.auth.getPermissionsByPath('pages/dashboard')
+      .some(permission => this.auth.normalizePermissionType(permission.type) === 'COUNT');
+  }
+
+  get displayedColumns(): string[] {
+    return this.allDisplayedColumns.filter(column =>
+      (column !== 'countDetect' || this.canViewCount)
+      && (column !== 'resetLimit' || !this.isReadOnlyRaceTeamUser()));
+  }
 
   dataSource = new MatTableDataSource<LoggerItem>([]);
 
@@ -364,9 +375,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnInit() {
     this.permissionsListData = this.auth.getPermissionsByPath('pages/dashboard');
-    if (this.isReadOnlyRaceTeamUser()) {
-      this.displayedColumns = this.displayedColumns.filter((col) => col !== 'resetLimit');
-    }
 
     this.filterLogger.setValue('all', { emitEvent: false });
     this.applyFilter('all');

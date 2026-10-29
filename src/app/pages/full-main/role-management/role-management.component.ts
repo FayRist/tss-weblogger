@@ -404,7 +404,7 @@ export class RoleModalUpdateComponent {
   }
 
   private buildPermissionGroups(permissions: RoleManagementPermissionModel[]): PermissionFormGroup[] {
-    const order = ['GET', 'ADD', 'EDIT', 'DELETE', 'IMPORT', 'EXPORT'];
+    const order = ['GET', 'ADD', 'EDIT', 'DELETE', 'IMPORT', 'EXPORT', 'COUNT'];
     const groups = new Map<string, RoleManagementPermissionModel[]>();
     for (const permission of permissions) {
       const formCode = permission.formCode || '-';
@@ -475,7 +475,7 @@ export class RoleModalUpdateComponent {
   styleUrl: './role-management.component.scss',
 })
 export class PermissionModalUpdateComponent {
-  permissionTypes = ['GET', 'ADD', 'EDIT', 'DELETE', 'IMPORT', 'EXPORT'];
+  permissionTypes = ['GET', 'ADD', 'EDIT', 'DELETE', 'IMPORT', 'EXPORT', 'COUNT'];
   permissionsName = '';
   path = '';
   type = 'GET';

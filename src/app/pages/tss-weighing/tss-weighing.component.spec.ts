@@ -117,6 +117,58 @@ describe('TssWeighingComponent weight calculation', () => {
     expect(sheet.model.merges).toContain('Q2:U2');
   });
 
+  for (const [sub, base] of [['GR86', 80], ['GR86 M', 80], ['Touring', 75]] as const) {
+    for (const [label, offset, expected] of [['below', -30, 30], ['equal', 0, 0], ['above', 10, 0]] as const) {
+      it(`${sub}: ${label} the ${base} kg base uses full positive top-up only`, () => {
+        component.driverAverage = 95;
+        component.driverCompensationLimit = 5;
+        const car = carWith({ sub, target: 1000, driver1Weight: base + offset });
+        expect(component.driverWeightBase(car)).toBe(base);
+        expect(component.driverWeightStats(car).compensation).toBe(expected);
+        expect(component.finalWeight(car)).toBe(1000 + expected);
+      });
+    }
+
+    it(`${sub}: averages two drivers and does not count missing/invalid weights`, () => {
+      const car = carWith({ sub, driver1Weight: base - 40, driver2Weight: base - 20 });
+      expect(component.driverWeightStats(car).avg).toBe(base - 30);
+      expect(component.driverWeightStats(car).compensation).toBe(30);
+      for (const invalid of [null, 0, -1, NaN, Infinity]) {
+        car.driver2Weight = invalid;
+        expect(component.driverWeightStats(car).compensation).toBe(40);
+      }
+      car.driver1Weight = null;
+      car.driver2Weight = null;
+      expect(component.driverWeightStats(car).compensation).toBe(0);
+    });
+  }
+
+  it('exports every class with its own rule, regardless of the selected class', () => {
+    component.selectedClass = 'GR86';
+    component.showFinalWeight = true;
+    component.classSessions = { GR86: ['Qualify'], Touring: ['Qualify'], 'GT3 GTM': ['Qualify'] };
+    component.data = {};
+    for (const [cls, sub] of [['GR86', 'GR86 M'], ['Touring', 'Touring'], ['GT3 GTM', 'GT3']]) {
+      component.data[cls] = { Qualify: [carWith({ sub, target: 1000, driver1Weight: 40 })] };
+      component.weights[`${cls}|Qualify|7`] = { fuel_w1: 500, fuel_w2: 500, dry_w1: 500, dry_w2: 500 };
+    }
+    const workbook = (component as any).buildWorkbookForClasses(Object.keys(component.data));
+    for (const [cls, expected] of [['GR86', 40], ['Touring', 35], ['GT3 GTM', 15]] as const) {
+      const sheet = workbook.getWorksheet(`Qualify_${cls}`);
+      expect(sheet.getCell('H4').value).withContext(cls).toBe(expected);
+      expect(sheet.getCell('J4').value).withContext(cls).toBe(1000 + expected);
+      expect(sheet.getCell('N4').value).withContext(cls).toBe(-expected);
+      expect(sheet.getCell('T4').value).withContext(cls).toBe(0);
+      const car = component.data[cls]['Qualify'][0];
+      const report = (component as any).buildCarReportFor(cls, 'Qualify', car);
+      expect(report['Driver Weight Compensation (kg)']).toBe(expected);
+      expect(report['Final Weight (kg)']).toBe(1000 + expected);
+      const metadata = (component as any).buildCarMetadata(car, cls);
+      expect(metadata['Driver Weight Compensation (kg)']).toBe(expected);
+      expect(metadata['Diff from Driver Base (kg)']).toBe(metadata['Diff from 75 (kg)']);
+    }
+  });
+
   it('omits Final Weight from Excel when disabled', () => {
     component.eventName = 'SEPANG2026';
     component.classSessions = { 'GT3 GTM': ['Qualify'] };
